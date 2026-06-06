@@ -415,6 +415,15 @@ function rDashboard(){
   const unchecked=subs.filter(s=>!s.checked).length;
   const pending=qs.filter(q=>q.status==='pending').length;
 
+  // 최근 결석/지각 모으기 (챙길 것)
+  const flagged=[];
+  getAttendance().forEach(a=>(a.records||[]).forEach(r=>{
+    if(r.status==='absent'||r.status==='late') flagged.push({date:a.date, name:r.studentName, className:a.className, status:r.status, lateMinutes:r.lateMinutes});
+  }));
+  flagged.sort((x,y)=>(y.date||'').localeCompare(x.date||''));
+  const recentFlagged=flagged.slice(0,8);
+  const absentCount=flagged.filter(f=>f.status==='absent').length;
+
   document.getElementById('dashboardContent').innerHTML=`
     <div class="stats-grid">
       <div class="stat-card" onclick="navigate('students')"><div class="stat-icon">👥</div><div class="stat-value" style="color:var(--primary)">${sts.length}</div><div class="stat-label">전체 학생 수</div></div>
@@ -441,6 +450,17 @@ function rDashboard(){
           </div>`).join('')||'<div style="text-align:center;padding:24px;color:var(--text-muted)">답변 대기 질문이 없어요 🎉</div>'}
         ${pending>3?`<button class="btn btn-outline btn-sm" style="margin-top:10px;width:100%;justify-content:center" onclick="navigate('questions')">전체 보기 →</button>`:''}
       </div>
+    </div>
+    <div class="card" style="margin-top:16px;border-left:4px solid var(--red)">
+      <div class="card-title">🔴 결석·지각 챙길 것 ${absentCount?`<span class="badge b-red">결석 ${absentCount}</span>`:''}</div>
+      ${recentFlagged.length?recentFlagged.map(f=>`
+        <div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border)">
+          <span style="font-size:12px;color:var(--text-muted);min-width:60px">${f.date?f.date.slice(5):''}</span>
+          <strong style="font-size:13px;min-width:70px">${f.name}</strong>
+          <span class="chip">${f.className}</span>
+          <span style="margin-left:auto">${f.status==='absent'?'<span class="badge b-red">결석</span>':`<span class="badge b-yellow">지각 ${f.lateMinutes||0}분</span>`}</span>
+        </div>`).join(''):'<div style="text-align:center;padding:24px;color:var(--text-muted)">최근 결석·지각이 없어요 👍</div>'}
+      ${flagged.length>8?`<button class="btn btn-outline btn-sm" style="margin-top:10px;width:100%;justify-content:center" onclick="navigate('attendance')">출석 관리에서 전체 보기 →</button>`:''}
     </div>
     <div class="card" style="margin-top:16px">
       <div class="card-title">📬 최근 제출 숙제</div>
