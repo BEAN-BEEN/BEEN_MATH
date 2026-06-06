@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BEEN MATH — 선생님 포털</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#114C56">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary:#5B6CF5; --primary-dark:#4F46E5; --primary-light:#EEF2FF;
+      --orange:#F97316; --orange-light:#FFF7ED;
+      --green:#10B981; --green-light:#ECFDF5;
+      --red:#F43F5E; --red-light:#FFF1F2;
+      --yellow:#F59E0B; --yellow-light:#FFFBEB;
+      --bg:#F1F5F9; --surface:#FFFFFF;
+      --text:#0F172A; --text-sub:#334155; --text-muted:#64748B;
+      --border:#E2E8F0; --sidebar-w:250px;
+      --radius:12px; --radius-sm:8px;
+      --shadow:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.05);
+      --shadow-md:0 4px 6px -1px rgba(0,0,0,.1);
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Noto Sans KR',-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px}
+    .app-layout{display:flex;min-height:100vh}
+
+    /* SIDEBAR */
+    .sidebar{width:var(--sidebar-w);background:#1E293B;position:fixed;top:0;left:0;bottom:0;display:flex;flex-direction:column;z-index:200;overflow-y:auto}
+    .sidebar-logo{padding:22px 20px 16px;border-bottom:1px solid rgba(255,255,255,.1)}
+    .sidebar-logo h1{font-size:18px;font-weight:800;color:#fff;letter-spacing:-.5px}
+    .sidebar-logo p{font-size:12px;color:rgba(255,255,255,.5);margin-top:3px}
+    .sidebar-nav{padding:12px 10px;flex:1}
+    .nav-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--radius-sm);cursor:pointer;transition:all .15s;color:rgba(255,255,255,.6);font-size:14px;font-weight:500;user-select:none}
+    .nav-item:hover{background:rgba(255,255,255,.08);color:#fff}
+    .nav-item.active{background:var(--primary);color:#fff;font-weight:600}
+    .nav-icon{width:22px;display:inline-flex;align-items:center;justify-content:center;opacity:.9}
+    .sidebar-footer{padding:16px 20px;border-top:1px solid rgba(255,255,255,.1)}
+    .sidebar-footer p{font-size:12px;color:rgba(255,255,255,.4)}
+
+    /* MAIN */
+    .main-content{margin-left:var(--sidebar-w);flex:1;min-height:100vh;padding-bottom:48px}
+    .page-header{padding:24px 28px 0;margin-bottom:20px}
+    .page-title{font-size:22px;font-weight:700;letter-spacing:-.5px}
+    .page-subtitle{font-size:13px;color:var(--text-muted);margin-top:4px}
+    .section{display:none}
+    .section.active{display:block}
+    .content-area{padding:0 28px}
+
+    /* CARDS */
+    .card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:20px;margin-bottom:16px}
+    .card-title{font-size:15px;font-weight:700;margin-bottom:14px}
+
+    /* STATS */
+    .stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+    .stat-card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:20px;cursor:pointer;transition:box-shadow .2s}
+    .stat-card:hover{box-shadow:var(--shadow-md)}
+    .stat-icon{font-size:28px;margin-bottom:8px}
+    .stat-value{font-size:30px;font-weight:800;letter-spacing:-1px;line-height:1}
+    .stat-label{font-size:12px;color:var(--text-muted);margin-top:4px}
+
+    /* BADGES */
+    .badge{display:inline-block;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:700}
+    .b-primary{background:var(--primary-light);color:var(--primary)}
+    .b-orange{background:var(--orange-light);color:var(--orange)}
+    .b-green{background:var(--green-light);color:var(--green)}
+    .b-red{background:var(--red-light);color:var(--red)}
+    .b-gray{background:#F1F5F9;color:var(--text-muted)}
+    .b-yellow{background:var(--yellow-light);color:var(--yellow)}
+    .chip{display:inline-block;padding:3px 10px;background:var(--primary-light);color:var(--primary);border-radius:20px;font-size:12px;font-weight:600}
+
+    /* BUTTONS */
+    .btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s;font-family:inherit}
+    .btn-primary{background:var(--primary);color:#fff}
+    .btn-primary:hover{background:var(--primary-dark)}
+    .btn-outline{background:transparent;color:var(--text-sub);border:1.5px solid var(--border)}
+    .btn-outline:hover{background:var(--bg)}
+    .btn-green{background:var(--green);color:#fff}
+    .btn-green:hover{background:#059669}
+    .btn-orange{background:var(--orange);color:#fff}
+    .btn-orange:hover{background:#EA6C0A}
+    .btn-red{background:var(--red);color:#fff}
+    .btn-red:hover{background:#DC2626}
+    .btn-sm{padding:6px 12px;font-size:12px}
+    .btn-row{display:flex;gap:8px;flex-wrap:wrap}
+
+    /* FORMS */
+    .form-group{margin-bottom:14px}
+    .form-label{display:block;font-size:13px;font-weight:600;color:var(--text-sub);margin-bottom:6px}
+    .form-input,.form-select,.form-textarea{width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px;color:var(--text);font-family:inherit;transition:border-color .15s;background:var(--surface)}
+    .form-input:focus,.form-select:focus,.form-textarea:focus{outline:none;border-color:var(--primary)}
+    .form-textarea{resize:vertical;min-height:80px}
+    .form-row-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .form-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+    .form-row-4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px}
+
+    /* TABLES */
+    .table-wrap{overflow-x:auto}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th{padding:10px 12px;background:var(--bg);color:var(--text-muted);font-size:12px;font-weight:700;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+    td{padding:10px 12px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:middle}
+    tr:last-child td{border-bottom:none}
+    tbody tr:hover td{background:#FAFBFF}
+
+    /* UPLOAD */
+    .upload-area{border:2px dashed var(--border);border-radius:var(--radius-sm);padding:14px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg);margin-bottom:12px}
+    .upload-area:hover{border-color:var(--primary);background:var(--primary-light)}
+    .upload-area .u-icon{font-size:22px;margin-bottom:4px}
+    .upload-area p{font-size:12px;color:var(--text-muted)}
+    .upload-area input[type=file]{display:none}
+
+    /* ATT BUTTONS */
+    .att-btn{padding:5px 10px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid var(--border);background:var(--surface);color:var(--text-muted);transition:all .15s;font-family:inherit}
+    .att-btn.sel-p{background:var(--green-light);border-color:var(--green);color:var(--green)}
+    .att-btn.sel-l{background:var(--yellow-light);border-color:var(--yellow);color:var(--yellow)}
+    .att-btn.sel-a{background:var(--red-light);border-color:var(--red);color:var(--red)}
+
+    /* QUESTION CARDS */
+    .q-card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:14px;overflow:hidden}
+    .q-head{padding:14px 18px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border)}
+
+    /* SCHEDULE TABLE */
+    .sched-tbl{width:100%;border-collapse:collapse}
+    .sched-tbl th{padding:8px 10px;background:var(--bg);font-size:12px;font-weight:700;color:var(--text-muted);border:1px solid var(--border);text-align:center;min-width:80px}
+    .sched-tbl td{padding:6px;border:1px solid var(--border);vertical-align:top}
+    .sc-cell{background:var(--primary-light);border-radius:6px;padding:6px 8px;margin-bottom:4px}
+    .sc-cell.mk{background:var(--orange-light);border:1px solid var(--orange)}
+    .sc-name{font-size:12px;font-weight:700;color:var(--primary)}
+    .sc-cell.mk .sc-name{color:var(--orange)}
+    .sc-time{font-size:11px;color:var(--text-muted)}
+
+    /* REPORT */
+    .rp-stat{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;text-align:center}
+    .rp-val{font-size:26px;font-weight:800;color:var(--primary);line-height:1}
+    .rp-lbl{font-size:12px;color:var(--text-muted);margin-top:6px}
+
+    /* ALERT */
+    .alert-card{background:var(--orange-light);border:1.5px solid var(--orange);border-radius:var(--radius);padding:14px 18px;display:flex;align-items:center;gap:12px;margin-bottom:14px}
+    .alert-card h4{font-size:13px;font-weight:700;color:var(--orange)}
+    .alert-card p{font-size:12px;color:var(--text-sub);margin-top:2px}
+    .divider{height:1px;background:var(--border);margin:14px 0}
+    .sec-label{font-size:12px;font-weight:700;color:var(--text-muted);letter-spacing:.5px;text-transform:uppercase;margin:18px 0 10px}
+
+    /* TOAST */
+    .toast-container{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:2000;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none}
+    .toast{background:#1E293B;color:#fff;padding:10px 20px;border-radius:24px;font-size:13px;font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,.2);animation:tIn .3s ease,tOut .3s ease 2.2s forwards;display:flex;align-items:center;gap:8px}
+    .toast.success{background:var(--green)}
+    .toast.error{background:var(--red)}
+    .toast.warning{background:var(--orange)}
+    @keyframes tIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes tOut{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(-10px)}}
+
+    /* MOBILE */
+    .mobile-header{display:none;position:fixed;top:0;left:0;right:0;height:56px;background:#1E293B;z-index:160;align-items:center;padding:0 16px;justify-content:space-between}
+    .mobile-header h1{font-size:16px;font-weight:800;color:#fff}
+    .m-menu-btn{font-size:20px;color:rgba(255,255,255,.8);cursor:pointer;padding:8px;border:none;background:transparent}
+    .mob-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:150}
+    .mob-overlay.open{display:block}
+    .sidebar.mob-open{transform:translateX(0)!important}
+
+    @media(max-width:900px){
+      .sidebar{transform:translateX(-100%);transition:transform .3s}
+      .main-content{margin-left:0;padding-top:56px}
+      .mobile-header{display:flex}
+      .page-header{padding:16px 16px 0}
+      .content-area{padding:0 16px}
+      .stats-grid{grid-template-columns:repeat(2,1fr)}
+      .form-row-3,.form-row-4{grid-template-columns:1fr 1fr}
+    }
+    @media(max-width:520px){
+      .stats-grid{grid-template-columns:1fr 1fr}
+      .form-row-2,.form-row-3,.form-row-4{grid-template-columns:1fr}
+    }
+    ::-webkit-scrollbar{width:5px;height:5px}
+    ::-webkit-scrollbar-track{background:transparent}
+    ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:3px}
+    .main-content::-webkit-scrollbar-thumb{background:var(--border)}
+  </style>
+</head>
+<body>
+<div class="toast-container" id="toastContainer"></div>
+
+<header class="mobile-header">
+  <h1><img src="icon.svg" alt="" style="height:24px;vertical-align:-6px;border-radius:6px;margin-right:5px">BEEN MATH 관리자</h1>
+  <button class="m-menu-btn" onclick="toggleMob()">☰</button>
+</header>
+<div class="mob-overlay" id="mobOverlay" onclick="toggleMob()"></div>
+
+<div class="app-layout">
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <h1><img src="icon.svg" alt="" style="height:26px;vertical-align:-6px;border-radius:6px;margin-right:6px">BEEN MATH</h1>
+      <p>선생님 관리자 포털</p>
+    </div>
+    <div class="sidebar-nav" id="sidebarNav"></div>
+    <div class="sidebar-footer">
+      <p style="margin-bottom:8px">👩‍🏫 혜빈쌤 로그인 중</p>
+      <button onclick="logout()" style="width:100%;padding:8px;background:rgba(255,255,255,.1);color:rgba(255,255,255,.8);border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">🚪 로그아웃</button>
+    </div>
+  </nav>
+
+  <main class="main-content">
+    <div class="section active" id="sec-dashboard">
+      <div class="page-header"><div class="page-title">대시보드</div><div class="page-subtitle" id="todayDate"></div></div>
+      <div class="content-area" id="dashboardContent"></div>
+    </div>
+    <div class="section" id="sec-students">
+      <div class="page-header"><div class="page-title">학생 관리</div></div>
+      <div class="content-area" id="studentsContent"></div>
+    </div>
+    <div class="section" id="sec-homework">
+      <div class="page-header"><div class="page-title">숙제 관리</div></div>
+      <div class="content-area" id="homeworkContent"></div>
+    </div>
+    <div class="section" id="sec-attendance">
+      <div class="page-header"><div class="page-title">출석 관리</div></div>
+      <div class="content-area" id="attendanceContent"></div>
+    </div>
+    <div class="section" id="sec-grades">
+      <div class="page-header"><div class="page-title">성적 관리</div></div>
+      <div class="content-area" id="gradesContent"></div>
+    </div>
+    <div class="section" id="sec-questions">
+      <div class="page-header"><div class="page-title">질문 관리</div></div>
+      <div class="content-area" id="questionsContent"></div>
+    </div>
+    <div class="section" id="sec-videos">
+      <div class="page-header"><div class="page-title">수업 영상 관리</div></div>
+      <div class="content-area" id="videosContent"></div>
+    </div>
+    <div class="section" id="sec-materials">
+      <div class="page-header"><div class="page-title">자료실 관리</div></div>
+      <div class="content-area" id="materialsContent"></div>
+    </div>
+    <div class="section" id="sec-schedule">
+      <div class="page-header"><div class="page-title">시간표 관리</div></div>
+      <div class="content-area" id="scheduleContent"></div>
+    </div>
+    <div class="section" id="sec-consultation">
+      <div class="page-header"><div class="page-title">상담 관리</div></div>
+      <div class="content-area" id="consultationContent"></div>
+    </div>
+    <div class="section" id="sec-report">
+      <div class="page-header"><div class="page-title">리포트</div></div>
+      <div class="content-area" id="reportContent"></div>
+    </div>
+  </main>
+</div>
+
+<!-- Firebase SDK (compat) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="firebase-init.js"></script>
+
+<script>
+// ================================================================
+// DATA
+// ================================================================
+function loadData(k,d){try{const v=localStorage.getItem('tbm_'+k);return v?JSON.parse(v):d;}catch(e){return d;}}
+function saveData(k,v){try{localStorage.setItem('tbm_'+k,JSON.stringify(v));}catch(e){}}
+
+// ===== 반(수업) 목록: Firebase에서 불러옴. 비어있으면 시간표 기준 13개로 자동 생성 =====
+const WD_ORDER=['mon','tue','wed','thu','fri','sat','sun'];
+const WD_LABEL={mon:'월',tue:'화',wed:'수',thu:'목',fri:'금',sat:'토',sun:'일'};
+const DEFAULT_CLASSES=[
+  {id:'c1', name:'고1T Z2', subject:'공통수학1 유형편',      weekday:'tue', slot:'1부'},
+  {id:'c2', name:'고1T B2', subject:'공통수학1 기출편',      weekday:'tue', slot:'2부'},
+  {id:'c3', name:'고1T B1', subject:'공통수학1 기출편',      weekday:'wed', slot:'2부'},
+  {id:'c4', name:'고1S Z4', subject:'공통수학1 유형편',      weekday:'thu', slot:'1부'},
+  {id:'c5', name:'고1S A4', subject:'공통수학1 기출편',      weekday:'thu', slot:'2부'},
+  {id:'c6', name:'고1A Z5', subject:'공통수학2 일등급만들기', weekday:'fri', slot:'1부'},
+  {id:'c7', name:'고1A A5', subject:'공통수학1 기출편',      weekday:'fri', slot:'2부'},
+  {id:'c8', name:'고2 세마', subject:'확통 자체교재',         weekday:'sat', slot:'1부'},
+  {id:'c9', name:'고1S B4', subject:'공통수학1 기출편',      weekday:'sat', slot:'2부'},
+  {id:'c10',name:'고1T A1', subject:'공통수학1 기출편',      weekday:'sat', slot:'3부'},
+  {id:'c11',name:'고1A B5', subject:'공통수학1 기출편',      weekday:'sun', slot:'1부'},
+  {id:'c12',name:'고1T A2', subject:'공통수학1 기출편',      weekday:'sun', slot:'2부'},
+  {id:'c13',name:'고1T Y3', subject:'공통수학1 유형편',      weekday:'sun', slot:'3부'}
+];
+let CLASSES=[];
+async function loadClasses(){
+  let snap=await db.collection('classes').get();
+  if(snap.empty){
+    const batch=db.batch();
+    DEFAULT_CLASSES.forEach((c,i)=>{
+      batch.set(db.collection('classes').doc(c.id),{name:c.name,subject:c.subject,weekday:c.weekday,slot:c.slot,startTime:'',endTime:'',type:'정규',order:i});
+    });
+    await batch.commit();
+    snap=await db.collection('classes').get();
+  }
+  CLASSES=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.order!=null?a.order:99)-(b.order!=null?b.order:99));
+}
+async function addClassFS(data){ await db.collection('classes').add(data); await loadClasses(); }
+async function updateClassFS(id,upd){ await db.collection('classes').doc(id).update(upd); await loadClasses(); }
+async function deleteClassFS(id){ await db.collection('classes').doc(id).delete(); await loadClasses(); }
+
+// ===== 학생 명단: Firebase Firestore에서 불러옴 (캐시) =====
+let STUDENTS_CACHE=[];
+async function loadStudents(){
+  const snap=await db.collection('students').orderBy('name').get();
+  STUDENTS_CACHE=snap.docs.map(d=>({id:d.id, ...d.data()}));
+}
+function getStudents(){return STUDENTS_CACHE;}
+function getStudentsByClass(cid){return STUDENTS_CACHE.filter(s=>Array.isArray(s.classIds)?s.classIds.includes(cid):s.classId===cid);}
+function classNamesOf(s){ return Array.isArray(s.classNames)&&s.classNames.length ? s.classNames : (s.className?[s.className]:[]); }
+
+// 학생 추가/삭제 → Firebase에 저장 (회원가입 없이 선생님이 직접 등록)
+async function addStudentFS(data){ await db.collection('students').add(data); await loadStudents(); }
+async function deleteStudentFS(id){ await db.collection('students').doc(id).delete(); await loadStudents(); }
+
+// ===== 그 외 데이터는 아직 이 브라우저에만 저장돼요 (다음 단계에서 Firebase로 연결) =====
+function getAssignments()   {return loadData('assignments',[]);}
+function getSubmissions()   {return loadData('submissions',[]);}
+function getAttendance()    {return loadData('attendance',[]);}
+function getExams()         {return loadData('exams',[]);}
+function getExamSubs()      {return loadData('esubs',[]);}
+function getQuestions()     {return loadData('questions',[]);}
+function getVideos()        {return loadData('videos',[]);}
+function getMaterials()     {return loadData('materials',[]);}
+function getSchedule()      {return loadData('schedule',[]);}
+function getConsultations() {return loadData('consults',[]);}
+function getReports()       {return loadData('reports',[]);}
+function getSubsByAssignment(aid){return getSubmissions().filter(s=>s.assignmentId===aid);}
+function saveAssignment(d){const l=getAssignments();d.id='a'+Date.now();d.createdAt=new Date().toISOString().slice(0,10);l.unshift(d);saveData('assignments',l);}
+function updateSub(sid,u){const l=getSubmissions();const i=l.findIndex(s=>s.id===sid);if(i>=0){Object.assign(l[i],u);saveData('submissions',l);}}
+function saveAttendance(d){const l=getAttendance();const i=l.findIndex(a=>a.date===d.date&&a.classId===d.classId);if(i>=0)l[i]=d;else l.unshift(d);saveData('attendance',l);}
+function saveExam(d){const l=getExams();d.id='e'+Date.now();d.createdAt=new Date().toISOString().slice(0,10);l.unshift(d);saveData('exams',l);}
+function updateExamSub(sid,u){const l=getExamSubs();const i=l.findIndex(s=>s.id===sid);if(i>=0){Object.assign(l[i],u);saveData('esubs',l);}}
+function answerQ(qid,ans){const l=getQuestions();const i=l.findIndex(q=>q.id===qid);if(i>=0){l[i].teacherAnswer=ans;l[i].status='answered';saveData('questions',l);}}
+function saveVideo(d){const l=getVideos();d.id='v'+Date.now();l.unshift(d);saveData('videos',l);}
+function deleteVideo(id){saveData('videos',getVideos().filter(v=>v.id!==id));}
+function saveMaterial(d){const l=getMaterials();d.id='m'+Date.now();d.uploadDate=new Date().toISOString().slice(0,10);l.unshift(d);saveData('materials',l);}
+function deleteMaterial(id){saveData('materials',getMaterials().filter(m=>m.id!==id));}
+function saveSchedItem(d){const l=getSchedule();d.id='sc'+Date.now();l.push(d);saveData('schedule',l);}
+function deleteSchedItem(id){saveData('schedule',getSchedule().filter(s=>s.id!==id));}
+function updateConsult(id,u){const l=getConsultations();const i=l.findIndex(c=>c.id===id);if(i>=0){Object.assign(l[i],u);saveData('consults',l);}}
+function saveReport(d){const l=getReports();const i=l.findIndex(r=>r.studentId===d.studentId);if(i>=0)l[i]=d;else l.push(d);saveData('reports',l);}
+
+// ================================================================
+// NAV
+// ================================================================
+// 깔끔한 라인 SVG 아이콘 세트 (이모지 대체)
+const _svg=p=>`<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+const ICONS={
+  dashboard:_svg('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>'),
+  students:_svg('<path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>'),
+  homework:_svg('<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h4"/>'),
+  attendance:_svg('<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M9 16l2 2 4-4"/>'),
+  grades:_svg('<circle cx="12" cy="8" r="5"/><path d="M8.5 12.5L7 22l5-3 5 3-1.5-9.5"/>'),
+  questions:_svg('<path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>'),
+  videos:_svg('<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 9l5 3-5 3z"/>'),
+  materials:_svg('<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>'),
+  schedule:_svg('<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>'),
+  consultation:_svg('<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 015.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>'),
+  report:_svg('<path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="7"/><rect x="12" y="7" width="3" height="11"/><rect x="17" y="4" width="3" height="14"/>'),
+  home:_svg('<path d="M3 11l9-8 9 8"/><path d="M5 10v10a1 1 0 001 1h3v-6h6v6h3a1 1 0 001-1V10"/>'),
+  teacher:_svg('<path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1.5 3 3 6 3s6-1.5 6-3v-5"/>')
+};
+const NAV=[
+  {id:'dashboard',label:'대시보드'},{id:'students',label:'학생 관리'},
+  {id:'homework',label:'숙제 관리'},{id:'attendance',label:'출석 관리'},
+  {id:'grades',label:'성적 관리'},{id:'questions',label:'질문 관리'},
+  {id:'videos',label:'수업 영상 관리'},{id:'materials',label:'자료실 관리'},
+  {id:'schedule',label:'시간표 관리'},{id:'consultation',label:'상담 관리'},
+  {id:'report',label:'리포트'}
+];
+let curSec='dashboard';
+
+function buildSidebar(){
+  document.getElementById('sidebarNav').innerHTML=NAV.map(n=>`
+    <div class="nav-item ${n.id===curSec?'active':''}" onclick="navigate('${n.id}')" data-sec="${n.id}">
+      <span class="nav-icon">${ICONS[n.id]||''}</span><span>${n.label}</span>
+    </div>`).join('');
+}
+function navigate(s){
+  document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));
+  document.getElementById('sec-'+s)?.classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.sec===s));
+  curSec=s;renderSection(s);window.scrollTo(0,0);closeMob();
+}
+function renderSection(s){
+  ({dashboard:rDashboard,students:rStudents,homework:rHomework,attendance:rAttendance,grades:rGrades,questions:rQuestions,videos:rVideos,materials:rMaterials,schedule:rSchedule,consultation:rConsultation,report:rReport})[s]?.();
+}
+function toggleMob(){document.getElementById('sidebar').classList.toggle('mob-open');document.getElementById('mobOverlay').classList.toggle('open');}
+function closeMob(){document.getElementById('sidebar').classList.remove('mob-open');document.getElementById('mobOverlay').classList.remove('open');}
+
+function showToast(msg,type=''){
+  const icons={success:'✅',error:'❌',warning:'⚠️'};
+  const c=document.getElementById('toastContainer');
+  const el=document.createElement('div');el.className=`toast ${type}`;
+  el.innerHTML=`${icons[type]||'ℹ️'} ${msg}`;c.appendChild(el);
+  setTimeout(()=>el.remove(),2600);
+}
+
+function classSelect(id='',all=false){
+  return `<select class="form-select" id="${id}"><option value="">${all?'전체 반':'반 선택'}</option>${CLASSES.map(c=>`<option value="${c.id}">${c.name}${c.weekday?(' · '+(WD_LABEL[c.weekday]||'')+(c.slot||'')):''}</option>`).join('')}</select>`;
+}
+
+// ================================================================
+// DASHBOARD
+// ================================================================
+function rDashboard(){
+  const sts=getStudents(),subs=getSubmissions(),qs=getQuestions();
+  const today=new Date();
+  document.getElementById('todayDate').textContent=today.toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
+  const dayKey=['sun','mon','tue','wed','thu','fri','sat'][today.getDay()];
+  const todayCls=CLASSES.filter(c=>c.weekday===dayKey);
+  const unchecked=subs.filter(s=>!s.checked).length;
+  const pending=qs.filter(q=>q.status==='pending').length;
+
+  document.getElementById('dashboardContent').innerHTML=`
+    <div class="stats-grid">
+      <div class="stat-card" onclick="navigate('students')"><div class="stat-icon">👥</div><div class="stat-value" style="color:var(--primary)">${sts.length}</div><div class="stat-label">전체 학생 수</div></div>
+      <div class="stat-card" onclick="navigate('schedule')"><div class="stat-icon">📚</div><div class="stat-value" style="color:var(--green)">${todayCls.length}</div><div class="stat-label">오늘 수업 반 수</div></div>
+      <div class="stat-card" onclick="navigate('homework')"><div class="stat-icon">📝</div><div class="stat-value" style="color:var(--orange)">${unchecked}</div><div class="stat-label">미확인 숙제</div></div>
+      <div class="stat-card" onclick="navigate('questions')"><div class="stat-icon">💬</div><div class="stat-value" style="color:var(--red)">${pending}</div><div class="stat-label">답변 대기 질문</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="card">
+        <div class="card-title">📅 오늘 수업</div>
+        ${todayCls.length?todayCls.map(c=>`
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+            <div style="font-size:13px;font-weight:700;color:var(--primary);min-width:110px">${c.startTime&&c.endTime?(c.startTime+'~'+c.endTime):(c.slot||'시간 미설정')}</div>
+            <div><div style="font-size:14px;font-weight:600">${c.name} ${c.type&&c.type!=='정규'?`<span style="font-size:11px;color:var(--orange)">(${c.type})</span>`:''} <span style="font-size:11px;color:var(--text-muted)">${getStudentsByClass(c.id).length}명</span></div>
+            <div style="font-size:12px;color:var(--text-muted)">${c.subject||''}</div></div>
+          </div>`).join(''):'<div style="text-align:center;padding:24px;color:var(--text-muted)">오늘 수업이 없어요</div>'}
+      </div>
+      <div class="card">
+        <div class="card-title">💬 답변 대기 질문 (${pending}개)</div>
+        ${qs.filter(q=>q.status==='pending').slice(0,3).map(q=>`
+          <div style="padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="navigate('questions')">
+            <div style="display:flex;justify-content:space-between"><strong style="font-size:13px">${q.studentName}</strong><span style="font-size:11px;color:var(--text-muted)">${q.createdAt}</span></div>
+            <div style="font-size:12px;color:var(--text-sub);margin-top:2px">📖 ${q.textbook} p.${q.page} ${q.number}</div>
+          </div>`).join('')||'<div style="text-align:center;padding:24px;color:var(--text-muted)">답변 대기 질문이 없어요 🎉</div>'}
+        ${pending>3?`<button class="btn btn-outline btn-sm" style="margin-top:10px;width:100%;justify-content:center" onclick="navigate('questions')">전체 보기 →</button>`:''}
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div class="card-title">📬 최근 제출 숙제</div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>학생</th><th>반</th><th>숙제명</th><th>제출시간</th><th>확인</th></tr></thead>
+        <tbody>${subs.slice(0,5).map(s=>`<tr><td><strong>${s.studentName}</strong></td><td><span class="chip">${s.className}</span></td><td>${s.assignmentTitle}</td><td style="color:var(--text-muted)">${s.submittedAt}</td><td>${s.checked?'<span class="badge b-green">확인 완료</span>':'<span class="badge b-orange">미확인</span>'}</td></tr>`).join('')}</tbody>
+      </table></div>
+    </div>`;
+}
+
+// ================================================================
+// STUDENTS
+// ================================================================
+let showAdd=false;
+function rStudents(){
+  const sts=getStudents();
+  document.getElementById('studentsContent').innerHTML=`
+    <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+      <button class="btn btn-primary" onclick="showAdd=!showAdd;rStudents()">➕ 학생 추가</button>
+    </div>
+    ${showAdd?`
+      <div class="card" id="addCard">
+        <div class="card-title">👤 새 학생 등록</div>
+        <div class="form-row-2">
+          <div class="form-group"><label class="form-label">이름 *</label><input class="form-input" id="ns-name" placeholder="홍길동"></div>
+          <div class="form-group"><label class="form-label">핸드폰 번호 *</label><input class="form-input" id="ns-phone" placeholder="010-1234-5678"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">반 배정 (여러 개 선택 가능)</label>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            ${CLASSES.map(c=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;border:1.5px solid var(--border);border-radius:7px;padding:6px 9px;cursor:pointer"><input type="checkbox" class="ns-class-chk" value="${c.id}"> ${c.name} <span style="color:var(--text-muted)">${(WD_LABEL[c.weekday]||'')+(c.slot||'')}</span></label>`).join('')}
+          </div>
+        </div>
+        <div class="form-group" style="max-width:280px"><label class="form-label">학부모 연락처</label><input class="form-input" id="ns-parent" placeholder="010-0000-0000"></div>
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="doAddSt()">등록하기</button>
+          <button class="btn btn-outline" onclick="showAdd=false;rStudents()">취소</button>
+        </div>
+        <div style="margin-top:10px;padding:10px;background:var(--green-light);border-radius:var(--radius-sm);font-size:12px;color:var(--green)">✅ 등록하면 학생은 <strong>이름 + 핸드폰 뒤 4자리</strong>로 바로 로그인할 수 있어요. (회원가입·이메일 필요 없음)</div>
+      </div>`:``}
+    <div class="card">
+      ${sts.length===0?`<div style="text-align:center;padding:40px;color:var(--text-muted)">아직 등록된 학생이 없어요.<br>오른쪽 위 <strong>➕ 학생 추가</strong>로 첫 학생을 등록해보세요!</div>`:`
+      <div class="table-wrap"><table>
+        <thead><tr><th>이름</th><th>반</th><th>연락처</th><th>학부모 연락처</th><th>로그인 번호</th><th>관리</th></tr></thead>
+        <tbody>${sts.map(s=>`
+          <tr>
+            <td><strong>${s.name}</strong></td>
+            <td>${classNamesOf(s).map(n=>`<span class="chip" style="margin:1px 2px">${n}</span>`).join('')||'-'}</td>
+            <td>${s.phone||'-'}</td>
+            <td>${s.parentPhone||'-'}</td>
+            <td><span class="badge b-primary">${s.phoneLast4||'-'}</span></td>
+            <td>
+              <div class="btn-row">
+                <button class="btn btn-outline btn-sm" onclick="showStDetail('${s.id}')">상세</button>
+                <button class="btn btn-red btn-sm" onclick="doDelSt('${s.id}','${s.name}')">삭제</button>
+              </div>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>`}
+    </div>
+    <div id="stDetailArea"></div>`;
+}
+async function doAddSt(){
+  const name=document.getElementById('ns-name').value.trim();
+  const phone=document.getElementById('ns-phone').value.trim();
+  const parentPhone=document.getElementById('ns-parent').value.trim();
+  const classIds=[...document.querySelectorAll('.ns-class-chk:checked')].map(el=>el.value);
+  const classNames=classIds.map(id=>CLASSES.find(c=>c.id===id)?.name).filter(Boolean);
+  if(!name||!phone){showToast('이름과 핸드폰 번호를 입력해주세요','error');return;}
+  const last4=phone.replace(/[^0-9]/g,'').slice(-4);
+  if(last4.length<4){showToast('핸드폰 번호를 정확히 입력해주세요','error');return;}
+  try{
+    await addStudentFS({ name, phone, phoneLast4:last4, classIds, classNames, parentPhone, enrollDate:new Date().toISOString().slice(0,10) });
+    showAdd=false;
+    showToast(`${name} 학생 등록 완료! 로그인: 이름 + ${last4}`,'success');
+    rStudents();
+  }catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+async function doDelSt(id,name){
+  if(!confirm(`${name} 학생을 삭제할까요? 로그인도 막혀요.`))return;
+  try{ await deleteStudentFS(id); showToast('학생이 삭제되었어요','warning'); rStudents(); }
+  catch(e){ showToast('삭제 실패: '+e.message,'error'); }
+}
+function showStDetail(id){
+  const s=getStudents().find(x=>x.id===id);if(!s)return;
+  document.getElementById('stDetailArea').innerHTML=`
+    <div class="card" style="border-top:3px solid var(--primary)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div class="card-title" style="margin-bottom:0">${s.name} 학습 요약</div>
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('stDetailArea').innerHTML=''">닫기</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+        <div class="rp-stat"><div class="rp-val">-</div><div class="rp-lbl">숙제 제출률</div></div>
+        <div class="rp-stat"><div class="rp-val">-</div><div class="rp-lbl">출석률</div></div>
+        <div class="rp-stat"><div class="rp-val">-</div><div class="rp-lbl">최근 성적</div></div>
+      </div>
+      <div style="margin-top:12px;font-size:13px"><strong>수강 반</strong> ${classNamesOf(s).join(', ')||'-'}</div>
+      <div style="margin-top:4px;font-size:13px"><strong>연락처</strong> ${s.phone||'-'} · <strong>학부모</strong> ${s.parentPhone||'-'}</div>
+      <div style="margin-top:12px;font-size:12px;color:var(--text-muted)">📌 숙제·출석·성적이 Firebase에 연결되면 자동으로 계산돼요 (다음 단계)</div>
+    </div>`;
+  document.getElementById('stDetailArea').scrollIntoView({behavior:'smooth'});
+}
+
+// ================================================================
+// HOMEWORK
+// ================================================================
+let hwOpenId=null;
+function rHomework(){
+  const asgn=getAssignments();
+  document.getElementById('homeworkContent').innerHTML=`
+    <div class="card">
+      <div class="card-title">➕ 새 과제 만들기</div>
+      <div class="form-row-2">
+        <div class="form-group"><label class="form-label">대상 반</label>${classSelect('hw-cls')}</div>
+        <div class="form-group"><label class="form-label">마감일</label><input class="form-input" id="hw-due" type="date"></div>
+      </div>
+      <div class="form-group"><label class="form-label">과제 제목 *</label><input class="form-input" id="hw-title" placeholder="예: 수학Ⅱ 3단원 연습문제"></div>
+      <div class="form-group"><label class="form-label">과제 내용</label><textarea class="form-textarea" id="hw-content" placeholder="교재 페이지, 문제 범위 등"></textarea></div>
+      <div class="form-group" style="max-width:180px"><label class="form-label">최대 사진 수</label><input class="form-input" id="hw-photos" type="number" value="3" min="1" max="10"></div>
+      <button class="btn btn-primary" onclick="doCreateAsgn()">과제 저장하기</button>
+    </div>
+    <div class="sec-label">📋 제출 현황</div>
+    ${asgn.map(a=>{
+      const subs=getSubsByAssignment(a.id),sts=getStudentsByClass(a.classId),isOpen=hwOpenId===a.id;
+      return `
+        <div class="card" style="border-left:4px solid var(--primary);margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+            <div><span class="chip">${a.className}</span><strong style="margin-left:8px">${a.title}</strong></div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-size:12px;color:var(--text-muted)">제출 ${subs.length}/${sts.length} · 마감 ${a.dueDate}</span>
+              <button class="btn btn-outline btn-sm" onclick="hwOpenId=hwOpenId==='${a.id}'?null:'${a.id}';rHomework()">${isOpen?'접기':'현황 보기'}</button>
+            </div>
+          </div>
+          ${isOpen?`
+            <div style="margin-top:14px"><div class="table-wrap"><table>
+              <thead><tr><th>학생</th><th>제출</th><th>제출 시간</th><th>사진</th><th>확인</th><th>오답</th></tr></thead>
+              <tbody>${sts.map(st=>{const sub=subs.find(s=>s.studentId===st.id);return`<tr>
+                <td><strong>${st.name}</strong></td>
+                <td>${sub?'<span class="badge b-green">제출</span>':'<span class="badge b-red">미제출</span>'}</td>
+                <td style="color:var(--text-muted)">${sub?.submittedAt||'-'}</td>
+                <td>${sub?`<button class="btn btn-outline btn-sm" onclick="showToast('Firebase Storage 연결 후 사용 가능해요')">📷</button>`:'-'}</td>
+                <td>${sub?`<button class="btn ${sub.checked?'btn-green':'btn-outline'} btn-sm" onclick="doCheck('${sub.id}')">${sub.checked?'✓확인됨':'확인하기'}</button>`:'-'}</td>
+                <td>${sub?`<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px"><input type="checkbox" ${sub.needsRetry?'checked':''} onchange="doRetry('${sub.id}',this.checked)"> 오답</label>`:'-'}</td>
+              </tr>`;}).join('')}</tbody>
+            </table></div></div>`:``}
+        </div>`;}).join('')}`;
+}
+function doCreateAsgn(){
+  const classId=document.getElementById('hw-cls').value,title=document.getElementById('hw-title').value.trim();
+  if(!classId||!title){showToast('반과 제목을 입력해주세요','error');return;}
+  const cls=CLASSES.find(c=>c.id===classId);
+  saveAssignment({classId,className:cls?.name||'',title,content:document.getElementById('hw-content').value.trim(),dueDate:document.getElementById('hw-due').value,maxPhotos:parseInt(document.getElementById('hw-photos').value)||3});
+  showToast(`"${title}" 과제가 등록되었어요! 📝`,'success');rHomework();
+}
+function doCheck(sid){updateSub(sid,{checked:true});showToast('숙제 확인 완료!','success');rHomework();}
+function doRetry(sid,v){updateSub(sid,{needsRetry:v});showToast(v?'오답 재제출이 요청되었어요':'오답 요청이 취소되었어요',v?'warning':'');}
+
+// ================================================================
+// ATTENDANCE
+// ================================================================
+let attSt={}, attDate='', attClassId=null;
+function rAttendance(){
+  const today=new Date().toISOString().slice(0,10);
+  if(!attDate) attDate=today;
+  const wd=['sun','mon','tue','wed','thu','fri','sat'][new Date(attDate).getDay()];
+  const dayClasses=CLASSES.filter(c=>c.weekday===wd);
+  document.getElementById('attendanceContent').innerHTML=`
+    <div class="card">
+      <div class="card-title">✅ 출석 체크</div>
+      <div class="form-group" style="max-width:240px">
+        <label class="form-label">날짜</label>
+        <input class="form-input" id="att-date" type="date" value="${attDate}" onchange="attDate=this.value;attClassId=null;rAttendance()">
+      </div>
+      <div style="font-size:13px;font-weight:600;color:var(--text-sub);margin-bottom:8px">📅 ${WD_LABEL[wd]}요일 수업 (${dayClasses.length}개) — 반을 선택하세요</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+        ${dayClasses.length?dayClasses.map(c=>`<button class="btn ${attClassId===c.id?'btn-primary':'btn-outline'} btn-sm" onclick="attClassId='${c.id}';attSt={};rAttendance()">${c.name} <span style="opacity:.7">${c.slot||''}</span> · ${getStudentsByClass(c.id).length}명</button>`).join(''):'<span style="font-size:13px;color:var(--text-muted)">이 요일엔 등록된 수업이 없어요</span>'}
+      </div>
+      <div id="attStList" style="margin-top:8px">${attClassId?renderAttList(attClassId):''}</div>
+    </div>
+    <div class="card">
+      <div class="card-title">📋 최근 출석 기록</div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>날짜</th><th>반</th><th>출석</th><th>지각</th><th>결석</th></tr></thead>
+        <tbody>${getAttendance().slice(0,15).map(a=>{const p=a.records.filter(r=>r.status==='present').length,l=a.records.filter(r=>r.status==='late').length,ab=a.records.filter(r=>r.status==='absent').length;return`<tr><td>${a.date}</td><td><span class="chip">${a.className}</span></td><td><span class="badge b-green">${p}명</span></td><td><span class="badge b-yellow">${l}명</span></td><td><span class="badge b-red">${ab}명</span></td></tr>`;}).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px">출석 기록이 없어요</td></tr>'}</tbody>
+      </table></div>
+    </div>`;
+}
+function renderAttList(classId){
+  const sts=getStudentsByClass(classId);
+  sts.forEach(s=>{ if(!attSt[s.id]) attSt[s.id]='present'; });
+  if(!sts.length) return '<div style="padding:16px;color:var(--text-muted);font-size:13px">이 반에 배정된 학생이 없어요</div>';
+  return `
+    ${sts.map(s=>`
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)">
+        <strong>${s.name}</strong>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button class="att-btn ${attSt[s.id]==='present'?'sel-p':''}" id="ap-${s.id}" onclick="setAtt('${s.id}','present')">출석</button>
+          <button class="att-btn ${attSt[s.id]==='late'?'sel-l':''}" id="al-${s.id}" onclick="setAtt('${s.id}','late')">지각</button>
+          <button class="att-btn ${attSt[s.id]==='absent'?'sel-a':''}" id="aa-${s.id}" onclick="setAtt('${s.id}','absent')">결석</button>
+          <input class="form-input" id="amin-${s.id}" placeholder="지각(분)" style="width:75px;display:${attSt[s.id]==='late'?'block':'none'}">
+        </div>
+      </div>`).join('')}
+    <button class="btn btn-primary" style="margin-top:14px" onclick="doSaveAtt()">출석 저장하기</button>`;
+}
+function setAtt(sid,st){
+  attSt[sid]=st;
+  ['p','l','a'].forEach(x=>{ const b=document.getElementById(`a${x}-${sid}`); if(b)b.className='att-btn'; });
+  const map={'present':'sel-p','late':'sel-l','absent':'sel-a'};
+  const target=document.getElementById({present:'ap',late:'al',absent:'aa'}[st]+'-'+sid);
+  if(target)target.className=`att-btn ${map[st]}`;
+  const m=document.getElementById(`amin-${sid}`);if(m)m.style.display=st==='late'?'block':'none';
+}
+function doSaveAtt(){
+  if(!attDate||!attClassId){showToast('날짜와 반을 선택해주세요','error');return;}
+  const cls=CLASSES.find(c=>c.id===attClassId);
+  const records=Object.entries(attSt).map(([sid,st])=>{const s=getStudents().find(x=>x.id===sid),m=document.getElementById(`amin-${sid}`);return{studentId:sid,studentName:s?.name||'',status:st,lateMinutes:st==='late'?parseInt(m?.value||0):0};});
+  saveAttendance({date:attDate,classId:attClassId,className:cls?.name||'',records});
+  showToast('출석이 저장되었어요! ✅','success');rAttendance();
+}
+
+// ================================================================
+// GRADES
+// ================================================================
+function rGrades(){
+  const exams=getExams(),esubs=getExamSubs(),pendSubs=esubs.filter(s=>s.score===null||s.score===undefined);
+  document.getElementById('gradesContent').innerHTML=`
+    <div class="card">
+      <div class="card-title">📝 시험 만들기</div>
+      <div class="form-row-2">
+        <div class="form-group"><label class="form-label">반</label>${classSelect('ex-cls')}</div>
+        <div class="form-group"><label class="form-label">시험명 *</label><input class="form-input" id="ex-title" placeholder="예: 6월 단원평가"></div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group"><label class="form-label">출제 범위</label><input class="form-input" id="ex-range" placeholder="예: 수학Ⅱ 1~3단원"></div>
+        <div class="form-group"><label class="form-label">만점</label><input class="form-input" id="ex-max" type="number" value="100"></div>
+        <div class="form-group"><label class="form-label">시험 날짜</label><input class="form-input" id="ex-date" type="date"></div>
+      </div>
+      <button class="btn btn-primary" onclick="doCreateExam()">시험 등록</button>
+    </div>
+    ${pendSubs.length?`
+      <div class="sec-label" style="color:var(--orange)">⏳ 채점 대기 (${pendSubs.length}명)</div>
+      ${pendSubs.map(sub=>`
+        <div class="card" style="border-left:4px solid var(--orange);margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+            <div><strong>${sub.studentName}</strong><span style="margin-left:8px;font-size:13px;color:var(--text-muted)">${sub.examTitle} · ${sub.submittedAt}</span></div>
+            <button class="btn btn-outline btn-sm" onclick="showToast('Firebase Storage 연결 후 확인 가능해요')">📷 답안지 보기</button>
+          </div>
+          <div style="display:flex;gap:10px;align-items:flex-end">
+            <div style="flex:0 0 100px"><label class="form-label">점수</label><input class="form-input" id="sc-${sub.id}" type="number" placeholder="0~100"></div>
+            <div style="flex:1"><label class="form-label">코멘트</label><input class="form-input" id="cm-${sub.id}" placeholder="학생에게 남기는 코멘트"></div>
+            <button class="btn btn-green btn-sm" onclick="doGrade('${sub.id}')">채점 완료</button>
+          </div>
+        </div>`).join('')}`:''}
+    <div class="sec-label">📊 성적 현황</div>
+    <div class="card">
+      ${CLASSES.map(cls=>{
+        const clsExams=exams.filter(e=>e.classId===cls.id);
+        const clsSubs=esubs.filter(s=>clsExams.some(e=>e.id===s.examId)&&s.score!=null);
+        const avg=clsSubs.length?Math.round(clsSubs.reduce((a,s)=>a+s.score,0)/clsSubs.length):null;
+        const max=clsSubs.length?Math.max(...clsSubs.map(s=>s.score)):null;
+        const min=clsSubs.length?Math.min(...clsSubs.map(s=>s.score)):null;
+        return`<div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border)">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span class="chip">${cls.name}</span>
+            ${avg!=null?`<span style="font-size:13px;color:var(--text-muted)">평균 <strong style="color:var(--primary)">${avg}점</strong> · 최고 ${max}점 · 최저 ${min}점</span>`:'<span style="font-size:12px;color:var(--text-muted)">데이터 없음</span>'}
+          </div></div>`;}).join('')}
+    </div>
+    <div class="card">
+      <div class="card-title">개인별 성적</div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>학생</th><th>반</th>${exams.slice(0,3).map(e=>`<th>${e.title}</th>`).join('')}</tr></thead>
+        <tbody>${getStudents().map(st=>`<tr><td><strong>${st.name}</strong></td><td><span class="chip">${st.className}</span></td>${exams.slice(0,3).map(e=>{const s=esubs.find(x=>x.studentId===st.id&&x.examId===e.id);return`<td>${s?.score!=null?`<strong>${s.score}점</strong>`:'<span style="color:var(--text-muted)">-</span>'}</td>`;}).join('')}</tr>`).join('')}</tbody>
+      </table></div>
+    </div>`;
+}
+function doCreateExam(){
+  const classId=document.getElementById('ex-cls').value,title=document.getElementById('ex-title').value.trim();
+  if(!classId||!title){showToast('반과 시험명을 입력해주세요','error');return;}
+  const cls=CLASSES.find(c=>c.id===classId);
+  saveExam({classId,className:cls?.name||'',title,range:document.getElementById('ex-range').value.trim(),maxScore:parseInt(document.getElementById('ex-max').value)||100,date:document.getElementById('ex-date').value});
+  showToast(`"${title}" 시험이 등록되었어요! 📋`,'success');rGrades();
+}
+function doGrade(sid){
+  const score=parseInt(document.getElementById('sc-'+sid).value);
+  if(isNaN(score)){showToast('점수를 입력해주세요','error');return;}
+  updateExamSub(sid,{score,comment:document.getElementById('cm-'+sid).value.trim()});
+  showToast('채점이 완료되었어요! 🏆','success');rGrades();
+}
+
+// ================================================================
+// QUESTIONS
+// ================================================================
+function rQuestions(){
+  const qs=getQuestions();
+  const pending=qs.filter(q=>q.status!=='answered'),answered=qs.filter(q=>q.status==='answered');
+  const qBadge=s=>({answered:'<span class="badge b-green">답변 완료</span>',ai_draft:'<span class="badge b-primary">AI 초안</span>',pending:'<span class="badge b-gray">답변 대기</span>'}[s]||'');
+  function qCard(q){return`
+    <div class="q-card">
+      <div class="q-head">
+        <div><strong>${q.studentName}</strong><span class="chip" style="margin-left:6px">${q.className}</span><span style="margin-left:8px;font-size:12px;color:var(--text-muted)">📖 ${q.textbook} p.${q.page} ${q.number}</span></div>
+        <div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:var(--text-muted)">${q.createdAt}</span>${qBadge(q.status)}</div>
+      </div>
+      ${q.aiHint?`<div style="padding:14px 18px;background:#EFF6FF;border-bottom:1px solid #BFDBFE"><div style="font-size:12px;font-weight:700;color:#2563EB;margin-bottom:6px">🤖 AI 힌트 (데모)</div><p style="font-size:13px;color:#1E40AF;line-height:1.7">${q.aiHint}</p></div>`:''}
+      ${q.teacherAnswer?`<div style="padding:14px 18px;background:var(--green-light)"><div style="font-size:12px;font-weight:700;color:var(--green);margin-bottom:6px">👩‍🏫 내 답변</div><p style="font-size:13px;color:#065F46;line-height:1.7">${q.teacherAnswer}</p></div>`:`
+        <div style="padding:14px 18px;background:var(--bg)">
+          <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:8px">답변 작성</div>
+          <textarea class="form-textarea" id="ans-${q.id}" style="min-height:70px" placeholder="학생에게 답변을 남겨주세요..."></textarea>
+          <button class="btn btn-green btn-sm" style="margin-top:8px" onclick="doAns('${q.id}')">답변 저장</button>
+        </div>`}
+    </div>`;}
+  document.getElementById('questionsContent').innerHTML=`
+    ${pending.length?`<div class="sec-label" style="color:var(--red)">⚠️ 답변 필요 (${pending.length})</div>${pending.map(qCard).join('')}`:''}
+    ${answered.length?`<div class="sec-label">✅ 답변 완료 (${answered.length})</div>${answered.map(qCard).join('')}`:''}
+    ${!qs.length?'<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">질문이 없어요 🎉</div>':''}`;
+}
+function doAns(qid){
+  const ans=document.getElementById('ans-'+qid)?.value.trim();
+  if(!ans){showToast('답변을 입력해주세요','error');return;}
+  answerQ(qid,ans);showToast('답변이 저장되었어요! 💬','success');rQuestions();
+}
+
+// ================================================================
+// VIDEOS
+// ================================================================
+function rVideos(){
+  const vids=getVideos();
+  const VT={recent:'최근 수업',absent:'결석 보충',concept:'단원별 개념',exam_prep:'시험 대비'};
+  document.getElementById('videosContent').innerHTML=`
+    <div class="card">
+      <div class="card-title">🎬 영상 등록</div>
+      <div class="form-row-2">
+        <div class="form-group"><label class="form-label">대상 반</label>${classSelect('vi-cls')}</div>
+        <div class="form-group"><label class="form-label">유형</label><select class="form-select" id="vi-type"><option value="recent">최근 수업</option><option value="absent">결석 보충</option><option value="concept">단원별 개념</option><option value="exam_prep">시험 대비</option></select></div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-group"><label class="form-label">제목 *</label><input class="form-input" id="vi-title" placeholder="수업 영상 제목"></div>
+        <div class="form-group"><label class="form-label">날짜</label><input class="form-input" id="vi-date" type="date"></div>
+      </div>
+      <div class="form-group"><label class="form-label">영상 URL (YouTube)</label><input class="form-input" id="vi-url" placeholder="https://youtube.com/watch?v=..."></div>
+      <div class="form-group"><label class="form-label">설명</label><textarea class="form-textarea" id="vi-desc" placeholder="수업 내용 간단히 설명"></textarea></div>
+      <button class="btn btn-primary" onclick="doAddVid()">영상 등록</button>
+    </div>
+    <div class="sec-label">📋 등록된 영상 (${vids.length})</div>
+    ${vids.map(v=>`
+      <div class="card" style="margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:14px">
+          <div style="width:56px;height:40px;background:${v.color||'#6366F1'};border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">▶️</div>
+          <div style="flex:1"><div style="font-size:14px;font-weight:600">${v.title}</div><div style="font-size:12px;color:var(--text-muted);margin-top:2px">${v.className} · ${VT[v.type]||v.type} · ${v.date}</div></div>
+          <button class="btn btn-red btn-sm" onclick="doDelVid('${v.id}')">삭제</button>
+        </div>
+      </div>`).join('')}`;
+}
+function doAddVid(){
+  const classId=document.getElementById('vi-cls').value,title=document.getElementById('vi-title').value.trim();
+  if(!classId||!title){showToast('반과 제목을 입력해주세요','error');return;}
+  const cls=CLASSES.find(c=>c.id===classId);
+  const colors=['#6366F1','#F97316','#10B981','#8B5CF6','#EF4444','#F59E0B'];
+  saveVideo({classId,className:cls?.name||'',title,type:document.getElementById('vi-type').value,date:document.getElementById('vi-date').value,url:document.getElementById('vi-url').value.trim(),description:document.getElementById('vi-desc').value.trim(),color:colors[Math.floor(Math.random()*colors.length)]});
+  showToast('영상이 등록되었어요! 🎬','success');rVideos();
+}
+function doDelVid(id){if(!confirm('이 영상을 삭제할까요?'))return;deleteVideo(id);showToast('영상이 삭제되었어요','warning');rVideos();}
+
+// ================================================================
+// MATERIALS
+// ================================================================
+const MT={textbook:'교재',solution:'해설',print:'프린트',retry_form:'오답 양식',planner:'학습 플래너'};
+const MI={textbook:'📘',solution:'📋',print:'📄',retry_form:'✏️',planner:'📅'};
+function rMaterials(){
+  const mats=getMaterials();
+  document.getElementById('materialsContent').innerHTML=`
+    <div class="card">
+      <div class="card-title">📁 파일 업로드</div>
+      <div class="form-row-3">
+        <div class="form-group"><label class="form-label">대상 반</label><select class="form-select" id="mat-cls"><option value="all">전체</option>${CLASSES.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select></div>
+        <div class="form-group"><label class="form-label">유형</label><select class="form-select" id="mat-type">${Object.entries(MT).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></div>
+        <div class="form-group"><label class="form-label">제목 *</label><input class="form-input" id="mat-title" placeholder="자료 이름"></div>
+      </div>
+      <div class="upload-area" onclick="this.querySelector('input').click()">
+        <div class="u-icon">📎</div><p>파일을 선택하세요 (Firebase Storage 연결 시 실제 업로드)</p>
+        <input type="file">
+      </div>
+      <button class="btn btn-primary" onclick="doAddMat()">자료 등록</button>
+    </div>
+    <div class="sec-label">📋 등록된 자료 (${mats.length})</div>
+    ${mats.map(m=>{const cls=m.classId==='all'?'전체':(CLASSES.find(c=>c.id===m.classId)?.name||m.className||'전체');return`
+      <div class="card" style="margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:14px">
+          <div style="font-size:28px">${MI[m.type]||'📄'}</div>
+          <div style="flex:1"><div style="font-size:14px;font-weight:600">${m.title}</div><div style="font-size:12px;color:var(--text-muted);margin-top:2px">${cls} · ${MT[m.type]||m.type} · ${m.uploadDate}</div></div>
+          <button class="btn btn-red btn-sm" onclick="doDelMat('${m.id}')">삭제</button>
+        </div>
+      </div>`;}).join('')}`;
+}
+function doAddMat(){
+  const title=document.getElementById('mat-title').value.trim();
+  if(!title){showToast('자료 이름을 입력해주세요','error');return;}
+  const classId=document.getElementById('mat-cls').value,cls=classId==='all'?'전체':(CLASSES.find(c=>c.id===classId)?.name||'');
+  saveMaterial({classId,className:cls,type:document.getElementById('mat-type').value,title});
+  showToast('자료가 등록되었어요! 📁','success');rMaterials();
+}
+function doDelMat(id){if(!confirm('이 자료를 삭제할까요?'))return;deleteMaterial(id);showToast('삭제되었어요','warning');rMaterials();}
+
+// ================================================================
+// SCHEDULE
+// ================================================================
+const TYPE_BADGE={'정규':'b-primary','보강':'b-orange','특강':'b-yellow'};
+function rSchedule(){
+  const days=['mon','tue','wed','thu','fri','sat','sun'];
+  document.getElementById('scheduleContent').innerHTML=`
+    <div class="card">
+      <div class="card-title">➕ 반(수업) 추가</div>
+      <div class="form-row-2">
+        <div class="form-group"><label class="form-label">반 이름 *</label><input class="form-input" id="sc-name" placeholder="예: 고1T Z2"></div>
+        <div class="form-group"><label class="form-label">커리큘럼/과목</label><input class="form-input" id="sc-subject" placeholder="예: 공통수학1 유형편"></div>
+      </div>
+      <div class="form-row-4">
+        <div class="form-group"><label class="form-label">요일</label><select class="form-select" id="sc-day">${days.map(d=>`<option value="${d}">${WD_LABEL[d]}요일</option>`).join('')}</select></div>
+        <div class="form-group"><label class="form-label">교시(부)</label><input class="form-input" id="sc-slot" placeholder="예: 1부"></div>
+        <div class="form-group"><label class="form-label">시작</label><input class="form-input" id="sc-start" type="time"></div>
+        <div class="form-group"><label class="form-label">종료</label><input class="form-input" id="sc-end" type="time"></div>
+      </div>
+      <div class="form-group" style="max-width:220px"><label class="form-label">유형</label><select class="form-select" id="sc-type"><option value="정규">정규 수업</option><option value="보강">보강</option><option value="특강">특강</option></select></div>
+      <button class="btn btn-primary" onclick="doAddClass()">반 추가</button>
+    </div>
+    <div class="card">
+      <div class="card-title">📋 주간 시간표 (요일별)</div>
+      <div style="overflow-x:auto"><table class="sched-tbl">
+        <thead><tr>${days.map(d=>`<th>${WD_LABEL[d]}요일</th>`).join('')}</tr></thead>
+        <tbody><tr>${days.map(d=>{
+          const list=CLASSES.filter(c=>c.weekday===d).sort((a,b)=>(a.slot||'').localeCompare(b.slot||''));
+          return `<td style="vertical-align:top;min-width:120px">${list.map(c=>`
+            <div class="sc-cell ${c.type==='보강'?'mk':''}" style="${c.type==='특강'?'background:var(--yellow-light);border:1px solid var(--yellow)':''}">
+              <div class="sc-name">${c.name}</div>
+              <div class="sc-time">${c.slot||''} ${c.startTime&&c.endTime?(c.startTime+'~'+c.endTime):'⏰ 시간 미설정'}</div>
+              <div style="font-size:10px;color:var(--text-muted)">${c.subject||''}</div>
+              <div style="font-size:10px;margin-top:2px">${getStudentsByClass(c.id).length}명 · ${c.type||'정규'}</div>
+            </div>`).join('')||'<span style="font-size:11px;color:var(--text-muted)">-</span>'}</td>`;
+        }).join('')}</tr></tbody>
+      </table></div>
+    </div>
+    <div class="card">
+      <div class="card-title">⚙️ 반 목록 / 시간·삭제</div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>반</th><th>요일</th><th>교시</th><th>시간</th><th>유형</th><th>학생</th><th>관리</th></tr></thead>
+        <tbody>${CLASSES.map(c=>`
+          <tr>
+            <td><strong>${c.name}</strong><br><span style="font-size:11px;color:var(--text-muted)">${c.subject||''}</span></td>
+            <td>${WD_LABEL[c.weekday]||'-'}</td>
+            <td>${c.slot||'-'}</td>
+            <td><input type="time" class="form-input" style="width:95px;display:inline-block;padding:4px 6px" id="ct-s-${c.id}" value="${c.startTime||''}"> ~ <input type="time" class="form-input" style="width:95px;display:inline-block;padding:4px 6px" id="ct-e-${c.id}" value="${c.endTime||''}"> <button class="btn btn-outline btn-sm" onclick="doSaveClassTime('${c.id}')">저장</button></td>
+            <td><span class="badge ${TYPE_BADGE[c.type]||'b-gray'}">${c.type||'정규'}</span></td>
+            <td>${getStudentsByClass(c.id).length}명</td>
+            <td><button class="btn btn-red btn-sm" onclick="doDelClass('${c.id}','${c.name}')">삭제</button></td>
+          </tr>`).join('')}</tbody>
+      </table></div>
+    </div>`;
+}
+async function doAddClass(){
+  const name=document.getElementById('sc-name').value.trim();
+  if(!name){showToast('반 이름을 입력해주세요','error');return;}
+  const data={
+    name, subject:document.getElementById('sc-subject').value.trim(),
+    weekday:document.getElementById('sc-day').value, slot:document.getElementById('sc-slot').value.trim(),
+    startTime:document.getElementById('sc-start').value, endTime:document.getElementById('sc-end').value,
+    type:document.getElementById('sc-type').value, order:(CLASSES.length?Math.max(...CLASSES.map(c=>c.order||0))+1:0)
+  };
+  try{ await addClassFS(data); showToast(`"${name}" 반이 추가되었어요! 📅`,'success'); rSchedule(); }
+  catch(e){ showToast('추가 실패: '+e.message,'error'); }
+}
+async function doSaveClassTime(id){
+  const s=document.getElementById('ct-s-'+id).value, e=document.getElementById('ct-e-'+id).value;
+  try{ await updateClassFS(id,{startTime:s,endTime:e}); showToast('시간이 저장되었어요 ⏰','success'); rSchedule(); }
+  catch(err){ showToast('저장 실패: '+err.message,'error'); }
+}
+async function doDelClass(id,name){
+  if(!confirm(`"${name}" 반을 삭제할까요? (학생의 반 배정도 함께 사라져요)`))return;
+  try{ await deleteClassFS(id); showToast('반이 삭제되었어요','warning'); rSchedule(); }
+  catch(e){ showToast('삭제 실패: '+e.message,'error'); }
+}
+
+// ================================================================
+// CONSULTATION
+// ================================================================
+function rConsultation(){
+  const cs=getConsultations();
+  const csBadge=s=>({pending:'<span class="badge b-orange">대기</span>',checked:'<span class="badge b-primary">확인</span>',done:'<span class="badge b-green">완료</span>'}[s]||'');
+  document.getElementById('consultationContent').innerHTML=`
+    <div class="card"><div class="table-wrap"><table>
+      <thead><tr><th>학생</th><th>상담유형</th><th>방식</th><th>희망시간</th><th>접수일</th><th>상태</th><th>관리</th></tr></thead>
+      <tbody>${cs.map(c=>`
+        <tr>
+          <td><strong>${c.studentName}</strong><br><span style="font-size:11px;color:var(--text-muted)">${c.className||''}</span></td>
+          <td>${c.type}</td><td>${c.method}</td>
+          <td>${c.time||'-'}</td>
+          <td style="color:var(--text-muted);font-size:12px">${c.submittedAt}</td>
+          <td>${csBadge(c.status)}</td>
+          <td>
+            <div class="btn-row">
+              ${c.status==='pending'?`<button class="btn btn-outline btn-sm" onclick="doCSUpdate('${c.id}','checked')">확인</button>`:''}
+              ${c.status==='checked'?`<button class="btn btn-green btn-sm" onclick="doCSUpdate('${c.id}','done')">완료</button>`:''}
+              <button class="btn btn-outline btn-sm" onclick="toggleCSDetail('${c.id}')">메모</button>
+            </div>
+          </td>
+        </tr>
+        <tr id="csd-${c.id}" style="display:none">
+          <td colspan="7" style="background:var(--bg);padding:12px 16px">
+            ${c.note?`<div style="font-size:13px;margin-bottom:10px"><strong>학생 메모:</strong> ${c.note}</div>`:''}
+            <div style="display:flex;gap:8px;align-items:flex-end">
+              <div style="flex:1"><label class="form-label" style="font-size:12px">내부 메모 (비공개)</label><input class="form-input" id="csm-${c.id}" value="${c.memo||''}" placeholder="내부 메모"></div>
+              <button class="btn btn-primary btn-sm" onclick="doCSMemo('${c.id}')">저장</button>
+            </div>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div></div>`;
+}
+function toggleCSDetail(id){const r=document.getElementById('csd-'+id);if(r)r.style.display=r.style.display==='none'?'table-row':'none';}
+function doCSUpdate(id,st){updateConsult(id,{status:st});showToast({checked:'확인 처리했어요',done:'상담이 완료되었어요!'}[st],'success');rConsultation();}
+function doCSMemo(id){updateConsult(id,{memo:document.getElementById('csm-'+id)?.value.trim()});showToast('메모가 저장되었어요','success');}
+
+// ================================================================
+// REPORT
+// ================================================================
+let rpStId='';
+function rReport(){
+  const sts=getStudents(),reports=getReports(),sel=sts.find(s=>s.id===rpStId),existing=reports.find(r=>r.studentId===rpStId);
+  document.getElementById('reportContent').innerHTML=`
+    <div class="card">
+      <div class="card-title">📊 학생별 리포트 작성</div>
+      <div class="form-group">
+        <label class="form-label">학생 선택</label>
+        <select class="form-select" onchange="rpStId=this.value;rReport()" style="max-width:300px">
+          <option value="">학생을 선택하세요</option>
+          ${sts.map(s=>`<option value="${s.id}" ${s.id===rpStId?'selected':''}>${s.name} (${s.className})</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    ${sel?`
+      <div class="card">
+        <div class="card-title">📈 ${sel.name} 학습 지표 (자동 계산)</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+          <div class="rp-stat"><div class="rp-val">82%</div><div class="rp-lbl">숙제 제출률</div></div>
+          <div class="rp-stat"><div class="rp-val">75%</div><div class="rp-lbl">오답 완료율</div></div>
+          <div class="rp-stat"><div class="rp-val">90%</div><div class="rp-lbl">출석률</div></div>
+          <div class="rp-stat"><div class="rp-val">88점</div><div class="rp-lbl">최근 성적</div></div>
+        </div>
+        <div class="form-group"><label class="form-label">혜빈쌤 코멘트 ✍️</label><textarea class="form-textarea" id="rp-comment" style="min-height:120px" placeholder="학생에게 남기는 종합 피드백...">${existing?.teacherComment||''}</textarea></div>
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="doSaveRp()">💾 리포트 완성하기</button>
+        </div>
+        <div style="margin-top:10px;font-size:12px;color:var(--text-muted)">💡 리포트 완성 시 학생 포털 "학습 리포트" 탭에 반영됩니다.</div>
+      </div>
+      ${existing?`<div class="card" style="background:var(--green-light);border:1px solid var(--green)"><div class="card-title" style="color:var(--green)">✅ 저장된 리포트</div><p style="font-size:13px;color:#065F46;line-height:1.7">${existing.teacherComment}</p><div style="font-size:11px;color:var(--green);margin-top:8px">저장일: ${existing.savedAt}</div></div>`:''}`:''}`;
+}
+function doSaveRp(){
+  if(!rpStId){showToast('학생을 선택해주세요','error');return;}
+  const comment=document.getElementById('rp-comment')?.value.trim();
+  if(!comment){showToast('코멘트를 입력해주세요','error');return;}
+  saveReport({studentId:rpStId,teacherComment:comment,savedAt:new Date().toLocaleString('ko-KR')});
+  showToast('리포트가 저장되었어요! 학생 포털에 반영됩니다 📊','success');rReport();
+}
+
+// ================================================================
+// INIT
+// ================================================================
+// 로그아웃 — Firebase 로그아웃 + 세션 지우고 로그인 페이지로
+function logout(){
+  if(!confirm('로그아웃 할까요?'))return;
+  ['bm_role','bm_email','bm_uid','bm_demo','bm_studentId','bm_studentName','bm_classId','bm_classIds','bm_className'].forEach(k=>localStorage.removeItem(k));
+  location.href='index.html';
+}
+
+async function init(){
+  requireRole('teacher');   // 선생님 아니면 로그인 페이지로
+  document.getElementById('todayDate').textContent=new Date().toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
+  buildSidebar();
+  try{
+    await loadClasses();         // Firebase에서 반 목록 (없으면 13개 자동 생성)
+    await loadStudents();        // Firebase에서 학생 명단
+  }catch(e){ showToast('데이터를 불러오지 못했어요: '+e.message,'error'); }
+  rDashboard();
+}
+document.addEventListener('DOMContentLoaded',init);
+</script>
+</body>
+</html>

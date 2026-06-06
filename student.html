@@ -1,0 +1,1181 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BEEN MATH — 학생 포털</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#114C56">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary:#5B6CF5; --primary-dark:#4F46E5; --primary-light:#EEF2FF;
+      --orange:#F97316; --orange-light:#FFF7ED;
+      --green:#10B981; --green-light:#ECFDF5;
+      --red:#F43F5E; --red-light:#FFF1F2;
+      --yellow:#F59E0B; --yellow-light:#FFFBEB;
+      --bg:#F1F5F9; --surface:#FFFFFF;
+      --text:#0F172A; --text-sub:#334155; --text-muted:#64748B;
+      --border:#E2E8F0; --sidebar-w:240px;
+      --radius:12px; --radius-sm:8px;
+      --shadow:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.05);
+      --shadow-md:0 4px 6px -1px rgba(0,0,0,.1),0 2px 4px -2px rgba(0,0,0,.06);
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Noto Sans KR',-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px}
+
+    /* === LAYOUT === */
+    .app-layout{display:flex;min-height:100vh}
+
+    /* === SIDEBAR === */
+    .sidebar{width:var(--sidebar-w);background:var(--surface);border-right:1px solid var(--border);position:fixed;top:0;left:0;bottom:0;display:flex;flex-direction:column;z-index:100;overflow-y:auto}
+    .sidebar-logo{padding:20px 20px 16px;border-bottom:1px solid var(--border)}
+    .sidebar-logo h1{font-size:20px;font-weight:800;color:var(--primary);letter-spacing:-.5px}
+    .sidebar-logo p{font-size:12px;color:var(--text-muted);margin-top:3px}
+    .sidebar-nav{padding:12px 10px;flex:1}
+    .nav-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--radius-sm);cursor:pointer;transition:all .15s;color:var(--text-sub);font-size:14px;font-weight:500;user-select:none}
+    .nav-item:hover{background:var(--bg);color:var(--text)}
+    .nav-item.active{background:var(--primary-light);color:var(--primary);font-weight:600}
+    .nav-icon{width:22px;display:inline-flex;align-items:center;justify-content:center;opacity:.9}
+
+    /* === MAIN === */
+    .main-content{margin-left:var(--sidebar-w);flex:1;min-height:100vh;padding-bottom:48px}
+    .page-header{padding:24px 28px 0;margin-bottom:20px}
+    .page-title{font-size:22px;font-weight:700;letter-spacing:-.5px}
+    .page-subtitle{font-size:13px;color:var(--text-muted);margin-top:4px}
+    .section{display:none}
+    .section.active{display:block}
+    .content-area{padding:0 28px}
+
+    /* === CARDS === */
+    .card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:20px;margin-bottom:16px}
+    .card-title{font-size:15px;font-weight:700;margin-bottom:14px}
+
+    /* === HERO === */
+    .hero-banner{background:linear-gradient(135deg,var(--primary) 0%,#818CF8 100%);border-radius:var(--radius);padding:28px;color:#fff;margin-bottom:20px}
+    .hero-banner h2{font-size:20px;font-weight:700;letter-spacing:-.5px;margin-bottom:8px}
+    .hero-banner p{font-size:13px;opacity:.9;line-height:1.7}
+
+    /* === ALERT === */
+    .alert-card{background:var(--orange-light);border:1.5px solid var(--orange);border-radius:var(--radius);padding:14px 18px;display:flex;align-items:center;gap:12px;margin-bottom:16px}
+    .alert-card .a-icon{font-size:22px}
+    .alert-card h4{font-size:13px;font-weight:700;color:var(--orange)}
+    .alert-card p{font-size:12px;color:var(--text-sub);margin-top:2px}
+
+    /* === STATS GRID === */
+    .stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px}
+    .stat-card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 18px;cursor:pointer;transition:box-shadow .2s}
+    .stat-card:hover{box-shadow:var(--shadow-md)}
+    .stat-card .s-icon{font-size:22px;margin-bottom:8px}
+    .stat-card .s-label{font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:8px}
+    .stat-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px}
+    .stat-row .sl{font-size:12px;color:var(--text-muted)}
+    .stat-row .sv{font-size:13px;font-weight:700}
+
+    /* === BADGES === */
+    .badge{display:inline-block;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:700}
+    .b-primary{background:var(--primary-light);color:var(--primary)}
+    .b-orange{background:var(--orange-light);color:var(--orange)}
+    .b-green{background:var(--green-light);color:var(--green)}
+    .b-red{background:var(--red-light);color:var(--red)}
+    .b-gray{background:#F1F5F9;color:var(--text-muted)}
+    .b-yellow{background:var(--yellow-light);color:var(--yellow)}
+    .chip{display:inline-block;padding:3px 10px;background:var(--primary-light);color:var(--primary);border-radius:20px;font-size:12px;font-weight:600}
+
+    /* === HOMEWORK === */
+    .sec-label{font-size:12px;font-weight:700;color:var(--text-muted);letter-spacing:.5px;text-transform:uppercase;margin:18px 0 10px}
+    .hw-card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px 20px;margin-bottom:12px;border-left:4px solid transparent}
+    .hw-card.pending{border-left-color:var(--primary)}
+    .hw-card.late{border-left-color:var(--red)}
+    .hw-card.submitted{border-left-color:var(--green)}
+    .hw-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px}
+    .hw-title{font-size:15px;font-weight:700}
+    .hw-body{font-size:13px;color:var(--text-sub);line-height:1.6;margin-bottom:8px}
+    .hw-due{font-size:12px;color:var(--text-muted);margin-bottom:12px}
+    .upload-area{border:2px dashed var(--border);border-radius:var(--radius-sm);padding:14px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg);margin-bottom:12px}
+    .upload-area:hover{border-color:var(--primary);background:var(--primary-light)}
+    .upload-area .u-icon{font-size:22px;margin-bottom:4px}
+    .upload-area p{font-size:12px;color:var(--text-muted)}
+    .upload-area input[type=file]{display:none}
+
+    /* === BUTTONS === */
+    .btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s;font-family:inherit}
+    .btn-primary{background:var(--primary);color:#fff}
+    .btn-primary:hover{background:var(--primary-dark)}
+    .btn-outline{background:transparent;color:var(--text-sub);border:1.5px solid var(--border)}
+    .btn-outline:hover{background:var(--bg);border-color:var(--text-muted)}
+    .btn-orange{background:var(--orange);color:#fff}
+    .btn-orange:hover{background:#EA6C0A}
+    .btn-green{background:var(--green);color:#fff}
+    .btn-green:hover{background:#059669}
+    .btn-sm{padding:6px 12px;font-size:12px}
+    .btn-row{display:flex;gap:8px;flex-wrap:wrap}
+
+    /* === ATTENDANCE === */
+    .monthly-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px}
+    .m-stat{background:var(--surface);border-radius:var(--radius-sm);padding:14px 10px;text-align:center;box-shadow:var(--shadow)}
+    .m-stat .count{font-size:26px;font-weight:800}
+    .m-stat .mlabel{font-size:11px;color:var(--text-muted);margin-top:4px}
+    .att-record{background:var(--surface);border-radius:var(--radius-sm);padding:12px 16px;display:flex;align-items:center;gap:14px;margin-bottom:8px;box-shadow:var(--shadow)}
+    .att-date{font-size:13px;font-weight:600;min-width:100px}
+    .att-class{font-size:12px;color:var(--text-muted);flex:1}
+
+    /* === GRADES === */
+    .bar-chart{margin:14px 0}
+    .bar-row{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+    .bar-lbl{font-size:12px;color:var(--text-muted);min-width:85px;text-align:right}
+    .bar-track{flex:1;height:28px;background:var(--bg);border-radius:4px;overflow:hidden}
+    .bar-fill{height:100%;background:linear-gradient(90deg,var(--primary) 0%,#818CF8 100%);border-radius:4px;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;transition:width .7s ease}
+    .bar-fill span{font-size:12px;font-weight:700;color:#fff}
+
+    /* === REPORT === */
+    .report-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+    .rp-stat{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;text-align:center}
+    .rp-stat .rval{font-size:28px;font-weight:800;color:var(--primary);letter-spacing:-1px;line-height:1}
+    .rp-stat .runit{font-size:14px;font-weight:700;color:var(--primary)}
+    .rp-stat .rlabel{font-size:12px;color:var(--text-muted);margin-top:6px}
+    .tc-card{background:linear-gradient(135deg,#6366F1 0%,#8B5CF6 100%);border-radius:var(--radius);padding:22px;color:#fff;display:flex;gap:16px;align-items:flex-start;margin-bottom:16px}
+    .tc-avatar{width:50px;height:50px;background:rgba(255,255,255,.2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0}
+    .tc-content h4{font-size:13px;font-weight:700;margin-bottom:8px;opacity:.9}
+    .tc-content p{font-size:14px;line-height:1.7}
+
+    /* === QUESTIONS === */
+    .q-form{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:20px;margin-bottom:20px}
+    .form-group{margin-bottom:14px}
+    .form-label{display:block;font-size:13px;font-weight:600;color:var(--text-sub);margin-bottom:6px}
+    .form-input,.form-select,.form-textarea{width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px;color:var(--text);font-family:inherit;transition:border-color .15s;background:var(--surface)}
+    .form-input:focus,.form-select:focus,.form-textarea:focus{outline:none;border-color:var(--primary)}
+    .form-textarea{resize:vertical;min-height:80px}
+    .form-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+    .q-card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:14px;overflow:hidden}
+    .q-head{padding:14px 18px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border)}
+    .q-info{font-size:13px;color:var(--text-sub)}
+    .ai-hint{padding:14px 18px;background:#EFF6FF;border-bottom:1px solid #BFDBFE}
+    .ai-label{font-size:12px;font-weight:700;color:#2563EB;margin-bottom:6px;display:flex;align-items:center;gap:4px}
+    .ai-hint p{font-size:13px;color:#1E40AF;line-height:1.7}
+    .ta-area{padding:14px 18px;background:var(--green-light)}
+    .ta-label{font-size:12px;font-weight:700;color:var(--green);margin-bottom:6px;display:flex;align-items:center;gap:4px}
+    .ta-area p{font-size:13px;color:#065F46;line-height:1.7}
+
+    /* === VIDEOS === */
+    .filter-tabs{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+    .f-tab{padding:7px 14px;border-radius:20px;font-size:13px;font-weight:500;cursor:pointer;border:1.5px solid var(--border);background:var(--surface);color:var(--text-muted);transition:all .15s}
+    .f-tab.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+    .video-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .video-card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;cursor:pointer;transition:transform .2s}
+    .video-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}
+    .v-thumb{height:130px;display:flex;align-items:center;justify-content:center;font-size:36px;position:relative}
+    .v-dur{position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,.7);color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:4px}
+    .v-info{padding:14px}
+    .v-title{font-size:13px;font-weight:600;line-height:1.4;margin-bottom:6px}
+    .v-meta{font-size:12px;color:var(--text-muted)}
+
+    /* === MATERIALS === */
+    .mat-card{background:var(--surface);border-radius:var(--radius-sm);box-shadow:var(--shadow);padding:14px 18px;display:flex;align-items:center;gap:14px;margin-bottom:10px}
+    .mat-icon{font-size:28px}
+    .mat-name{font-size:14px;font-weight:600}
+    .mat-meta{font-size:12px;color:var(--text-muted);margin-top:2px}
+    .mat-dl{margin-left:auto}
+
+    /* === SCHEDULE === */
+    .sched-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:10px}
+    .day-card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px 8px;text-align:center}
+    .day-card.has-class{border-top:3px solid var(--primary)}
+    .day-card.is-makeup{border:2px solid var(--orange)}
+    .day-lbl{font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:10px}
+    .day-card.today .day-lbl{color:var(--primary)}
+    .c-time{font-size:12px;font-weight:600;color:var(--text);margin-bottom:4px}
+    .c-name{font-size:11px;color:var(--primary);font-weight:600;margin-bottom:2px}
+    .c-subject{font-size:11px;color:var(--text-muted)}
+    .no-class{font-size:11px;color:var(--text-muted);opacity:.45;padding:8px 0}
+
+    /* === CONSULTATION === */
+    .radio-group{display:flex;flex-wrap:wrap;gap:8px}
+    .r-opt{display:none}
+    .r-lbl{display:inline-flex;align-items:center;padding:7px 14px;border:1.5px solid var(--border);border-radius:20px;font-size:13px;cursor:pointer;transition:all .15s;color:var(--text-sub);font-weight:500}
+    .r-opt:checked+.r-lbl{border-color:var(--primary);background:var(--primary-light);color:var(--primary);font-weight:700}
+    .success-screen{text-align:center;padding:60px 20px}
+    .success-screen .s-icon{font-size:60px;margin-bottom:16px}
+    .success-screen h3{font-size:20px;font-weight:700;margin-bottom:8px}
+    .success-screen p{font-size:14px;color:var(--text-muted)}
+
+    /* === TEACHER PAGE === */
+    .teacher-hero{background:linear-gradient(135deg,#667EEA 0%,#764BA2 100%);border-radius:var(--radius);padding:32px;color:#fff;text-align:center;margin-bottom:20px}
+    .teacher-hero .t-emoji{font-size:64px;margin-bottom:12px}
+    .teacher-hero h2{font-size:22px;font-weight:800;margin-bottom:8px}
+    .teacher-hero p{font-size:14px;opacity:.9;line-height:1.7;max-width:420px;margin:0 auto}
+    .mgmt-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}
+    .mgmt-item{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px}
+    .mgmt-item h4{font-size:14px;font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+    .mgmt-item p{font-size:13px;color:var(--text-sub);line-height:1.6}
+    .guide-list{counter-reset:guide}
+    .guide-item{background:var(--surface);border-radius:var(--radius-sm);padding:14px 16px 14px 52px;position:relative;margin-bottom:8px;box-shadow:var(--shadow)}
+    .guide-item::before{counter-increment:guide;content:counter(guide);position:absolute;left:14px;top:50%;transform:translateY(-50%);width:26px;height:26px;background:var(--primary);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+    .guide-item h5{font-size:14px;font-weight:600;margin-bottom:2px}
+    .guide-item p{font-size:13px;color:var(--text-sub)}
+
+    /* === TABLE === */
+    .table-wrap{overflow-x:auto}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th{padding:10px 12px;background:var(--bg);color:var(--text-muted);font-size:12px;font-weight:700;text-align:left;border-bottom:1px solid var(--border)}
+    td{padding:10px 12px;border-bottom:1px solid var(--border);color:var(--text)}
+    tr:last-child td{border-bottom:none}
+    tr:hover td{background:var(--bg)}
+
+    /* === DIVIDER === */
+    .divider{height:1px;background:var(--border);margin:16px 0}
+
+    /* === CONFETTI === */
+    .confetti-piece{position:fixed;top:-12px;width:10px;height:14px;z-index:3000;pointer-events:none;border-radius:2px;will-change:transform,opacity;animation:confetti-fall linear forwards}
+    @keyframes confetti-fall{0%{opacity:1}100%{transform:translateY(108vh) rotate(720deg);opacity:.9}}
+
+    /* === TOAST === */
+    .toast-container{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:2000;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none}
+    .toast{background:#1E293B;color:#fff;padding:10px 20px;border-radius:24px;font-size:13px;font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,.2);animation:tIn .3s ease,tOut .3s ease 2.2s forwards;display:flex;align-items:center;gap:8px}
+    .toast.success{background:var(--green)}
+    .toast.error{background:var(--red)}
+    .toast.warning{background:var(--orange)}
+    @keyframes tIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes tOut{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(-10px)}}
+
+    /* === MOBILE HEADER === */
+    .mobile-header{display:none;position:fixed;top:0;left:0;right:0;height:56px;background:var(--surface);border-bottom:1px solid var(--border);z-index:150;align-items:center;padding:0 16px;justify-content:space-between}
+    .mobile-header h1{font-size:18px;font-weight:800;color:var(--primary)}
+    #mPageTitle{font-size:14px;font-weight:600;color:var(--text-sub)}
+
+    /* === BOTTOM NAV === */
+    .bottom-nav{display:none;position:fixed;bottom:0;left:0;right:0;height:64px;background:var(--surface);border-top:1px solid var(--border);z-index:150;justify-content:space-around;align-items:center;padding:0 4px}
+    .bn-item{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 8px;cursor:pointer;color:var(--text-muted);flex:1;user-select:none}
+    .bn-item.active{color:var(--primary)}
+    .bn-icon{font-size:20px}
+    .bn-label{font-size:10px;font-weight:600}
+
+    /* === DRAWER === */
+    .drawer-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:200}
+    .drawer-overlay.open{display:block}
+    .more-drawer{position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-radius:20px 20px 0 0;padding:16px 16px 24px;z-index:201;transform:translateY(100%);transition:transform .3s ease}
+    .more-drawer.open{transform:translateY(0)}
+    .drawer-handle{width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px}
+    .drawer-title{font-size:13px;font-weight:700;color:var(--text-muted);margin-bottom:14px;text-align:center}
+    .drawer-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+    .drawer-item{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 8px;border-radius:var(--radius-sm);cursor:pointer;background:var(--bg);user-select:none;transition:background .15s}
+    .drawer-item:active{background:var(--primary-light)}
+    .di-icon{font-size:24px}
+    .di-label{font-size:11px;font-weight:600;color:var(--text-sub)}
+
+    /* === RESPONSIVE === */
+    @media(max-width:768px){
+      .sidebar{display:none}
+      .main-content{margin-left:0;padding-top:56px;padding-bottom:80px}
+      .mobile-header{display:flex}
+      .bottom-nav{display:flex}
+      .page-header{padding:16px 16px 0}
+      .content-area{padding:0 16px}
+      .stats-grid{grid-template-columns:repeat(2,1fr)}
+      .video-grid{grid-template-columns:1fr}
+      .sched-grid{grid-template-columns:repeat(4,1fr)}
+      .report-stats{grid-template-columns:repeat(2,1fr)}
+      .monthly-grid{grid-template-columns:repeat(3,1fr)}
+      .mgmt-grid{grid-template-columns:1fr}
+      .form-row{grid-template-columns:1fr}
+      .toast-container{bottom:80px;left:16px;right:16px;transform:none;align-items:stretch}
+      .toast{text-align:center;justify-content:center}
+    }
+    ::-webkit-scrollbar{width:5px;height:5px}
+    ::-webkit-scrollbar-track{background:transparent}
+    ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+  </style>
+</head>
+<body>
+
+<!-- Toast -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Mobile Header -->
+<header class="mobile-header">
+  <h1><img src="icon.svg" alt="" style="height:24px;vertical-align:-6px;border-radius:6px;margin-right:5px">BEEN MATH</h1>
+  <span id="mPageTitle">홈</span>
+</header>
+
+<!-- App Layout -->
+<div class="app-layout">
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <div class="sidebar-logo">
+      <h1><img src="icon.svg" alt="" style="height:26px;vertical-align:-6px;border-radius:6px;margin-right:6px">BEEN MATH</h1>
+      <p id="sidebarUserInfo">학생</p>
+    </div>
+    <div class="sidebar-nav" id="sidebarNav"></div>
+    <div style="padding:14px 20px;border-top:1px solid var(--border)">
+      <button onclick="logout()" style="width:100%;padding:9px;background:var(--bg);color:var(--text-muted);border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">🚪 로그아웃</button>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="main-content" id="mainContent">
+
+    <!-- 홈 -->
+    <div class="section active" id="sec-home">
+      <div class="page-header"><div class="page-title">홈</div></div>
+      <div class="content-area" id="homeContent"></div>
+    </div>
+
+    <!-- 숙제 -->
+    <div class="section" id="sec-homework">
+      <div class="page-header">
+        <div class="page-title">숙제</div>
+        <div class="page-subtitle">제출할 숙제부터 순서대로 확인하세요</div>
+      </div>
+      <div class="content-area" id="homeworkContent"></div>
+    </div>
+
+    <!-- 출석 -->
+    <div class="section" id="sec-attendance">
+      <div class="page-header">
+        <div class="page-title">출석</div>
+        <div class="page-subtitle">이번 달 출석 현황을 확인하세요</div>
+      </div>
+      <div class="content-area" id="attendanceContent"></div>
+    </div>
+
+    <!-- 성적 -->
+    <div class="section" id="sec-grades">
+      <div class="page-header">
+        <div class="page-title">성적</div>
+        <div class="page-subtitle">시험 결과와 성적 추이를 확인하세요</div>
+      </div>
+      <div class="content-area" id="gradesContent"></div>
+    </div>
+
+    <!-- 학습 리포트 -->
+    <div class="section" id="sec-report">
+      <div class="page-header">
+        <div class="page-title">학습 리포트</div>
+        <div class="page-subtitle">최근 4주 기준 학습 분석 리포트</div>
+      </div>
+      <div class="content-area" id="reportContent"></div>
+    </div>
+
+    <!-- 질문실 -->
+    <div class="section" id="sec-questions">
+      <div class="page-header">
+        <div class="page-title">질문실</div>
+        <div class="page-subtitle">모르는 문제를 질문하고 선생님 답변을 받아보세요</div>
+      </div>
+      <div class="content-area" id="questionsContent"></div>
+    </div>
+
+    <!-- 수업 영상 -->
+    <div class="section" id="sec-videos">
+      <div class="page-header">
+        <div class="page-title">수업 영상</div>
+        <div class="page-subtitle">수업 영상을 다시 보며 복습하세요</div>
+      </div>
+      <div class="content-area" id="videosContent"></div>
+    </div>
+
+    <!-- 자료실 -->
+    <div class="section" id="sec-materials">
+      <div class="page-header">
+        <div class="page-title">자료실</div>
+        <div class="page-subtitle">선생님이 올린 학습 자료를 다운로드하세요</div>
+      </div>
+      <div class="content-area" id="materialsContent"></div>
+    </div>
+
+    <!-- 시간표 -->
+    <div class="section" id="sec-schedule">
+      <div class="page-header">
+        <div class="page-title">시간표</div>
+        <div class="page-subtitle">이번 주 수업 일정</div>
+      </div>
+      <div class="content-area" id="scheduleContent"></div>
+    </div>
+
+    <!-- 상담 신청 -->
+    <div class="section" id="sec-consultation">
+      <div class="page-header">
+        <div class="page-title">상담 신청</div>
+        <div class="page-subtitle">선생님과의 상담을 신청해보세요</div>
+      </div>
+      <div class="content-area" id="consultationContent"></div>
+    </div>
+
+    <!-- 혜빈쌤 -->
+    <div class="section" id="sec-teacher">
+      <div class="page-header">
+        <div class="page-title">혜빈쌤</div>
+        <div class="page-subtitle">담당 선생님 소개 및 사이트 사용법</div>
+      </div>
+      <div class="content-area" id="teacherContent"></div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Bottom Nav -->
+<nav class="bottom-nav" id="bottomNav">
+  <div class="bn-item active" onclick="navigate('home')" data-sec="home">
+    <div class="bn-icon">🏠</div><div class="bn-label">홈</div>
+  </div>
+  <div class="bn-item" onclick="navigate('homework')" data-sec="homework">
+    <div class="bn-icon">📝</div><div class="bn-label">숙제</div>
+  </div>
+  <div class="bn-item" onclick="navigate('report')" data-sec="report">
+    <div class="bn-icon">📊</div><div class="bn-label">리포트</div>
+  </div>
+  <div class="bn-item" onclick="navigate('questions')" data-sec="questions">
+    <div class="bn-icon">💬</div><div class="bn-label">질문실</div>
+  </div>
+  <div class="bn-item" id="moreBtn" onclick="openDrawer()">
+    <div class="bn-icon">☰</div><div class="bn-label">더보기</div>
+  </div>
+</nav>
+
+<!-- Drawer -->
+<div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+<div class="more-drawer" id="moreDrawer">
+  <div class="drawer-handle"></div>
+  <div class="drawer-title">더보기</div>
+  <div class="drawer-grid">
+    <div class="drawer-item" onclick="navigate('attendance');closeDrawer()">
+      <div class="di-icon">🗓️</div><div class="di-label">출석</div>
+    </div>
+    <div class="drawer-item" onclick="navigate('grades');closeDrawer()">
+      <div class="di-icon">🏆</div><div class="di-label">성적</div>
+    </div>
+    <div class="drawer-item" onclick="navigate('videos');closeDrawer()">
+      <div class="di-icon">🎬</div><div class="di-label">수업영상</div>
+    </div>
+    <div class="drawer-item" onclick="navigate('materials');closeDrawer()">
+      <div class="di-icon">📁</div><div class="di-label">자료실</div>
+    </div>
+    <div class="drawer-item" onclick="navigate('schedule');closeDrawer()">
+      <div class="di-icon">📅</div><div class="di-label">시간표</div>
+    </div>
+    <div class="drawer-item" onclick="navigate('consultation');closeDrawer()">
+      <div class="di-icon">🙋</div><div class="di-label">상담신청</div>
+    </div>
+    <div class="drawer-item" onclick="navigate('teacher');closeDrawer()">
+      <div class="di-icon">👩‍🏫</div><div class="di-label">혜빈쌤</div>
+    </div>
+  </div>
+</div>
+
+<!-- Firebase SDK (compat) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="firebase-init.js"></script>
+
+<script>
+// ================================================================
+// DEMO DATA
+// ================================================================
+function loadData(key, def) {
+  try { const d = localStorage.getItem('bm_'+key); return d ? JSON.parse(d) : def; } catch(e) { return def; }
+}
+function saveData(key, val) {
+  try { localStorage.setItem('bm_'+key, JSON.stringify(val)); } catch(e){}
+}
+
+// ===== 로그인한 학생 정보 (로그인 세션에서 가져옴) =====
+const STUDENT = {
+  id:        localStorage.getItem('bm_studentId')   || '',
+  name:      localStorage.getItem('bm_studentName') || '학생',
+  className: localStorage.getItem('bm_className')    || '',
+  classId:   localStorage.getItem('bm_classId')     || ''
+};
+
+// ===== 제로베이스: 가짜 데이터 모두 삭제, 처음엔 비어있음 =====
+// (다음 단계에서 Firebase로 연결하면 선생님이 올린 진짜 데이터가 채워져요)
+const MAKEUP_SCHEDULES = [];
+const SCHEDULE = { mon:null, tue:null, wed:null, thu:null, fri:null, sat:null, sun:null };
+const VIDEOS = [];
+const MATERIALS = [];
+const REPORT = {
+  homeworkRate:0, retryRate:0, attendanceRate:0, avgScore:0,
+  teacherComment:'아직 작성된 리포트가 없어요. 선생님이 리포트를 완성하면 여기에 표시돼요.',
+  homeworkReport:{ submitted:0, total:0, lateCount:0 },
+  attendanceReport:{ present:0, late:0, absent:0, makeup:0 },
+  gradeReport:{ labels:[], scores:[] }
+};
+
+// ================================================================
+// DATA FUNCTIONS (다음 단계에서 Firebase로 교체)
+// ================================================================
+function getAssignments() { return loadData('s_assignments', []); }
+function getAttendance()  { return loadData('s_attendance', []); }
+function getExams()       { return loadData('s_exams', []); }
+function getQuestions()   { return loadData('s_questions', []); }
+function getReport()      { return REPORT; }
+
+function submitHomework(assignmentId) {
+  const list = getAssignments();
+  const i = list.findIndex(a => a.id === assignmentId);
+  if (i !== -1) {
+    list[i].status = 'submitted';
+    list[i].submittedAt = new Date().toLocaleString('ko-KR');
+    list[i].teacherChecked = false;
+    list[i].needsRetry = false;
+    saveData('s_assignments', list);
+  }
+}
+function submitQuestion(data) {
+  const qs = getQuestions();
+  qs.unshift({ id:'q'+Date.now(), ...data, status:'pending', aiHint:null, teacherAnswer:null, createdAt:new Date().toISOString().slice(0,10) });
+  saveData('s_questions', qs);
+}
+function submitConsultation(data) {
+  const cs = loadData('s_consultations',[]);
+  cs.push({ id:'cs'+Date.now(), ...data, status:'pending', submittedAt:new Date().toLocaleString('ko-KR') });
+  saveData('s_consultations', cs);
+}
+
+// ================================================================
+// NAVIGATION
+// ================================================================
+const _svg=p=>`<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+const ICONS={
+  home:_svg('<path d="M3 11l9-8 9 8"/><path d="M5 10v10a1 1 0 001 1h3v-6h6v6h3a1 1 0 001-1V10"/>'),
+  homework:_svg('<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h4"/>'),
+  attendance:_svg('<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M9 16l2 2 4-4"/>'),
+  grades:_svg('<circle cx="12" cy="8" r="5"/><path d="M8.5 12.5L7 22l5-3 5 3-1.5-9.5"/>'),
+  report:_svg('<path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="7"/><rect x="12" y="7" width="3" height="11"/><rect x="17" y="4" width="3" height="14"/>'),
+  questions:_svg('<path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>'),
+  videos:_svg('<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 9l5 3-5 3z"/>'),
+  materials:_svg('<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>'),
+  schedule:_svg('<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>'),
+  consultation:_svg('<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 015.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>'),
+  teacher:_svg('<path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1.5 3 3 6 3s6-1.5 6-3v-5"/>')
+};
+const NAV_ITEMS = [
+  { id:'home',         label:'홈' },
+  { id:'homework',     label:'숙제' },
+  { id:'attendance',   label:'출석' },
+  { id:'grades',       label:'성적' },
+  { id:'report',       label:'학습 리포트' },
+  { id:'questions',    label:'질문실' },
+  { id:'videos',       label:'수업 영상' },
+  { id:'materials',    label:'자료실' },
+  { id:'schedule',     label:'시간표' },
+  { id:'consultation', label:'상담 신청' },
+  { id:'teacher',      label:'혜빈쌤' }
+];
+const PAGE_TITLES = {
+  home:'홈', homework:'숙제', attendance:'출석', grades:'성적', report:'학습 리포트',
+  questions:'질문실', videos:'수업 영상', materials:'자료실', schedule:'시간표',
+  consultation:'상담 신청', teacher:'혜빈쌤'
+};
+let currentSection = 'home';
+
+function buildSidebar() {
+  document.getElementById('sidebarNav').innerHTML = NAV_ITEMS.map(n => `
+    <div class="nav-item ${n.id===currentSection?'active':''}" onclick="navigate('${n.id}')" data-sec="${n.id}">
+      <span class="nav-icon">${ICONS[n.id]||''}</span><span>${n.label}</span>
+    </div>`).join('');
+}
+
+function navigate(sec) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.getElementById('sec-'+sec)?.classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.sec===sec));
+  document.querySelectorAll('.bn-item').forEach(n => n.classList.toggle('active', n.dataset.sec===sec));
+  document.getElementById('mPageTitle').textContent = PAGE_TITLES[sec]||'';
+  currentSection = sec;
+  renderSection(sec);
+  window.scrollTo(0,0);
+}
+function renderSection(s) {
+  const map = { home:renderHome, homework:renderHomework, attendance:renderAttendance, grades:renderGrades, report:renderReport, questions:renderQuestions, videos:renderVideos, materials:renderMaterials, schedule:renderSchedule, consultation:renderConsultation, teacher:renderTeacher };
+  map[s]?.();
+}
+
+// ================================================================
+// TOAST
+// ================================================================
+function showToast(msg, type='') {
+  const icons = { success:'✅', error:'❌', warning:'⚠️' };
+  const c = document.getElementById('toastContainer');
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `${icons[type]||'ℹ️'} ${msg}`;
+  c.appendChild(el);
+  setTimeout(() => el.remove(), 2600);
+}
+
+// ================================================================
+// HELPERS
+// ================================================================
+function fmtDateFull(str) {
+  if (!str) return '';
+  const d = new Date(str);
+  return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
+}
+function fmtDate(str) {
+  if (!str) return '';
+  const d = new Date(str);
+  return `${d.getMonth()+1}월 ${d.getDate()}일`;
+}
+function statusBadge(s) {
+  return ({ pending:'<span class="badge b-primary">제출 대기</span>', late:'<span class="badge b-red">미제출 (지각)</span>', submitted:'<span class="badge b-green">제출 완료</span>', answered:'<span class="badge b-green">답변 완료</span>', ai_draft:'<span class="badge b-primary">AI 초안</span>', present:'<span class="badge b-green">출석</span>', absent:'<span class="badge b-red">결석</span>', grading:'<span class="badge b-yellow">채점 중</span>', scored:'<span class="badge b-green">점수 확인</span>', pending_submission:'<span class="badge b-orange">답안지 제출 대기</span>' }[s] || `<span class="badge b-gray">${s}</span>`);
+}
+
+// ================================================================
+// HOME
+// ================================================================
+function renderHome() {
+  const asgn = getAssignments();
+  const pending = asgn.filter(a => ['pending','late'].includes(a.status));
+  const submitted = asgn.filter(a => a.status==='submitted');
+  const needsRetry = submitted.filter(a => a.needsRetry).length;
+  const checking = submitted.filter(a => !a.teacherChecked).length;
+  const att = getAttendance();
+  const qs = getQuestions();
+  const r = getReport();
+  const scoredExams = getExams().filter(e => e.status==='scored');
+  const recentScore = scoredExams.length ? scoredExams[0].score+'점' : '-';
+  const avgScore = scoredExams.length ? Math.round(scoredExams.reduce((a,e)=>a+e.score,0)/scoredExams.length)+'점' : '-';
+  const change = scoredExams.length>=2 ? (scoredExams[0].score-scoredExams[1].score) : null;
+  const changeStr = change===null ? '-' : (change>=0 ? '▲ '+change+'점' : '▼ '+Math.abs(change)+'점');
+
+  document.getElementById('homeContent').innerHTML = `
+    <div class="hero-banner">
+      <h2>👋 ${STUDENT.name} 학생, 제출할 숙제가 ${pending.length}개 있어요!</h2>
+      <p>완료한 과제부터 차례대로 제출하고, 어려웠던 문제는 질문으로 남겨보세요.</p>
+    </div>
+    ${MAKEUP_SCHEDULES.map(m=>`
+      <div class="alert-card">
+        <div class="a-icon">🔔</div>
+        <div><h4>보강 수업이 예정되어 있어요</h4><p>${m.date} ${m.time} · ${m.className} · ${m.reason}</p></div>
+      </div>`).join('')}
+    <div class="stats-grid">
+      <div class="stat-card" onclick="navigate('homework')">
+        <div class="s-icon">📝</div><div class="s-label">숙제</div>
+        <div class="stat-row"><span class="sl">제출할</span><span class="sv" style="color:var(--primary)">${pending.length}개</span></div>
+        <div class="stat-row"><span class="sl">확인중</span><span class="sv" style="color:var(--yellow)">${checking}개</span></div>
+        <div class="stat-row"><span class="sl">오답</span><span class="sv" style="color:var(--red)">${needsRetry}개</span></div>
+      </div>
+      <div class="stat-card" onclick="navigate('attendance')">
+        <div class="s-icon">🗓️</div><div class="s-label">출석</div>
+        <div class="stat-row"><span class="sl">출석</span><span class="sv" style="color:var(--green)">${att.filter(a=>a.status==='present').length}회</span></div>
+        <div class="stat-row"><span class="sl">지각</span><span class="sv" style="color:var(--yellow)">${att.filter(a=>a.status==='late').length}회</span></div>
+        <div class="stat-row"><span class="sl">결석</span><span class="sv" style="color:var(--red)">${att.filter(a=>a.status==='absent').length}회</span></div>
+      </div>
+      <div class="stat-card" onclick="navigate('grades')">
+        <div class="s-icon">🏆</div><div class="s-label">성적</div>
+        <div class="stat-row"><span class="sl">최근 점수</span><span class="sv" style="color:var(--primary)">${recentScore}</span></div>
+        <div class="stat-row"><span class="sl">변화</span><span class="sv" style="color:var(--green)">${changeStr}</span></div>
+        <div class="stat-row"><span class="sl">평균</span><span class="sv">${avgScore}</span></div>
+      </div>
+      <div class="stat-card" onclick="navigate('questions')">
+        <div class="s-icon">💬</div><div class="s-label">질문</div>
+        <div class="stat-row"><span class="sl">새 답변</span><span class="sv" style="color:var(--green)">${qs.filter(q=>q.status==='answered').length}개</span></div>
+        <div class="stat-row"><span class="sl">대기중</span><span class="sv" style="color:var(--yellow)">${qs.filter(q=>q.status==='pending').length}개</span></div>
+      </div>
+    </div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <span class="card-title" style="margin-bottom:0">📚 이번 주 학습 요약</span>
+        <button class="btn btn-outline btn-sm" onclick="navigate('report')">리포트 보기 →</button>
+      </div>
+      ${[['숙제 제출률',r.homeworkRate+'%','var(--primary)'],['출석률',r.attendanceRate+'%','var(--green)'],['오답 완료율',r.retryRate+'%','var(--orange)']].map(([l,v,c])=>`
+        <div style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+            <span style="font-size:12px;color:var(--text-muted)">${l}</span>
+            <span style="font-size:12px;font-weight:700;color:${c}">${v}</span>
+          </div>
+          <div style="height:8px;background:var(--bg);border-radius:4px;overflow:hidden">
+            <div style="height:100%;width:${v};background:${c};border-radius:4px"></div>
+          </div>
+        </div>`).join('')}
+    </div>`;
+}
+
+// ================================================================
+// HOMEWORK
+// ================================================================
+function renderHomework() {
+  const asgn = getAssignments();
+  const pending = asgn.filter(a => a.status==='pending');
+  const late = asgn.filter(a => a.status==='late');
+  const submitted = asgn.filter(a => a.status==='submitted');
+
+  function card(a) {
+    const isPending = ['pending','late'].includes(a.status);
+    return `
+      <div class="hw-card ${a.status}" id="hwcard-${a.id}">
+        <div class="hw-head">
+          <div><span class="chip">${a.className}</span><span style="margin-left:8px">${statusBadge(a.status)}</span></div>
+          <span style="font-size:12px;color:var(--text-muted)">최대 ${a.maxPhotos}장</span>
+        </div>
+        <div class="hw-title" style="margin-bottom:6px">${a.title}</div>
+        <div class="hw-body">${a.content}</div>
+        <div class="hw-due">📅 마감: ${fmtDateFull(a.dueDate)}</div>
+        ${isPending ? `
+          <div class="upload-area" onclick="this.querySelector('input').click()">
+            <div class="u-icon">📷</div>
+            <p>사진을 선택하세요 (최대 ${a.maxPhotos}장)<br><small>Firebase Storage 연결 시 업로드 활성화</small></p>
+            <input type="file" accept="image/*" multiple onchange="handlePreview(this,'${a.id}')">
+          </div>
+          <div id="prev-${a.id}" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"></div>
+          <button class="btn btn-primary" onclick="doSubmit('${a.id}')">제출하기 ✓</button>
+        ` : `
+          <div class="divider"></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+            <div style="font-size:12px;color:var(--text-muted)">
+              ✅ 제출: ${a.submittedAt||''} &nbsp;·&nbsp; ${a.teacherChecked?'👁 선생님 확인 완료':'⏳ 선생님 확인 중'}
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-outline btn-sm" onclick="showToast('사진 보기는 Firebase Storage 연결 후 사용 가능해요')">📷 제출 사진 보기</button>
+              ${a.needsRetry?`<button class="btn btn-orange btn-sm" onclick="showToast('오답 제출 준비 중이에요','warning')">✏️ 오답 제출하기</button>`:``}
+              ${a.needsRetry?`<span class="badge b-red" style="align-self:center">⚠️ 오답 있음</span>`:''}
+            </div>
+          </div>`}
+      </div>`;
+  }
+
+  let html = '';
+  if (pending.length) html += `<div class="sec-label">📌 제출할 숙제 (${pending.length})</div>` + pending.map(card).join('');
+  if (late.length)    html += `<div class="sec-label" style="color:var(--red)">⚠️ 미제출 / 지각 (${late.length})</div>` + late.map(card).join('');
+  if (submitted.length) html += `<div class="sec-label">✅ 제출 완료 (${submitted.length})</div>` + submitted.map(card).join('');
+  if (!asgn.length) html = '<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">제출할 숙제가 없어요 🎉</div>';
+  document.getElementById('homeworkContent').innerHTML = html;
+}
+
+function handlePreview(input, id) {
+  const prev = document.getElementById('prev-'+id);
+  if (!prev) return;
+  prev.innerHTML = '';
+  Array.from(input.files).forEach(f => {
+    const url = URL.createObjectURL(f);
+    prev.innerHTML += `<div style="width:72px;height:72px;border-radius:8px;overflow:hidden;border:2px solid var(--border)"><img src="${url}" style="width:100%;height:100%;object-fit:cover"></div>`;
+  });
+}
+function doSubmit(id) {
+  submitHomework(id);
+  launchConfetti();
+  showToast('숙제 제출 완료! 잘했어요 🎉','success');
+  renderHomework();
+}
+
+// 🎉 축하 모션 (라이브러리 없이 순수 CSS/JS)
+function launchConfetti(){
+  const colors=['#5B6CF5','#10B981','#F59E0B','#F43F5E','#16A6A6','#8B5CF6','#36D399'];
+  for(let i=0;i<90;i++){
+    const c=document.createElement('div');
+    c.className='confetti-piece';
+    c.style.left=Math.random()*100+'vw';
+    c.style.background=colors[Math.random()*colors.length|0];
+    c.style.animationDuration=(1.6+Math.random()*1.6)+'s';
+    c.style.animationDelay=(Math.random()*0.35)+'s';
+    if(Math.random()>0.5) c.style.borderRadius='50%';
+    document.body.appendChild(c);
+    setTimeout(()=>c.remove(),3600);
+  }
+}
+
+// ================================================================
+// ATTENDANCE
+// ================================================================
+function renderAttendance() {
+  const att = getAttendance();
+  const p=att.filter(a=>a.status==='present').length, l=att.filter(a=>a.status==='late').length, ab=att.filter(a=>a.status==='absent').length;
+  const attBadge = r => ({ present:'<span class="badge b-green">출석</span>', late:`<span class="badge b-yellow">지각 (${r.lateMinutes}분)</span>`, absent:'<span class="badge b-red">결석</span>', makeup:'<span class="badge b-orange">보강 완료</span>' }[r.status]||'');
+
+  document.getElementById('attendanceContent').innerHTML = `
+    <div class="monthly-grid">
+      <div class="m-stat"><div class="count" style="color:var(--green)">${p}</div><div class="mlabel">출석</div></div>
+      <div class="m-stat"><div class="count" style="color:var(--yellow)">${l}</div><div class="mlabel">지각</div></div>
+      <div class="m-stat"><div class="count" style="color:var(--red)">${ab}</div><div class="mlabel">결석</div></div>
+      <div class="m-stat"><div class="count" style="color:var(--orange)">${MAKEUP_SCHEDULES.length}</div><div class="mlabel">보강 예정</div></div>
+      <div class="m-stat"><div class="count" style="color:var(--text-muted)">0</div><div class="mlabel">보강 완료</div></div>
+    </div>
+    ${MAKEUP_SCHEDULES.map(m=>`
+      <div class="alert-card"><div class="a-icon">🔶</div>
+        <div><h4>보강 예정: ${m.date} ${m.time}</h4><p>${m.className} · ${m.reason}</p></div>
+      </div>`).join('')}
+    <div class="card-title" style="margin-bottom:10px">출석 기록</div>
+    ${att.map(r=>`
+      <div class="att-record">
+        <div class="att-date">${fmtDate(r.date)}</div>
+        <div class="att-class">${r.className}</div>
+        <div>${attBadge(r)}</div>
+      </div>`).join('')}`;
+}
+
+// ================================================================
+// GRADES
+// ================================================================
+function renderGrades() {
+  const exams = getExams();
+  const pendSub = exams.filter(e=>e.status==='pending_submission');
+  const grading = exams.filter(e=>e.status==='grading');
+  const scored = exams.filter(e=>e.status==='scored');
+  let html='';
+  if (pendSub.length) {
+    html += `<div class="sec-label" style="color:var(--orange)">📋 답안지 제출할 시험</div>`;
+    html += pendSub.map(e=>`
+      <div class="hw-card pending" style="border-left-color:var(--orange)">
+        <div class="hw-head"><div><span class="chip">${e.className}</span><span style="margin-left:6px">${statusBadge(e.status)}</span></div></div>
+        <div class="hw-title" style="margin-bottom:4px">${e.title}</div>
+        <div class="hw-body">범위: ${e.range} · 만점: ${e.maxScore}점</div>
+        <div class="hw-due">📅 시험일: ${fmtDateFull(e.date)}</div>
+        <div class="upload-area" onclick="this.querySelector('input').click()">
+          <div class="u-icon">📷</div><p>답안지 사진을 업로드하세요</p>
+          <input type="file" accept="image/*" multiple>
+        </div>
+        <button class="btn btn-orange" onclick="showToast('답안지가 제출되었어요! 채점을 기다려주세요 📝','success');this.closest('.hw-card').style.opacity='.5'">답안지 제출하기</button>
+      </div>`).join('');
+  }
+  if (grading.length) {
+    html += `<div class="sec-label" style="color:var(--yellow)">⏳ 채점 중</div>`;
+    html += grading.map(e=>`
+      <div class="hw-card" style="border-left-color:var(--yellow)">
+        <div class="hw-head"><div><span class="chip">${e.className}</span>${statusBadge(e.status)}</div></div>
+        <div class="hw-title" style="margin-bottom:4px">${e.title}</div>
+        <div class="hw-body">범위: ${e.range} · 채점이 완료되면 알려드릴게요!</div>
+        <div class="hw-due">📅 ${fmtDateFull(e.date)}</div>
+      </div>`).join('');
+  }
+  if (scored.length) {
+    html += `<div class="sec-label" style="color:var(--green)">✅ 점수 확인</div>`;
+    html += scored.slice(0,3).map(e=>`
+      <div class="hw-card submitted">
+        <div class="hw-head">
+          <div><span class="chip">${e.className}</span>${statusBadge(e.status)}</div>
+          <span style="font-size:26px;font-weight:800;color:var(--primary)">${e.score}점</span>
+        </div>
+        <div class="hw-title" style="margin-bottom:4px">${e.title}</div>
+        <div class="hw-body">범위: ${e.range}</div>
+        <div class="hw-due">📅 ${fmtDateFull(e.date)}</div>
+        ${e.comment?`<div style="background:var(--green-light);border-radius:var(--radius-sm);padding:10px 14px;font-size:13px;color:#065F46">💬 ${e.comment}</div>`:''}
+      </div>`).join('');
+  }
+  if (scored.length >= 2) {
+    const recent = scored.slice(0,4).reverse();
+    html += `
+      <div class="card">
+        <div class="card-title">📈 성적 추이 (최근 ${recent.length}회)</div>
+        <div class="bar-chart">
+          ${recent.map(e=>`
+            <div class="bar-row">
+              <div class="bar-lbl">${e.title.replace(' 단원평가','')}</div>
+              <div class="bar-track"><div class="bar-fill" style="width:${e.score}%"><span>${e.score}점</span></div></div>
+            </div>`).join('')}
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);text-align:center;margin-top:8px">꾸준히 성장하고 있어요! 다음 목표는 90점 이상 🎯</div>
+      </div>`;
+  }
+  document.getElementById('gradesContent').innerHTML = html;
+}
+
+// ================================================================
+// REPORT
+// ================================================================
+function renderReport() {
+  const r = getReport();
+  document.getElementById('reportContent').innerHTML = `
+    <div class="report-stats">
+      <div class="rp-stat"><div class="rval">${r.homeworkRate}<span class="runit">%</span></div><div class="rlabel">숙제 제출률</div></div>
+      <div class="rp-stat"><div class="rval">${r.retryRate}<span class="runit">%</span></div><div class="rlabel">오답 완료율</div></div>
+      <div class="rp-stat"><div class="rval">${r.attendanceRate}<span class="runit">%</span></div><div class="rlabel">출석률</div></div>
+      <div class="rp-stat"><div class="rval">${r.avgScore}<span class="runit">점</span></div><div class="rlabel">평균 점수</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">📝 숙제 리포트</div>
+      <div style="display:flex;gap:20px;flex-wrap:wrap">
+        <div style="flex:1;min-width:120px">
+          <div style="font-size:28px;font-weight:800;color:var(--primary)">${r.homeworkReport.submitted}<span style="font-size:14px;font-weight:500;color:var(--text-muted)"> / ${r.homeworkReport.total}</span></div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:2px">제출 완료 (지각 ${r.homeworkReport.lateCount}회 포함)</div>
+        </div>
+        <div style="flex:2;min-width:160px;display:flex;flex-direction:column;justify-content:center">
+          <div style="height:10px;background:var(--bg);border-radius:4px;overflow:hidden">
+            <div style="height:100%;width:${Math.round(r.homeworkReport.submitted/r.homeworkReport.total*100)}%;background:var(--primary);border-radius:4px"></div>
+          </div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:6px">제출률 ${Math.round(r.homeworkReport.submitted/r.homeworkReport.total*100)}%</div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">🗓️ 출석 리포트</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        ${[['출석',r.attendanceReport.present,'var(--green)'],['지각',r.attendanceReport.late,'var(--yellow)'],['결석',r.attendanceReport.absent,'var(--red)'],['보강',r.attendanceReport.makeup,'var(--orange)']].map(([l,v,c])=>`
+          <div style="text-align:center;flex:1;min-width:70px">
+            <div style="font-size:24px;font-weight:800;color:${c}">${v}</div>
+            <div style="font-size:11px;color:var(--text-muted)">${l}</div>
+          </div>`).join('')}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">🏆 성적 리포트</div>
+      <div class="bar-chart">
+        ${r.gradeReport.labels.map((lbl,i)=>`
+          <div class="bar-row">
+            <div class="bar-lbl">${lbl}월</div>
+            <div class="bar-track"><div class="bar-fill" style="width:${r.gradeReport.scores[i]}%"><span>${r.gradeReport.scores[i]}점</span></div></div>
+          </div>`).join('')}
+      </div>
+    </div>
+    <div class="tc-card">
+      <div class="tc-avatar">👩‍🏫</div>
+      <div class="tc-content">
+        <h4>혜빈쌤의 한마디</h4>
+        <p>${r.teacherComment}</p>
+      </div>
+    </div>`;
+}
+
+// ================================================================
+// QUESTIONS
+// ================================================================
+function renderQuestions() {
+  const qs = getQuestions();
+  const qBadge = s => ({ answered:'<span class="badge b-green">답변 완료</span>', ai_draft:'<span class="badge b-primary">AI 초안</span>', pending:'<span class="badge b-gray">답변 대기</span>' }[s]||'');
+
+  document.getElementById('questionsContent').innerHTML = `
+    <div class="q-form">
+      <div class="card-title">✍️ 새 질문 남기기</div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">교재</label><input class="form-input" id="q-tb" placeholder="예: 수학의 정석"></div>
+        <div class="form-group"><label class="form-label">페이지</label><input class="form-input" id="q-pg" placeholder="예: 87"></div>
+        <div class="form-group"><label class="form-label">문제 번호</label><input class="form-input" id="q-num" placeholder="예: 3번"></div>
+      </div>
+      <div class="form-group"><label class="form-label">어려운 점 (선택)</label><textarea class="form-textarea" id="q-note" placeholder="어떤 부분이 막히는지 적어주세요"></textarea></div>
+      <div class="upload-area" onclick="this.querySelector('input').click()">
+        <div class="u-icon">📷</div><p>문제 사진 첨부 (선택)</p>
+        <input type="file" accept="image/*">
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-outline" id="aiHintBtn" onclick="doAIHint()">🤖 1단계 힌트 보기</button>
+        <button class="btn btn-primary" onclick="doAskQ()">💬 질문 남기기</button>
+      </div>
+      <div class="ai-hint" id="aiHintBox" style="display:none;border-radius:var(--radius-sm);margin-top:12px;border:1px solid #BFDBFE"></div>
+    </div>
+    <div class="card-title" style="margin-bottom:12px">내 질문 기록 (${qs.length})</div>
+    ${qs.map(q=>`
+      <div class="q-card">
+        <div class="q-head">
+          <div class="q-info">📖 ${q.textbook} · p.${q.page} · ${q.number}</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:11px;color:var(--text-muted)">${q.createdAt}</span>
+            ${qBadge(q.status)}
+          </div>
+        </div>
+        ${q.aiHint?`<div class="ai-hint"><div class="ai-label">🤖 AI 힌트</div><p>${q.aiHint}</p></div>`:''}
+        ${q.teacherAnswer?`<div class="ta-area"><div class="ta-label">👩‍🏫 선생님 답변</div><p>${q.teacherAnswer}</p></div>`:`
+          <div style="padding:14px 18px;background:var(--bg);font-size:13px;color:var(--text-muted)">
+            ${q.status==='ai_draft'?'🤖 AI 힌트를 확인해보세요! 선생님 답변이 곧 달릴 거예요.':'⏳ 선생님 답변을 기다리는 중이에요...'}
+          </div>`}
+      </div>`).join('')}`;
+}
+function doAskQ() {
+  const textbook=document.getElementById('q-tb').value.trim(), page=document.getElementById('q-pg').value.trim(), number=document.getElementById('q-num').value.trim();
+  if (!textbook||!page||!number){showToast('교재, 페이지, 번호를 모두 입력해주세요','error');return;}
+  submitQuestion({textbook,page,number,note:document.getElementById('q-note').value.trim()});
+  showToast('질문이 등록되었어요! 선생님이 곧 답변할게요 💬','success');
+  renderQuestions();
+}
+
+// 🤖 AI 1단계 힌트 — Netlify 서버리스 함수(/.netlify/functions/ai) 호출
+async function doAIHint() {
+  const textbook=document.getElementById('q-tb').value.trim();
+  const page=document.getElementById('q-pg').value.trim();
+  const number=document.getElementById('q-num').value.trim();
+  const note=document.getElementById('q-note').value.trim();
+  if(!textbook && !page && !number && !note){ showToast('교재·페이지·번호 중 하나는 입력해주세요','error'); return; }
+  const box=document.getElementById('aiHintBox');
+  const btn=document.getElementById('aiHintBtn');
+  box.style.display='block';
+  box.innerHTML='<div class="ai-label">🤖 AI 힌트</div><p>생각하는 중이에요... ✨</p>';
+  if(btn){ btn.disabled=true; }
+  try{
+    const res=await fetch('/.netlify/functions/ai',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({textbook,page,number,note})
+    });
+    const data=await res.json();
+    if(!res.ok) throw new Error(data.error||'오류');
+    box.innerHTML='<div class="ai-label">🤖 AI 힌트</div><p>'+(data.hint||'힌트를 받지 못했어요').replace(/\n/g,'<br>')+'</p>';
+  }catch(e){
+    box.innerHTML='<div class="ai-label">🤖 AI 힌트</div><p style="color:var(--text-muted)">아직 AI가 연결되지 않았어요. (Netlify 배포 + API 키 설정 후 사용 가능해요)</p>';
+  }finally{
+    if(btn){ btn.disabled=false; }
+  }
+}
+
+// ================================================================
+// VIDEOS
+// ================================================================
+let vFilter='all';
+function renderVideos() {
+  const filters=[{key:'all',label:'전체'},{key:'recent',label:'최근 수업'},{key:'absent',label:'결석 보충'},{key:'concept',label:'단원별 개념'},{key:'exam_prep',label:'시험 대비'}];
+  const filtered = vFilter==='all'?VIDEOS:VIDEOS.filter(v=>v.type===vFilter);
+  const hasAbsent = VIDEOS.some(v=>v.type==='absent');
+  document.getElementById('videosContent').innerHTML = `
+    ${hasAbsent?`<div class="alert-card"><div class="a-icon">📹</div><div><h4>결석한 수업 영상이 있어요</h4><p>결석 보충 탭에서 확인하고 복습하세요!</p></div></div>`:''}
+    <div class="filter-tabs">${filters.map(f=>`<div class="f-tab ${vFilter===f.key?'active':''}" onclick="setVF('${f.key}')">${f.label}</div>`).join('')}</div>
+    <div class="video-grid">
+      ${filtered.map(v=>`
+        <div class="video-card" onclick="showToast('영상 재생은 YouTube URL 연결 후 가능해요 🎬')">
+          <div class="v-thumb" style="background:${v.color}"><span>▶️</span><div class="v-dur">${v.duration}</div></div>
+          <div class="v-info">
+            <div class="v-title">${v.title}</div>
+            <div class="v-meta">${v.className} · ${v.date}</div>
+          </div>
+        </div>`).join('')}
+    </div>
+    ${!filtered.length?'<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">해당하는 영상이 없어요</div>':''}`;
+}
+function setVF(f){vFilter=f;renderVideos();}
+
+// ================================================================
+// MATERIALS
+// ================================================================
+let mFilter='all';
+const MAT_TYPES={textbook:'교재',solution:'해설',print:'프린트',retry_form:'오답 양식',planner:'학습 플래너'};
+function renderMaterials() {
+  const filters=[{key:'all',label:'전체'},{key:'textbook',label:'교재'},{key:'solution',label:'해설'},{key:'print',label:'프린트'},{key:'retry_form',label:'오답 양식'},{key:'planner',label:'학습 플래너'}];
+  const filtered=mFilter==='all'?MATERIALS:MATERIALS.filter(m=>m.type===mFilter);
+  document.getElementById('materialsContent').innerHTML = `
+    <div class="filter-tabs">${filters.map(f=>`<div class="f-tab ${mFilter===f.key?'active':''}" onclick="setMF('${f.key}')">${f.label}</div>`).join('')}</div>
+    ${filtered.map(m=>`
+      <div class="mat-card">
+        <div class="mat-icon">${m.icon}</div>
+        <div><div class="mat-name">${m.title}</div><div class="mat-meta">${m.className} · ${m.uploadDate} · ${MAT_TYPES[m.type]||m.type}</div></div>
+        <div class="mat-dl"><button class="btn btn-outline btn-sm" onclick="showToast('Firebase Storage 연결 후 다운로드 가능해요 📥')">⬇️ 다운로드</button></div>
+      </div>`).join('')}
+    ${!filtered.length?'<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">해당하는 자료가 없어요</div>':''}`;
+}
+function setMF(f){mFilter=f;renderMaterials();}
+
+// ================================================================
+// SCHEDULE
+// ================================================================
+function renderSchedule() {
+  const days=['mon','tue','wed','thu','fri','sat','sun'];
+  const dayLabels={mon:'월요일',tue:'화요일',wed:'수요일',thu:'목요일',fri:'금요일',sat:'토요일',sun:'일요일'};
+  const todayKey={0:'sun',1:'mon',2:'tue',3:'wed',4:'thu',5:'fri',6:'sat'}[new Date().getDay()];
+  const makeupDayMap={};
+  MAKEUP_SCHEDULES.forEach(m=>{const k={0:'sun',1:'mon',2:'tue',3:'wed',4:'thu',5:'fri',6:'sat'}[new Date(m.date).getDay()];makeupDayMap[k]=m;});
+
+  document.getElementById('scheduleContent').innerHTML = `
+    <div class="sched-grid">
+      ${days.map(d=>{
+        const cls=SCHEDULE[d], mk=makeupDayMap[d], isToday=d===todayKey;
+        return `<div class="day-card ${cls?'has-class':''} ${mk?'is-makeup':''} ${isToday?'today':''}">
+          <div class="day-lbl">${dayLabels[d]}</div>
+          ${cls?`<div class="c-time">${cls.time}</div><div class="c-name">${cls.className}</div><div class="c-subject">${cls.subject}</div>`
+               :mk?`<div class="c-time" style="color:var(--orange)">${mk.time}</div><div class="c-name" style="color:var(--orange)">${mk.className}</div><div class="c-subject" style="color:var(--orange)">보강 🔶</div>`
+               :`<div class="no-class">수업 없음</div>`}
+        </div>`;}).join('')}
+    </div>
+    ${MAKEUP_SCHEDULES.length?`<div style="margin-top:16px"><div class="card-title" style="margin-bottom:10px">🔶 보강 일정</div>${MAKEUP_SCHEDULES.map(m=>`
+      <div class="alert-card"><div class="a-icon">🔶</div><div><h4>${m.date} ${m.time}</h4><p>${m.className} · ${m.reason}</p></div></div>`).join('')}</div>`:''}`;
+}
+
+// ================================================================
+// CONSULTATION
+// ================================================================
+let consultDone=false;
+function renderConsultation() {
+  if (consultDone) {
+    document.getElementById('consultationContent').innerHTML=`
+      <div class="success-screen">
+        <div class="s-icon">✅</div>
+        <h3>상담 신청이 완료되었어요!</h3>
+        <p>선생님이 확인 후 연락드릴게요.<br>보통 1~2일 이내에 응답드려요.</p>
+        <button class="btn btn-outline" style="margin-top:20px" onclick="consultDone=false;renderConsultation()">새 상담 신청</button>
+      </div>`;
+    return;
+  }
+  document.getElementById('consultationContent').innerHTML = `
+    <div class="card">
+      <div class="card-title">📋 상담 신청서</div>
+      <div class="form-group"><label class="form-label">상담 대상</label>
+        <div class="radio-group">${['학생','보호자','함께'].map((v,i)=>`<input class="r-opt" type="radio" name="ct" id="ct${i}" value="${v}" ${i===0?'checked':''}><label class="r-lbl" for="ct${i}">${v}</label>`).join('')}</div>
+      </div>
+      <div class="form-group"><label class="form-label">상담 유형</label>
+        <div class="radio-group">${['성적','숙제','출석·태도','진도','입시·선택과목','기타'].map((v,i)=>`<input class="r-opt" type="radio" name="ctype" id="ctype${i}" value="${v}" ${i===0?'checked':''}><label class="r-lbl" for="ctype${i}">${v}</label>`).join('')}</div>
+      </div>
+      <div class="form-group"><label class="form-label">희망 방식</label>
+        <div class="radio-group">${['전화','방문','문자','카톡'].map((v,i)=>`<input class="r-opt" type="radio" name="cm" id="cm${i}" value="${v}" ${i===0?'checked':''}><label class="r-lbl" for="cm${i}">${v}</label>`).join('')}</div>
+      </div>
+      <div class="form-group"><label class="form-label">희망 시간</label><input class="form-input" id="c-time" placeholder="예: 평일 오후 3시 이후, 주말 오전"></div>
+      <div class="form-group"><label class="form-label">남기고 싶은 말</label><textarea class="form-textarea" id="c-note" placeholder="상담 내용을 미리 적어주시면 더 도움이 돼요" style="min-height:100px"></textarea></div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="doConsult()">상담 신청하기</button>
+    </div>`;
+}
+function doConsult(){
+  submitConsultation({target:document.querySelector('input[name="ct"]:checked')?.value,type:document.querySelector('input[name="ctype"]:checked')?.value,method:document.querySelector('input[name="cm"]:checked')?.value,time:document.getElementById('c-time').value.trim(),note:document.getElementById('c-note').value.trim()});
+  consultDone=true;showToast('상담 신청이 완료되었어요! 📞','success');renderConsultation();
+}
+
+// ================================================================
+// TEACHER PAGE
+// ================================================================
+function renderTeacher() {
+  document.getElementById('teacherContent').innerHTML = `
+    <div class="teacher-hero">
+      <div class="t-emoji">👩‍🏫</div>
+      <h2>안녕하세요, 혜빈쌤이에요!</h2>
+      <p>수학이 어렵게 느껴지더라도 포기하지 마세요.<br>함께라면 반드시 실력이 늘어요. 언제든지 질문하고, 성실하게 따라와 주세요 💪</p>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-title">📅 혜빈쌤 수업 시간표</div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>반</th><th>요일</th><th>시간</th><th>과목</th></tr></thead>
+        <tbody>
+          <tr><td><span class="chip">고2수학반</span></td><td>월·수·금</td><td>17:00~19:00</td><td>수학Ⅱ</td></tr>
+          <tr><td><span class="chip" style="background:#FEF3C7;color:#92400E">고1수학반</span></td><td>화·목</td><td>16:00~18:00</td><td>수학Ⅰ</td></tr>
+          <tr><td><span class="chip" style="background:#ECFDF5;color:#065F46">중3수학반</span></td><td>토</td><td>10:00~12:00</td><td>중학수학</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+    <div class="card-title" style="margin-bottom:12px">📋 혜빈쌤의 관리 방법</div>
+    <div class="mgmt-grid">
+      <div class="mgmt-item"><h4>📝 숙제 관리</h4><p>매 수업 후 숙제를 출제해요. 사진으로 제출하면 선생님이 확인하고, 틀린 문제가 있으면 오답 재제출을 요청해요. 숙제는 실력 향상의 핵심이에요!</p></div>
+      <div class="mgmt-item"><h4>🗓️ 출석 관리</h4><p>결석이 발생하면 보강 일정을 잡아드려요. 지각이 잦으면 개인 상담을 진행해요. 출석률은 성적과 직결되니 빠지지 않도록 노력해주세요!</p></div>
+      <div class="mgmt-item"><h4>🏆 성적 관리</h4><p>매달 단원평가를 진행해요. 시험 후 답안지를 제출하면 채점 + 코멘트를 드려요. 성적 추이를 보며 부족한 부분을 집중 보완해요.</p></div>
+      <div class="mgmt-item"><h4>💬 질문 관리</h4><p>모르는 문제는 언제든지 질문실에 올려주세요! AI 힌트로 먼저 생각해보고, 선생님의 상세 답변을 받을 수 있어요. 질문을 많이 할수록 실력이 빠르게 늘어요.</p></div>
+    </div>
+    <div class="card-title" style="margin-bottom:12px;margin-top:4px">💡 사이트 사용법</div>
+    <div class="guide-list">
+      <div class="guide-item"><h5>숙제 제출</h5><p>숙제 탭 → 해당 숙제 카드 → 사진 업로드 → 제출하기</p></div>
+      <div class="guide-item"><h5>시험 답안지 제출</h5><p>성적 탭 → 답안지 제출할 시험 카드 → 사진 업로드 → 제출하기</p></div>
+      <div class="guide-item"><h5>질문 남기기</h5><p>질문실 탭 → 교재/페이지/번호 입력 → 사진 첨부(선택) → 질문 남기기</p></div>
+      <div class="guide-item"><h5>AI 힌트 받기</h5><p>질문 폼에서 "1단계 힌트 보기" 클릭 (Anthropic API 연결 후 오픈 예정)</p></div>
+      <div class="guide-item"><h5>상담 신청</h5><p>상담 신청 탭 → 양식 작성 → 제출하면 선생님이 확인 후 연락드려요</p></div>
+    </div>
+    <div style="height:16px"></div>`;
+}
+
+// ================================================================
+// DRAWER
+// ================================================================
+function openDrawer(){document.getElementById('drawerOverlay').classList.add('open');document.getElementById('moreDrawer').classList.add('open');}
+function closeDrawer(){document.getElementById('drawerOverlay').classList.remove('open');document.getElementById('moreDrawer').classList.remove('open');}
+
+// ================================================================
+// INIT
+// ================================================================
+// 로그아웃 — Firebase 로그아웃 + 세션 지우고 로그인 페이지로
+function logout(){
+  if(!confirm('로그아웃 할까요?'))return;
+  ['bm_role','bm_email','bm_uid','bm_demo','bm_studentId','bm_studentName','bm_classId','bm_classIds','bm_className'].forEach(k=>localStorage.removeItem(k));
+  location.href='index.html';
+}
+
+function init(){
+  requireRole('student');   // 학생 아니면 로그인 페이지로
+  const info = document.getElementById('sidebarUserInfo');
+  if(info) info.textContent = STUDENT.name + ' 학생' + (STUDENT.className ? (' · ' + STUDENT.className) : '');
+  buildSidebar();
+  renderHome();
+}
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

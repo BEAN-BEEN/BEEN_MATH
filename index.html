@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BEEN MATH — 로그인</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#114C56">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --primary:#5B6CF5; --primary-dark:#4F46E5; --primary-light:#EEF2FF;
+      --green:#10B981; --red:#F43F5E;
+      --text:#0F172A; --text-sub:#334155; --text-muted:#64748B;
+      --border:#E2E8F0; --surface:#fff;
+      --radius:14px; --radius-sm:9px;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Noto Sans KR',-apple-system,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;
+      background:linear-gradient(135deg,#5B6CF5 0%,#818CF8 50%,#A78BFA 100%);position:relative;overflow:hidden}
+    body::before,body::after{content:'';position:absolute;border-radius:50%;background:rgba(255,255,255,.08)}
+    body::before{width:380px;height:380px;top:-120px;right:-80px}
+    body::after{width:300px;height:300px;bottom:-100px;left:-60px}
+
+    .login-wrap{width:100%;max-width:420px;position:relative;z-index:1}
+    .brand{text-align:center;margin-bottom:24px}
+    .brand .logo{width:76px;height:76px;display:block;margin:0 auto 12px;border-radius:20px;box-shadow:0 10px 24px rgba(0,0,0,.22)}
+    .brand h1{font-size:30px;font-weight:800;color:#fff;letter-spacing:1px}
+    .brand h1 .intg{color:#36D399;font-weight:700;padding:0 2px}
+    .brand p{font-size:14px;color:rgba(255,255,255,.85);margin-top:6px}
+
+    .card{background:var(--surface);border-radius:var(--radius);padding:28px;box-shadow:0 20px 50px rgba(0,0,0,.2)}
+
+    .role-tabs{display:flex;gap:8px;background:var(--primary-light);padding:5px;border-radius:var(--radius-sm);margin-bottom:22px}
+    .role-tab{flex:1;text-align:center;padding:11px;border-radius:7px;font-size:14px;font-weight:700;cursor:pointer;transition:all .2s;color:var(--text-muted);user-select:none}
+    .role-tab.active{background:var(--surface);color:var(--primary);box-shadow:0 2px 5px rgba(0,0,0,.08)}
+
+    .form-group{margin-bottom:16px}
+    .hidden{display:none}
+    .form-group.hidden{display:none}
+    .form-label{display:block;font-size:13px;font-weight:600;color:var(--text-sub);margin-bottom:7px}
+    .form-input{width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;font-family:inherit;color:var(--text);transition:border-color .15s}
+    .form-input:focus{outline:none;border-color:var(--primary)}
+    .hint{font-size:12px;color:var(--text-muted);margin-top:6px}
+
+    .pw-wrap{position:relative}
+    .pw-toggle{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;opacity:.5}
+
+    .btn-login{width:100%;padding:13px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);font-size:15px;font-weight:700;cursor:pointer;transition:background .15s;font-family:inherit;margin-top:6px}
+    .btn-login:hover{background:var(--primary-dark)}
+    .btn-login:disabled{opacity:.6;cursor:not-allowed}
+
+    .info-box{background:#F8FAFC;border:1px dashed var(--border);border-radius:var(--radius-sm);padding:14px;margin-top:18px;font-size:12px;color:var(--text-muted);line-height:1.7}
+    .info-box strong{color:var(--text-sub)}
+
+    .footer-note{text-align:center;margin-top:20px;font-size:12px;color:rgba(255,255,255,.7);line-height:1.6}
+
+    .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1E293B;color:#fff;padding:11px 22px;border-radius:24px;font-size:13px;font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,.25);z-index:100;animation:tIn .3s ease;display:flex;align-items:center;gap:8px;max-width:90vw}
+    .toast.error{background:var(--red)}
+    .toast.success{background:var(--green)}
+    @keyframes tIn{from{opacity:0;transform:translate(-50%,15px)}to{opacity:1;transform:translate(-50%,0)}}
+
+    @media(max-width:480px){.card{padding:22px}.brand h1{font-size:26px}}
+  </style>
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="brand">
+      <img class="logo" src="icon.svg" alt="BEEN MATH">
+      <h1>BEEN <span class="intg">∫</span> MATH</h1>
+      <p>혜빈쌤과 함께하는 수학 학습 관리</p>
+    </div>
+
+    <div class="card">
+      <!-- 역할 선택 -->
+      <div class="role-tabs">
+        <div class="role-tab active" data-role="student" onclick="setRole('student')">🎒 학생 / 학부모</div>
+        <div class="role-tab" data-role="teacher" onclick="setRole('teacher')">👩‍🏫 선생님</div>
+      </div>
+
+      <form onsubmit="doLogin(event)">
+        <!-- 학생 로그인: 이름 + 핸드폰 뒤 4자리 -->
+        <div id="studentFields">
+          <div class="form-group">
+            <label class="form-label">이름</label>
+            <input class="form-input" type="text" id="s-name" placeholder="이름을 입력하세요">
+          </div>
+          <div class="form-group">
+            <label class="form-label">핸드폰 번호 뒤 4자리</label>
+            <input class="form-input" type="tel" id="s-last4" inputmode="numeric" maxlength="4" placeholder="예: 2222">
+            <div class="hint">선생님이 등록한 핸드폰 번호의 마지막 4자리예요</div>
+          </div>
+        </div>
+
+        <!-- 선생님 로그인: 비밀번호 -->
+        <div id="teacherFields" class="hidden">
+          <div class="form-group">
+            <label class="form-label">선생님 비밀번호</label>
+            <div class="pw-wrap">
+              <input class="form-input" type="password" id="t-pw" placeholder="비밀번호를 입력하세요">
+              <button type="button" class="pw-toggle" onclick="togglePw()">👁️</button>
+            </div>
+            <div class="hint">처음이면, 입력하는 비밀번호가 그대로 선생님 비밀번호로 설정돼요</div>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-login" id="loginBtn">로그인</button>
+      </form>
+
+      <div class="info-box" id="infoBox">
+        🎒 <strong>학생</strong>은 회원가입 없이 <strong>이름 + 핸드폰 뒤 4자리</strong>로 로그인해요.<br>
+        명단은 선생님이 등록해줘요. 로그인이 안 되면 선생님께 문의하세요!
+      </div>
+    </div>
+
+    <div class="footer-note">
+      © 2026 BEEN MATH · 문의: 혜빈쌤
+    </div>
+  </div>
+
+  <!-- Firebase SDK (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="firebase-init.js"></script>
+
+  <script>
+  // ================================================================
+  // 역할 선택
+  // ================================================================
+  let currentRole = 'student';
+  function setRole(role){
+    currentRole = role;
+    document.querySelectorAll('.role-tab').forEach(t=> t.classList.toggle('active', t.dataset.role===role));
+    document.getElementById('studentFields').classList.toggle('hidden', role!=='student');
+    document.getElementById('teacherFields').classList.toggle('hidden', role!=='teacher');
+    document.getElementById('infoBox').innerHTML = (role==='student')
+      ? '🎒 <strong>학생</strong>은 회원가입 없이 <strong>이름 + 핸드폰 뒤 4자리</strong>로 로그인해요.<br>명단은 선생님이 등록해줘요. 로그인이 안 되면 선생님께 문의하세요!'
+      : '👩‍🏫 <strong>선생님</strong>은 비밀번호 하나로 로그인해요.<br>가장 먼저 로그인하는 비밀번호가 선생님 비밀번호로 저장돼요. 꼭 기억해두세요!';
+  }
+
+  function togglePw(){
+    const pw = document.getElementById('t-pw');
+    pw.type = pw.type==='password' ? 'text' : 'password';
+  }
+
+  function showToast(msg, type=''){
+    const old = document.querySelector('.toast');
+    if(old) old.remove();
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    el.innerHTML = `${type==='error'?'❌':type==='success'?'✅':'ℹ️'} ${msg}`;
+    document.body.appendChild(el);
+    setTimeout(()=>el.remove(), 2800);
+  }
+
+  // ================================================================
+  // 로그인
+  // ================================================================
+  async function doLogin(e){
+    e.preventDefault();
+    const btn = document.getElementById('loginBtn');
+    btn.disabled = true; btn.textContent = '로그인 중...';
+    try {
+      if(currentRole === 'student'){
+        await studentLogin();
+      } else {
+        await teacherLogin();
+      }
+    } catch(err){
+      showToast('오류: ' + err.message, 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = '로그인';
+    }
+  }
+
+  // ----- 학생 로그인: 이름 + 핸드폰 뒤 4자리 -----
+  async function studentLogin(){
+    const name  = document.getElementById('s-name').value.trim();
+    const last4 = document.getElementById('s-last4').value.trim();
+    if(!name || !last4){ showToast('이름과 핸드폰 뒤 4자리를 입력해주세요','error'); return; }
+
+    // 뒤 4자리로 후보를 찾고, 이름으로 확정 (복합 색인 불필요)
+    const snap = await db.collection('students').where('phoneLast4','==',last4).get();
+    const matches = snap.docs.map(d=>({id:d.id, ...d.data()})).filter(s => (s.name||'').trim() === name);
+
+    if(matches.length === 0){
+      showToast('일치하는 학생이 없어요. 선생님께 문의하세요','error');
+      return;
+    }
+    const stu = matches[0];
+    // 세션 저장
+    const classIds = Array.isArray(stu.classIds) ? stu.classIds : (stu.classId ? [stu.classId] : []);
+    const classNames = Array.isArray(stu.classNames) ? stu.classNames : (stu.className ? [stu.className] : []);
+    localStorage.setItem('bm_role','student');
+    localStorage.setItem('bm_studentId', stu.id);
+    localStorage.setItem('bm_studentName', stu.name);
+    localStorage.setItem('bm_classId', classIds[0] || '');
+    localStorage.setItem('bm_classIds', JSON.stringify(classIds));
+    localStorage.setItem('bm_className', classNames.join(', '));
+    localStorage.removeItem('bm_demo');
+    showToast(`${stu.name} 학생 환영해요!`,'success');
+    setTimeout(()=> location.href='student.html', 600);
+  }
+
+  // ----- 선생님 로그인: 비밀번호 하나 -----
+  async function teacherLogin(){
+    const pw = document.getElementById('t-pw').value.trim();
+    if(!pw){ showToast('비밀번호를 입력해주세요','error'); return; }
+
+    const ref = db.collection('config').doc('teacher');
+    const doc = await ref.get();
+
+    if(!doc.exists){
+      // 최초 설정: 입력한 비밀번호를 선생님 비밀번호로 저장
+      await ref.set({ password: pw, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+      enterTeacher('선생님 비밀번호가 설정되었어요! 🎉');
+      return;
+    }
+    if(doc.data().password === pw){
+      enterTeacher('환영합니다, 혜빈쌤!');
+    } else {
+      showToast('비밀번호가 틀렸어요','error');
+    }
+  }
+  function enterTeacher(msg){
+    localStorage.setItem('bm_role','teacher');
+    localStorage.removeItem('bm_demo');
+    showToast(msg,'success');
+    setTimeout(()=> location.href='teacher.html', 600);
+  }
+  </script>
+</body>
+</html>

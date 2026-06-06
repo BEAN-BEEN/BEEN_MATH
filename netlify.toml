@@ -1,0 +1,9 @@
+# BEEN MATH — Netlify 설정
+# 서버리스 함수(AI 힌트) 위치를 지정해요.
+
+[build]
+  publish = "."
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
