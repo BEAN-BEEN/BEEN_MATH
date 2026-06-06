@@ -310,9 +310,17 @@ function classNamesOf(s){ return Array.isArray(s.classNames)&&s.classNames.lengt
 async function addStudentFS(data){ await db.collection('students').add(data); await loadStudents(); }
 async function deleteStudentFS(id){ await db.collection('students').doc(id).delete(); await loadStudents(); }
 
-// ===== 그 외 데이터는 아직 이 브라우저에만 저장돼요 (다음 단계에서 Firebase로 연결) =====
-function getAssignments()   {return loadData('assignments',[]);}
-function getSubmissions()   {return loadData('submissions',[]);}
+// ===== 숙제(과제)·제출 = Firebase 공유 (선생님이 올리면 학생이 봄) =====
+let ASSIGNMENTS_CACHE=[], SUBMISSIONS_CACHE=[];
+async function loadAssignments(){ const s=await db.collection('assignments').get(); ASSIGNMENTS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')); }
+async function loadSubmissions(){ const s=await db.collection('submissions').get(); SUBMISSIONS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})); }
+function getAssignments(){return ASSIGNMENTS_CACHE;}
+function getSubmissions(){return SUBMISSIONS_CACHE;}
+function getSubsByAssignment(aid){return SUBMISSIONS_CACHE.filter(s=>s.assignmentId===aid);}
+async function saveAssignment(d){ d.createdAt=new Date().toISOString().slice(0,10); await db.collection('assignments').add(d); await loadAssignments(); }
+async function updateSub(sid,u){ await db.collection('submissions').doc(sid).update(u); await loadSubmissions(); }
+
+// ===== 그 외 데이터는 아직 이 브라우저에만 저장돼요 (다음 단계에서 Firebase로) =====
 function getAttendance()    {return loadData('attendance',[]);}
 function getExams()         {return loadData('exams',[]);}
 function getExamSubs()      {return loadData('esubs',[]);}
@@ -322,9 +330,6 @@ function getMaterials()     {return loadData('materials',[]);}
 function getSchedule()      {return loadData('schedule',[]);}
 function getConsultations() {return loadData('consults',[]);}
 function getReports()       {return loadData('reports',[]);}
-function getSubsByAssignment(aid){return getSubmissions().filter(s=>s.assignmentId===aid);}
-function saveAssignment(d){const l=getAssignments();d.id='a'+Date.now();d.createdAt=new Date().toISOString().slice(0,10);l.unshift(d);saveData('assignments',l);}
-function updateSub(sid,u){const l=getSubmissions();const i=l.findIndex(s=>s.id===sid);if(i>=0){Object.assign(l[i],u);saveData('submissions',l);}}
 function saveAttendance(d){const l=getAttendance();const i=l.findIndex(a=>a.date===d.date&&a.classId===d.classId);if(i>=0)l[i]=d;else l.unshift(d);saveData('attendance',l);}
 function saveExam(d){const l=getExams();d.id='e'+Date.now();d.createdAt=new Date().toISOString().slice(0,10);l.unshift(d);saveData('exams',l);}
 function updateExamSub(sid,u){const l=getExamSubs();const i=l.findIndex(s=>s.id===sid);if(i>=0){Object.assign(l[i],u);saveData('esubs',l);}}
@@ -584,15 +589,17 @@ function rHomework(){
             </table></div></div>`:``}
         </div>`;}).join('')}`;
 }
-function doCreateAsgn(){
+async function doCreateAsgn(){
   const classId=document.getElementById('hw-cls').value,title=document.getElementById('hw-title').value.trim();
   if(!classId||!title){showToast('반과 제목을 입력해주세요','error');return;}
   const cls=CLASSES.find(c=>c.id===classId);
-  saveAssignment({classId,className:cls?.name||'',title,content:document.getElementById('hw-content').value.trim(),dueDate:document.getElementById('hw-due').value,maxPhotos:parseInt(document.getElementById('hw-photos').value)||3});
-  showToast(`"${title}" 과제가 등록되었어요! 📝`,'success');rHomework();
+  try{
+    await saveAssignment({classId,className:cls?.name||'',title,content:document.getElementById('hw-content').value.trim(),dueDate:document.getElementById('hw-due').value,maxPhotos:parseInt(document.getElementById('hw-photos').value)||3});
+    showToast(`"${title}" 과제 등록 완료! 학생들이 바로 볼 수 있어요 📝`,'success');rHomework();
+  }catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
-function doCheck(sid){updateSub(sid,{checked:true});showToast('숙제 확인 완료!','success');rHomework();}
-function doRetry(sid,v){updateSub(sid,{needsRetry:v});showToast(v?'오답 재제출이 요청되었어요':'오답 요청이 취소되었어요',v?'warning':'');}
+async function doCheck(sid){ await updateSub(sid,{checked:true}); showToast('숙제 확인 완료!','success'); rHomework(); }
+async function doRetry(sid,v){ await updateSub(sid,{needsRetry:v}); showToast(v?'오답 재제출이 요청되었어요':'오답 요청이 취소되었어요',v?'warning':''); rHomework(); }
 
 // ================================================================
 // ATTENDANCE
@@ -886,7 +893,7 @@ function rSchedule(){
             <td><strong>${c.name}</strong><br><span style="font-size:11px;color:var(--text-muted)">${c.subject||''}</span></td>
             <td>${WD_LABEL[c.weekday]||'-'}</td>
             <td>${c.slot||'-'}</td>
-            <td><input type="time" class="form-input" style="width:95px;display:inline-block;padding:4px 6px" id="ct-s-${c.id}" value="${c.startTime||''}"> ~ <input type="time" class="form-input" style="width:95px;display:inline-block;padding:4px 6px" id="ct-e-${c.id}" value="${c.endTime||''}"> <button class="btn btn-outline btn-sm" onclick="doSaveClassTime('${c.id}')">저장</button></td>
+            <td style="min-width:230px"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><input type="time" class="form-input" style="width:130px;padding:6px 8px" id="ct-s-${c.id}" value="${c.startTime||''}"><span>~</span><input type="time" class="form-input" style="width:130px;padding:6px 8px" id="ct-e-${c.id}" value="${c.endTime||''}"><button class="btn btn-outline btn-sm" onclick="doSaveClassTime('${c.id}')">저장</button></div></td>
             <td><span class="badge ${TYPE_BADGE[c.type]||'b-gray'}">${c.type||'정규'}</span></td>
             <td>${getStudentsByClass(c.id).length}명</td>
             <td><button class="btn btn-red btn-sm" onclick="doDelClass('${c.id}','${c.name}')">삭제</button></td>
@@ -1014,8 +1021,10 @@ async function init(){
   document.getElementById('todayDate').textContent=new Date().toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
   buildSidebar();
   try{
-    await loadClasses();         // Firebase에서 반 목록 (없으면 13개 자동 생성)
-    await loadStudents();        // Firebase에서 학생 명단
+    await loadClasses();         // 반 목록 (없으면 13개 자동 생성)
+    await loadStudents();        // 학생 명단
+    await loadAssignments();     // 숙제(과제)
+    await loadSubmissions();     // 제출 현황
   }catch(e){ showToast('데이터를 불러오지 못했어요: '+e.message,'error'); }
   rDashboard();
 }

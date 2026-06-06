@@ -489,10 +489,7 @@ const STUDENT = {
   classId:   localStorage.getItem('bm_classId')     || ''
 };
 
-// ===== 제로베이스: 가짜 데이터 모두 삭제, 처음엔 비어있음 =====
-// (다음 단계에서 Firebase로 연결하면 선생님이 올린 진짜 데이터가 채워져요)
 const MAKEUP_SCHEDULES = [];
-const SCHEDULE = { mon:null, tue:null, wed:null, thu:null, fri:null, sat:null, sun:null };
 const VIDEOS = [];
 const MATERIALS = [];
 const REPORT = {
@@ -502,26 +499,52 @@ const REPORT = {
   attendanceReport:{ present:0, late:0, absent:0, makeup:0 },
   gradeReport:{ labels:[], scores:[] }
 };
+const WD_LABEL={mon:'월',tue:'화',wed:'수',thu:'목',fri:'금',sat:'토',sun:'일'};
 
-// ================================================================
-// DATA FUNCTIONS (다음 단계에서 Firebase로 교체)
-// ================================================================
-function getAssignments() { return loadData('s_assignments', []); }
+// ===== Firebase에서 내 반·숙제·제출 불러오기 =====
+let S_CLASSES=[], S_ASSIGNMENTS=[], S_SUBMISSIONS=[];
+function myClassIds(){ try{ return JSON.parse(localStorage.getItem('bm_classIds')||'[]'); }catch(e){ return STUDENT.classId?[STUDENT.classId]:[]; } }
+async function loadStudentData(){
+  const ids = myClassIds();
+  // 내 반
+  const cs = await db.collection('classes').get();
+  S_CLASSES = cs.docs.map(d=>({id:d.id,...d.data()})).filter(c=>ids.includes(c.id));
+  // 내 반의 숙제
+  const asn = await db.collection('assignments').get();
+  S_ASSIGNMENTS = asn.docs.map(d=>({id:d.id,...d.data()})).filter(a=>ids.includes(a.classId))
+    .sort((x,y)=>(y.createdAt||'').localeCompare(x.createdAt||''));
+  // 내 제출 기록
+  if(STUDENT.id){
+    const sub = await db.collection('submissions').where('studentId','==',STUDENT.id).get();
+    S_SUBMISSIONS = sub.docs.map(d=>({id:d.id,...d.data()}));
+  } else { S_SUBMISSIONS=[]; }
+}
+
+// 숙제 = Firebase 과제 + 내 제출 상태를 합쳐서 보여줌
+function getAssignments(){
+  const today = new Date().toISOString().slice(0,10);
+  return S_ASSIGNMENTS.map(a=>{
+    const sub = S_SUBMISSIONS.find(s=>s.assignmentId===a.id);
+    let status;
+    if(sub) status='submitted';
+    else status=(a.dueDate && a.dueDate < today) ? 'late' : 'pending';
+    return { ...a, status, submittedAt:sub?sub.submittedAt:null, teacherChecked:sub?!!sub.checked:false, needsRetry:sub?!!sub.needsRetry:false };
+  });
+}
 function getAttendance()  { return loadData('s_attendance', []); }
 function getExams()       { return loadData('s_exams', []); }
 function getQuestions()   { return loadData('s_questions', []); }
 function getReport()      { return REPORT; }
 
-function submitHomework(assignmentId) {
-  const list = getAssignments();
-  const i = list.findIndex(a => a.id === assignmentId);
-  if (i !== -1) {
-    list[i].status = 'submitted';
-    list[i].submittedAt = new Date().toLocaleString('ko-KR');
-    list[i].teacherChecked = false;
-    list[i].needsRetry = false;
-    saveData('s_assignments', list);
-  }
+// 숙제 제출 → Firebase에 저장 (선생님이 바로 확인)
+async function submitHomework(assignmentId) {
+  const a = S_ASSIGNMENTS.find(x=>x.id===assignmentId);
+  await db.collection('submissions').add({
+    assignmentId, assignmentTitle:a?a.title:'', classId:a?a.classId:'', className:a?a.className:'',
+    studentId:STUDENT.id, studentName:STUDENT.name,
+    submittedAt:new Date().toLocaleString('ko-KR'), checked:false, needsRetry:false
+  });
+  await loadStudentData();
 }
 function submitQuestion(data) {
   const qs = getQuestions();
@@ -754,11 +777,13 @@ function handlePreview(input, id) {
     prev.innerHTML += `<div style="width:72px;height:72px;border-radius:8px;overflow:hidden;border:2px solid var(--border)"><img src="${url}" style="width:100%;height:100%;object-fit:cover"></div>`;
   });
 }
-function doSubmit(id) {
-  submitHomework(id);
-  launchConfetti();
-  showToast('숙제 제출 완료! 잘했어요 🎉','success');
-  renderHomework();
+async function doSubmit(id) {
+  try{
+    await submitHomework(id);
+    launchConfetti();
+    showToast('숙제 제출 완료! 잘했어요 🎉','success');
+    renderHomework();
+  }catch(e){ showToast('제출 실패: '+e.message,'error'); }
 }
 
 // 🎉 축하 모션 (라이브러리 없이 순수 CSS/JS)
@@ -1058,22 +1083,30 @@ function renderSchedule() {
   const days=['mon','tue','wed','thu','fri','sat','sun'];
   const dayLabels={mon:'월요일',tue:'화요일',wed:'수요일',thu:'목요일',fri:'금요일',sat:'토요일',sun:'일요일'};
   const todayKey={0:'sun',1:'mon',2:'tue',3:'wed',4:'thu',5:'fri',6:'sat'}[new Date().getDay()];
-  const makeupDayMap={};
-  MAKEUP_SCHEDULES.forEach(m=>{const k={0:'sun',1:'mon',2:'tue',3:'wed',4:'thu',5:'fri',6:'sat'}[new Date(m.date).getDay()];makeupDayMap[k]=m;});
 
+  if(!S_CLASSES.length){
+    document.getElementById('scheduleContent').innerHTML = `<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">아직 배정된 수업이 없어요.<br>선생님이 반에 배정하면 시간표가 표시돼요.</div>`;
+    return;
+  }
   document.getElementById('scheduleContent').innerHTML = `
     <div class="sched-grid">
       ${days.map(d=>{
-        const cls=SCHEDULE[d], mk=makeupDayMap[d], isToday=d===todayKey;
-        return `<div class="day-card ${cls?'has-class':''} ${mk?'is-makeup':''} ${isToday?'today':''}">
+        const list=S_CLASSES.filter(c=>c.weekday===d);
+        const isToday=d===todayKey;
+        return `<div class="day-card ${list.length?'has-class':''} ${isToday?'today':''}">
           <div class="day-lbl">${dayLabels[d]}</div>
-          ${cls?`<div class="c-time">${cls.time}</div><div class="c-name">${cls.className}</div><div class="c-subject">${cls.subject}</div>`
-               :mk?`<div class="c-time" style="color:var(--orange)">${mk.time}</div><div class="c-name" style="color:var(--orange)">${mk.className}</div><div class="c-subject" style="color:var(--orange)">보강 🔶</div>`
-               :`<div class="no-class">수업 없음</div>`}
+          ${list.length?list.map(c=>`
+            <div style="margin-bottom:8px">
+              <div class="c-time">${c.startTime&&c.endTime?(c.startTime+'~'+c.endTime):(c.slot||'')}</div>
+              <div class="c-name">${c.name}</div>
+              <div class="c-subject">${c.subject||''}${c.type&&c.type!=='정규'?' · '+c.type:''}</div>
+            </div>`).join('')
+          :`<div class="no-class">수업 없음</div>`}
         </div>`;}).join('')}
     </div>
-    ${MAKEUP_SCHEDULES.length?`<div style="margin-top:16px"><div class="card-title" style="margin-bottom:10px">🔶 보강 일정</div>${MAKEUP_SCHEDULES.map(m=>`
-      <div class="alert-card"><div class="a-icon">🔶</div><div><h4>${m.date} ${m.time}</h4><p>${m.className} · ${m.reason}</p></div></div>`).join('')}</div>`:''}`;
+    <div style="margin-top:16px"><div class="card-title" style="margin-bottom:10px">📚 내 수강 반 (${S_CLASSES.length})</div>
+      ${S_CLASSES.map(c=>`<div class="att-record"><div class="att-date">${WD_LABEL[c.weekday]||''}요일 ${c.slot||''}</div><div class="att-class">${c.name} · ${c.subject||''}</div></div>`).join('')}
+    </div>`;
 }
 
 // ================================================================
@@ -1168,11 +1201,13 @@ function logout(){
   location.href='index.html';
 }
 
-function init(){
+async function init(){
   requireRole('student');   // 학생 아니면 로그인 페이지로
   const info = document.getElementById('sidebarUserInfo');
   if(info) info.textContent = STUDENT.name + ' 학생' + (STUDENT.className ? (' · ' + STUDENT.className) : '');
   buildSidebar();
+  try{ await loadStudentData(); }   // Firebase에서 내 반·숙제·제출 불러오기
+  catch(e){ showToast('데이터를 불러오지 못했어요: '+e.message,'error'); }
   renderHome();
 }
 document.addEventListener('DOMContentLoaded', init);
