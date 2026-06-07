@@ -502,23 +502,55 @@ const REPORT = {
 };
 const WD_LABEL={mon:'월',tue:'화',wed:'수',thu:'목',fri:'금',sat:'토',sun:'일'};
 
-// ===== Firebase에서 내 반·숙제·제출 불러오기 =====
-let S_CLASSES=[], S_ASSIGNMENTS=[], S_SUBMISSIONS=[];
+// ===== Firebase에서 내 반·숙제·제출·출석·성적 불러오기 =====
+let S_CLASSES=[], S_ASSIGNMENTS=[], S_SUBMISSIONS=[], S_ATTENDANCE=[], S_EXAMS=[], S_EXAMSUBS=[];
 function myClassIds(){ try{ return JSON.parse(localStorage.getItem('bm_classIds')||'[]'); }catch(e){ return STUDENT.classId?[STUDENT.classId]:[]; } }
 async function loadStudentData(){
   const ids = myClassIds();
-  // 내 반
   const cs = await db.collection('classes').get();
   S_CLASSES = cs.docs.map(d=>({id:d.id,...d.data()})).filter(c=>ids.includes(c.id));
-  // 내 반의 숙제
   const asn = await db.collection('assignments').get();
   S_ASSIGNMENTS = asn.docs.map(d=>({id:d.id,...d.data()})).filter(a=>ids.includes(a.classId))
     .sort((x,y)=>(y.createdAt||'').localeCompare(x.createdAt||''));
-  // 내 제출 기록
+  // 내 반의 시험
+  const ex = await db.collection('exams').get();
+  S_EXAMS = ex.docs.map(d=>({id:d.id,...d.data()})).filter(e=>ids.includes(e.classId))
+    .sort((x,y)=>(y.date||'').localeCompare(x.date||''));
+  // 출석(내 기록만 추출)
+  const att = await db.collection('attendance').get();
+  S_ATTENDANCE = [];
+  att.docs.forEach(d=>{ const a=d.data(); const r=(a.records||[]).find(x=>x.studentId===STUDENT.id);
+    if(r) S_ATTENDANCE.push({ date:a.date, className:a.className, status:r.status, lateMinutes:r.lateMinutes }); });
+  S_ATTENDANCE.sort((x,y)=>(y.date||'').localeCompare(x.date||''));
+  // 내 제출/내 시험답안
   if(STUDENT.id){
     const sub = await db.collection('submissions').where('studentId','==',STUDENT.id).get();
     S_SUBMISSIONS = sub.docs.map(d=>({id:d.id,...d.data()}));
-  } else { S_SUBMISSIONS=[]; }
+    const es = await db.collection('examSubs').where('studentId','==',STUDENT.id).get();
+    S_EXAMSUBS = es.docs.map(d=>({id:d.id,...d.data()}));
+  } else { S_SUBMISSIONS=[]; S_EXAMSUBS=[]; }
+}
+
+// 시험 = Firebase 시험 + 내 답안/점수 상태 합치기
+function getExams(){
+  return S_EXAMS.map(e=>{
+    const es = S_EXAMSUBS.find(s=>s.examId===e.id);
+    let status;
+    if(!es) status='pending_submission';
+    else if(es.score==null) status='grading';
+    else status='scored';
+    return { ...e, status, score:es?es.score:null, comment:es?es.comment:'' };
+  });
+}
+// 답안지 제출 → Firebase
+async function submitExamAnswer(examId){
+  const e = S_EXAMS.find(x=>x.id===examId);
+  await db.collection('examSubs').add({
+    examId, examTitle:e?e.title:'', classId:e?e.classId:'', className:e?e.className:'',
+    studentId:STUDENT.id, studentName:STUDENT.name,
+    submittedAt:new Date().toLocaleString('ko-KR'), score:null, comment:''
+  });
+  await loadStudentData();
 }
 
 // 숙제 = Firebase 과제 + 내 제출 상태를 합쳐서 보여줌
@@ -532,10 +564,24 @@ function getAssignments(){
     return { ...a, status, submittedAt:sub?sub.submittedAt:null, teacherChecked:sub?!!sub.checked:false, needsRetry:sub?!!sub.needsRetry:false };
   });
 }
-function getAttendance()  { return loadData('s_attendance', []); }
-function getExams()       { return loadData('s_exams', []); }
+function getAttendance()  { return S_ATTENDANCE; }
 function getQuestions()   { return loadData('s_questions', []); }
-function getReport()      { return REPORT; }
+function getReport(){
+  const asn=getAssignments(); const hwTotal=asn.length, hwSub=asn.filter(a=>a.status==='submitted').length;
+  const att=getAttendance(); const attTotal=att.length;
+  const scored=getExams().filter(e=>e.status==='scored');
+  const recent=scored.slice(0,4).reverse();
+  return {
+    homeworkRate: hwTotal?Math.round(hwSub/hwTotal*100):0,
+    retryRate: 0,
+    attendanceRate: attTotal?Math.round(att.filter(a=>a.status!=='absent').length/attTotal*100):0,
+    avgScore: scored.length?Math.round(scored.reduce((s,e)=>s+e.score,0)/scored.length):0,
+    teacherComment: REPORT.teacherComment,
+    homeworkReport:{ submitted:hwSub, total:hwTotal, lateCount:asn.filter(a=>a.status==='late').length },
+    attendanceReport:{ present:att.filter(a=>a.status==='present').length, late:att.filter(a=>a.status==='late').length, absent:att.filter(a=>a.status==='absent').length, makeup:0 },
+    gradeReport:{ labels:recent.map(e=>(e.title||'').slice(0,4)), scores:recent.map(e=>e.score) }
+  };
+}
 
 // 숙제 제출 → Firebase에 저장 (선생님이 바로 확인)
 async function submitHomework(assignmentId) {
@@ -792,6 +838,14 @@ async function doSubmit(id) {
     renderHomework();
   }catch(e){ showToast('제출 실패: '+e.message,'error'); }
 }
+async function doSubmitAnswer(examId){
+  try{
+    await submitExamAnswer(examId);
+    launchConfetti();
+    showToast('답안지 제출 완료! 채점을 기다려주세요 📝','success');
+    renderGrades();
+  }catch(e){ showToast('제출 실패: '+e.message,'error'); }
+}
 
 // 🎉 축하 모션 (라이브러리 없이 순수 CSS/JS)
 function launchConfetti(){
@@ -859,7 +913,7 @@ function renderGrades() {
           <div class="u-icon">📷</div><p>답안지 사진을 업로드하세요</p>
           <input type="file" accept="image/*" multiple>
         </div>
-        <button class="btn btn-orange" onclick="showToast('답안지가 제출되었어요! 채점을 기다려주세요 📝','success');this.closest('.hw-card').style.opacity='.5'">답안지 제출하기</button>
+        <button class="btn btn-orange" onclick="doSubmitAnswer('${e.id}')">답안지 제출하기</button>
       </div>`).join('');
   }
   if (grading.length) {
@@ -886,18 +940,21 @@ function renderGrades() {
         ${e.comment?`<div style="background:var(--green-light);border-radius:var(--radius-sm);padding:10px 14px;font-size:13px;color:#065F46">💬 ${e.comment}</div>`:''}
       </div>`).join('');
   }
-  if (scored.length >= 2) {
-    const recent = scored.slice(0,4).reverse();
+  if (scored.length >= 1) {
+    const recent = scored.slice(0,6).reverse(); // 오래된→최근
+    const W=320,H=150,pad=28,n=recent.length;
+    const xFor=i=> n===1? W/2 : pad + i*(W-2*pad)/(n-1);
+    const yFor=v=> H-pad - (v/100)*(H-2*pad);
+    const linePts=recent.map((e,i)=>`${xFor(i).toFixed(1)},${yFor(e.score).toFixed(1)}`).join(' ');
+    const avg=Math.round(recent.reduce((a,e)=>a+e.score,0)/n);
     html += `
       <div class="card">
-        <div class="card-title">📈 성적 추이 (최근 ${recent.length}회)</div>
-        <div class="bar-chart">
-          ${recent.map(e=>`
-            <div class="bar-row">
-              <div class="bar-lbl">${e.title.replace(' 단원평가','')}</div>
-              <div class="bar-track"><div class="bar-fill" style="width:${e.score}%"><span>${e.score}점</span></div></div>
-            </div>`).join('')}
-        </div>
+        <div class="card-title">📈 성적 변화 (평균 ${avg}점)</div>
+        <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;overflow:visible">
+          ${[0,25,50,75,100].map(g=>`<line x1="${pad}" y1="${yFor(g).toFixed(1)}" x2="${W-pad}" y2="${yFor(g).toFixed(1)}" stroke="#E2E8F0" stroke-width="1"/><text x="${pad-6}" y="${(yFor(g)+3).toFixed(1)}" font-size="9" fill="#94A3B8" text-anchor="end">${g}</text>`).join('')}
+          ${n>1?`<polyline points="${linePts}" fill="none" stroke="#5B6CF5" stroke-width="2.5" stroke-linejoin="round"/>`:''}
+          ${recent.map((e,i)=>`<circle cx="${xFor(i).toFixed(1)}" cy="${yFor(e.score).toFixed(1)}" r="4" fill="#5B6CF5"/><text x="${xFor(i).toFixed(1)}" y="${(yFor(e.score)-9).toFixed(1)}" font-size="11" font-weight="700" fill="#5B6CF5" text-anchor="middle">${e.score}</text><text x="${xFor(i).toFixed(1)}" y="${H-8}" font-size="9" fill="#64748B" text-anchor="middle">${(e.title||'').slice(0,7)}</text>`).join('')}
+        </svg>
         <div style="font-size:12px;color:var(--text-muted);text-align:center;margin-top:8px">꾸준히 성장하고 있어요! 다음 목표는 90점 이상 🎯</div>
       </div>`;
   }
@@ -925,9 +982,9 @@ function renderReport() {
         </div>
         <div style="flex:2;min-width:160px;display:flex;flex-direction:column;justify-content:center">
           <div style="height:10px;background:var(--bg);border-radius:4px;overflow:hidden">
-            <div style="height:100%;width:${Math.round(r.homeworkReport.submitted/r.homeworkReport.total*100)}%;background:var(--primary);border-radius:4px"></div>
+            <div style="height:100%;width:${(r.homeworkReport.total?Math.round(r.homeworkReport.submitted/r.homeworkReport.total*100):0)}%;background:var(--primary);border-radius:4px"></div>
           </div>
-          <div style="font-size:12px;color:var(--text-muted);margin-top:6px">제출률 ${Math.round(r.homeworkReport.submitted/r.homeworkReport.total*100)}%</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:6px">제출률 ${(r.homeworkReport.total?Math.round(r.homeworkReport.submitted/r.homeworkReport.total*100):0)}%</div>
         </div>
       </div>
     </div>
