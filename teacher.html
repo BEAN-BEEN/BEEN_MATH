@@ -413,6 +413,7 @@ function classSelect(id='',all=false){
 // ===== AI 시험지 분석 (사진 → 단원·능력·난이도) =====
 function fileToBase64(file){ return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]);r.onerror=rej;r.readAsDataURL(file);}); }
 function compressImage(file,maxDim=1280,q=0.72){ return new Promise((resolve,reject)=>{const img=new Image(),url=URL.createObjectURL(file);img.onload=()=>{let w=img.width,h=img.height;if(w>h&&w>maxDim){h=Math.round(h*maxDim/w);w=maxDim;}else if(h>maxDim){w=Math.round(w*maxDim/h);h=maxDim;}const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);let d;try{d=c.toDataURL('image/jpeg',q);}catch(e){URL.revokeObjectURL(url);return reject(e);}URL.revokeObjectURL(url);resolve({base64:d.split(',')[1],mime:'image/jpeg'});};img.onerror=reject;img.src=url;}); }
+let lastAnalysis=null;
 async function doAnalyzeExam(){
   const fi=document.getElementById('an-photo');
   if(!fi||!fi.files||!fi.files[0]){ showToast('시험지 사진을 선택해주세요','error'); return; }
@@ -423,6 +424,7 @@ async function doAnalyzeExam(){
     const res=await fetch('/.netlify/functions/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({imageBase64:img.base64,imageMime:img.mime})});
     const data=await res.json();
     if(!res.ok) throw new Error(data.error||'오류');
+    lastAnalysis=data;
     renderAnalysis(data);
   }catch(e){
     const msg=(e&&e.message)||'';
@@ -446,7 +448,27 @@ function renderAnalysis(data){
       <thead><tr><th>번호</th><th>단원</th><th>요구 능력</th><th>난이도</th></tr></thead>
       <tbody>${probs.map(p=>`<tr><td><strong>${p.no||'-'}</strong></td><td>${p.unit||'-'}</td><td><span class="badge b-primary">${p.ability||'-'}</span></td><td>${p.difficulty||'-'}</td></tr>`).join('')}</tbody>
     </table></div>
-    <div style="font-size:11px;color:var(--text-muted);margin-top:8px">⚠️ AI 분석이라 가끔 부정확할 수 있어요. 참고용으로 봐주세요.</div>`;
+    <div style="font-size:11px;color:var(--text-muted);margin:8px 0">⚠️ AI 분석이라 가끔 부정확할 수 있어요. 참고용으로 봐주세요.</div>
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+      <div style="font-weight:700;margin-bottom:8px">📋 이 분석으로 시험 등록 (분석 결과도 함께 저장)</div>
+      <div class="form-row-2">
+        <div class="form-group">${classSelect('an-cls')}</div>
+        <div class="form-group"><input class="form-input" id="an-title" placeholder="시험명 (예: 6월 모의고사)"></div>
+      </div>
+      <button class="btn btn-green" onclick="doRegisterAnalyzedExam()">✅ 시험으로 등록</button>
+    </div>`;
+}
+async function doRegisterAnalyzedExam(){
+  const classId=document.getElementById('an-cls').value;
+  const title=document.getElementById('an-title').value.trim();
+  if(!classId||!title){ showToast('반과 시험명을 입력해주세요','error'); return; }
+  const cls=CLASSES.find(c=>c.id===classId);
+  const probs=(lastAnalysis&&lastAnalysis.problems)||[];
+  try{
+    await saveExam({ classId, className:cls?.name||'', title, range:'', maxScore:100, date:new Date().toISOString().slice(0,10), analysis:probs, analysisSummary:(lastAnalysis&&lastAnalysis.summary)||'' });
+    showToast(`"${title}" 시험 등록 완료! 분석도 함께 저장됐어요 📋`,'success');
+    rGrades();
+  }catch(e){ showToast('등록 실패: '+e.message,'error'); }
 }
 
 // ================================================================
