@@ -504,7 +504,7 @@ const REPORT = {
 const WD_LABEL={mon:'월',tue:'화',wed:'수',thu:'목',fri:'금',sat:'토',sun:'일'};
 
 // ===== Firebase에서 내 반·숙제·제출·출석·성적 불러오기 =====
-let S_CLASSES=[], ALL_CLASSES=[], S_ASSIGNMENTS=[], S_SUBMISSIONS=[], S_ATTENDANCE=[], S_EXAMS=[], S_EXAMSUBS=[];
+let S_CLASSES=[], ALL_CLASSES=[], S_ASSIGNMENTS=[], S_SUBMISSIONS=[], S_ATTENDANCE=[], S_EXAMS=[], S_EXAMSUBS=[], S_QUESTIONS=[];
 function myClassIds(){ try{ return JSON.parse(localStorage.getItem('bm_classIds')||'[]'); }catch(e){ return STUDENT.classId?[STUDENT.classId]:[]; } }
 async function loadStudentData(){
   const ids = myClassIds();
@@ -530,7 +530,9 @@ async function loadStudentData(){
     S_SUBMISSIONS = sub.docs.map(d=>({id:d.id,...d.data()}));
     const es = await db.collection('examSubs').where('studentId','==',STUDENT.id).get();
     S_EXAMSUBS = es.docs.map(d=>({id:d.id,...d.data()}));
-  } else { S_SUBMISSIONS=[]; S_EXAMSUBS=[]; }
+    const q = await db.collection('questions').where('studentId','==',STUDENT.id).get();
+    S_QUESTIONS = q.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+  } else { S_SUBMISSIONS=[]; S_EXAMSUBS=[]; S_QUESTIONS=[]; }
 }
 
 // 시험 = Firebase 시험 + 내 답안/점수 상태 합치기
@@ -567,7 +569,7 @@ function getAssignments(){
   });
 }
 function getAttendance()  { return S_ATTENDANCE; }
-function getQuestions()   { return loadData('s_questions', []); }
+function getQuestions()   { return S_QUESTIONS; }
 function getReport(){
   const asn=getAssignments(); const hwTotal=asn.length, hwSub=asn.filter(a=>a.status==='submitted').length;
   const att=getAttendance(); const attTotal=att.length;
@@ -608,10 +610,15 @@ async function submitHomework(assignmentId) {
   });
   await loadStudentData();
 }
-function submitQuestion(data) {
-  const qs = getQuestions();
-  qs.unshift({ id:'q'+Date.now(), ...data, status:'pending', aiHint:null, teacherAnswer:null, createdAt:new Date().toISOString().slice(0,10) });
-  saveData('s_questions', qs);
+// 질문 남기기 → Firebase 저장 (선생님이 바로 봐요)
+async function submitQuestion(data) {
+  await db.collection('questions').add({
+    ...data,
+    studentId: STUDENT.id, studentName: STUDENT.name, className: STUDENT.className,
+    status: 'pending', aiHint: null, teacherAnswer: null,
+    createdAt: new Date().toISOString().slice(0,10)
+  });
+  await loadStudentData();
 }
 function submitConsultation(data) {
   const cs = loadData('s_consultations',[]);
@@ -1075,12 +1082,14 @@ function renderQuestions() {
           </div>`}
       </div>`).join('')}`;
 }
-function doAskQ() {
+async function doAskQ() {
   const textbook=document.getElementById('q-tb').value.trim(), page=document.getElementById('q-pg').value.trim(), number=document.getElementById('q-num').value.trim();
   if (!textbook||!page||!number){showToast('교재, 페이지, 번호를 모두 입력해주세요','error');return;}
-  submitQuestion({textbook,page,number,note:document.getElementById('q-note').value.trim()});
-  showToast('질문이 등록되었어요! 선생님이 곧 답변할게요 💬','success');
-  renderQuestions();
+  try{
+    await submitQuestion({textbook,page,number,note:document.getElementById('q-note').value.trim()});
+    showToast('질문이 등록되었어요! 선생님이 곧 답변할게요 💬','success');
+    renderQuestions();
+  }catch(e){ showToast('등록 실패: '+e.message,'error'); }
 }
 
 // 🤖 AI 1단계 힌트 — Netlify 서버리스 함수(/.netlify/functions/ai) 호출
@@ -1128,8 +1137,9 @@ async function doAIHint(level) {
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({textbook,page,number,note,imageBase64,imageMime,level})
     });
-    const data=await res.json();
-    if(!res.ok) throw new Error(data.error||'오류');
+    const txt=await res.text();
+    let data; try{ data=JSON.parse(txt); }catch(_){ data={error: res.status===413?'사진 용량이 너무 커요. 더 작게 찍어 첨부해주세요.':'AI 서버 오류 (잠시 후 다시 시도)'}; }
+    if(!res.ok) throw new Error(data.error||('오류 '+res.status));
     const next = level<3
       ? `<button class="btn btn-outline btn-sm" style="margin-top:12px" onclick="doAIHint(${level+1})">${level===1?'🔍 2단계 힌트 더 보기':'✅ 전체 풀이 보기'}</button>`
       : '<div style="margin-top:10px;font-size:12px;color:var(--text-muted)">스스로 한 번 더 풀어보면 진짜 내 실력이 돼요 💪</div>';

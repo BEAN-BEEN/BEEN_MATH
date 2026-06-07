@@ -333,14 +333,18 @@ async function saveAttendance(d){ await db.collection('attendance').doc(d.date+'
 async function saveExam(d){ d.createdAt=new Date().toISOString().slice(0,10); await db.collection('exams').add(d); await loadExams(); }
 async function updateExamSub(sid,u){ await db.collection('examSubs').doc(sid).update(u); await loadExamSubs(); }
 
+// ===== 질문 = Firebase 공유 (학생이 올리면 선생님이 봄) =====
+let QUESTIONS_CACHE=[];
+async function loadQuestions(){ const s=await db.collection('questions').get(); QUESTIONS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')); }
+function getQuestions(){ return QUESTIONS_CACHE; }
+async function answerQ(qid,ans){ await db.collection('questions').doc(qid).update({teacherAnswer:ans, status:'answered'}); await loadQuestions(); }
+
 // ===== 아직 이 브라우저에만 저장 (다음 단계) =====
-function getQuestions()     {return loadData('questions',[]);}
 function getVideos()        {return loadData('videos',[]);}
 function getMaterials()     {return loadData('materials',[]);}
 function getSchedule()      {return loadData('schedule',[]);}
 function getConsultations() {return loadData('consults',[]);}
 function getReports()       {return loadData('reports',[]);}
-function answerQ(qid,ans){const l=getQuestions();const i=l.findIndex(q=>q.id===qid);if(i>=0){l[i].teacherAnswer=ans;l[i].status='answered';saveData('questions',l);}}
 function saveVideo(d){const l=getVideos();d.id='v'+Date.now();l.unshift(d);saveData('videos',l);}
 function deleteVideo(id){saveData('videos',getVideos().filter(v=>v.id!==id));}
 function saveMaterial(d){const l=getMaterials();d.id='m'+Date.now();d.uploadDate=new Date().toISOString().slice(0,10);l.unshift(d);saveData('materials',l);}
@@ -1001,10 +1005,11 @@ function rQuestions(){
     ${answered.length?`<div class="sec-label">✅ 답변 완료 (${answered.length})</div>${answered.map(qCard).join('')}`:''}
     ${!qs.length?'<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">질문이 없어요 🎉</div>':''}`;
 }
-function doAns(qid){
+async function doAns(qid){
   const ans=document.getElementById('ans-'+qid)?.value.trim();
   if(!ans){showToast('답변을 입력해주세요','error');return;}
-  answerQ(qid,ans);showToast('답변이 저장되었어요! 💬','success');rQuestions();
+  try{ await answerQ(qid,ans); showToast('답변이 저장되었어요! 💬','success'); rQuestions(); }
+  catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
 
 // ================================================================
@@ -1270,6 +1275,7 @@ async function init(){
     await loadAttendance();      // 출석
     await loadExams();           // 시험
     await loadExamSubs();        // 답안지/점수
+    await loadQuestions();       // 질문
   }catch(e){ showToast('데이터를 불러오지 못했어요: '+e.message,'error'); }
   rDashboard();
 }
