@@ -39,21 +39,19 @@ exports.handler = async (event) => {
       raw = data.choices?.[0]?.message?.content || '';
     } else {
       const parts = [{ text: prompt }, { inline_data: { mime_type: imageMime || 'image/jpeg', data: imageBase64 } }];
-      const models = [process.env.GEMINI_MODEL || 'gemini-2.5-flash', 'gemini-2.0-flash'];
+      const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`;
       let ok = false, lastErr = 'Gemini 오류';
-      for (const model of models) {
-        for (let attempt = 0; attempt < 2 && !ok; attempt++) {
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`;
-          const res = await fetch(url, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ parts }], generationConfig: { responseMimeType: 'application/json' } })
-          });
-          const data = await res.json();
-          if (res.ok) { raw = data.candidates?.[0]?.content?.parts?.[0]?.text || ''; ok = true; break; }
-          lastErr = data.error?.message || lastErr;
-          await new Promise(r => setTimeout(r, 700));
-        }
-        if (ok) break;
+      for (let attempt = 0; attempt < 2 && !ok; attempt++) {
+        const res = await fetch(url, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts }], generationConfig: { responseMimeType: 'application/json' } })
+        });
+        const data = await res.json();
+        if (res.ok) { raw = data.candidates?.[0]?.content?.parts?.[0]?.text || ''; ok = true; break; }
+        lastErr = data.error?.message || lastErr;
+        if (!/overload|UNAVAILABLE|503|high demand/i.test(lastErr)) break;
+        await new Promise(r => setTimeout(r, 800));
       }
       if (!ok) throw new Error(lastErr);
     }

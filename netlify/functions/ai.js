@@ -65,26 +65,17 @@ ${imageBase64
       // ---------- Gemini (Google) — 과부하 시 재시도 + 예비 모델 전환 ----------
       const parts = [{ text: prompt }];
       if (imageBase64) parts.push({ inline_data: { mime_type: imageMime || 'image/jpeg', data: imageBase64 } });
-      const models = [process.env.GEMINI_MODEL || 'gemini-2.5-flash', 'gemini-2.0-flash'];
+      const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`;
       let ok = false, lastErr = 'Gemini 호출 오류';
-      for (const model of models) {
-        for (let attempt = 0; attempt < 2 && !ok; attempt++) {
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`;
-          const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ parts }] })
-          });
-          const data = await res.json();
-          if (res.ok) {
-            hint = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
-            ok = true;
-            break;
-          }
-          lastErr = data.error?.message || lastErr;
-          await new Promise(r => setTimeout(r, 700)); // 잠깐 쉬고 재시도
-        }
-        if (ok) break;
+      for (let attempt = 0; attempt < 2 && !ok; attempt++) {
+        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts }] }) });
+        const data = await res.json();
+        if (res.ok) { hint = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim(); ok = true; break; }
+        lastErr = data.error?.message || lastErr;
+        // 일시적 과부하만 한 번 재시도. 사용량 초과(quota)는 재시도해도 소용없으니 바로 중단.
+        if (!/overload|UNAVAILABLE|503|high demand/i.test(lastErr)) break;
+        await new Promise(r => setTimeout(r, 800));
       }
       if (!ok) throw new Error(lastErr);
     }

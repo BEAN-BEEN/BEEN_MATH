@@ -426,7 +426,10 @@ async function doAnalyzeExam(){
     renderAnalysis(data);
   }catch(e){
     const msg=(e&&e.message)||'';
-    out.innerHTML='<div style="color:var(--text-muted)">⚠️ '+(/demand|overload|503|UNAVAILABLE|try again/i.test(msg)?'AI가 잠시 바빠요. 잠시 후 다시 시도해주세요.':('분석 실패: '+msg))+'</div>';
+    const fr = /quota|exhausted|resource|rate.?limit|billing/i.test(msg) ? 'AI 무료 사용량을 잠깐 초과했어요. 30초~1분 후 다시 시도해주세요.'
+             : /demand|overload|503|UNAVAILABLE|try again/i.test(msg) ? 'AI가 잠시 바빠요. 잠시 후 다시 시도해주세요.'
+             : ('분석 실패: '+msg);
+    out.innerHTML='<div style="color:var(--text-muted)">⚠️ '+fr+'</div>';
   }
 }
 function renderAnalysis(data){

@@ -504,12 +504,13 @@ const REPORT = {
 const WD_LABEL={mon:'월',tue:'화',wed:'수',thu:'목',fri:'금',sat:'토',sun:'일'};
 
 // ===== Firebase에서 내 반·숙제·제출·출석·성적 불러오기 =====
-let S_CLASSES=[], S_ASSIGNMENTS=[], S_SUBMISSIONS=[], S_ATTENDANCE=[], S_EXAMS=[], S_EXAMSUBS=[];
+let S_CLASSES=[], ALL_CLASSES=[], S_ASSIGNMENTS=[], S_SUBMISSIONS=[], S_ATTENDANCE=[], S_EXAMS=[], S_EXAMSUBS=[];
 function myClassIds(){ try{ return JSON.parse(localStorage.getItem('bm_classIds')||'[]'); }catch(e){ return STUDENT.classId?[STUDENT.classId]:[]; } }
 async function loadStudentData(){
   const ids = myClassIds();
   const cs = await db.collection('classes').get();
-  S_CLASSES = cs.docs.map(d=>({id:d.id,...d.data()})).filter(c=>ids.includes(c.id));
+  ALL_CLASSES = cs.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.order!=null?a.order:99)-(b.order!=null?b.order:99));
+  S_CLASSES = ALL_CLASSES.filter(c=>ids.includes(c.id));
   const asn = await db.collection('assignments').get();
   S_ASSIGNMENTS = asn.docs.map(d=>({id:d.id,...d.data()})).filter(a=>ids.includes(a.classId))
     .sort((x,y)=>(y.createdAt||'').localeCompare(x.createdAt||''));
@@ -1135,7 +1136,9 @@ async function doAIHint(level) {
     box.innerHTML='<div class="ai-label">🤖 AI '+labels[level]+'</div><p>'+(data.hint||'내용을 받지 못했어요').replace(/\n/g,'<br>')+'</p>'+next;
   }catch(e){
     const msg=(e&&e.message)||'';
-    const friendly = /demand|overload|503|UNAVAILABLE|try again|resource|exhausted|quota/i.test(msg)
+    const friendly = /quota|exhausted|resource|rate.?limit|billing/i.test(msg)
+      ? 'AI 무료 사용량을 잠깐 초과했어요 🙏 30초~1분 후 다시 시도해주세요.'
+      : /demand|overload|503|UNAVAILABLE|try again/i.test(msg)
       ? 'AI가 잠시 바빠요 🙏 5~10초 후 다시 눌러주세요.'
       : (msg ? ('내용을 받지 못했어요: '+msg) : '아직 AI가 연결되지 않았어요.');
     box.innerHTML='<div class="ai-label">🤖 AI 힌트</div><p style="color:var(--text-muted)">⚠️ '+friendly+'</p>';
@@ -1272,9 +1275,7 @@ function renderTeacher() {
       <div class="table-wrap"><table>
         <thead><tr><th>반</th><th>요일</th><th>시간</th><th>과목</th></tr></thead>
         <tbody>
-          <tr><td><span class="chip">고2수학반</span></td><td>월·수·금</td><td>17:00~19:00</td><td>수학Ⅱ</td></tr>
-          <tr><td><span class="chip" style="background:#FEF3C7;color:#92400E">고1수학반</span></td><td>화·목</td><td>16:00~18:00</td><td>수학Ⅰ</td></tr>
-          <tr><td><span class="chip" style="background:#ECFDF5;color:#065F46">중3수학반</span></td><td>토</td><td>10:00~12:00</td><td>중학수학</td></tr>
+          ${ALL_CLASSES.length ? ALL_CLASSES.map(c=>`<tr><td><span class="chip">${c.name}</span></td><td>${(WD_LABEL[c.weekday]||'-')}요일 ${c.slot||''}</td><td>${c.startTime&&c.endTime?(c.startTime+'~'+c.endTime):'시간 미정'}</td><td>${c.subject||'-'}</td></tr>`).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:16px">등록된 반이 없어요</td></tr>'}
         </tbody>
       </table></div>
     </div>
