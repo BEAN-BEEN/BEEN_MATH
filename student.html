@@ -492,8 +492,9 @@ const STUDENT = {
 };
 
 const MAKEUP_SCHEDULES = [];
-const VIDEOS = [];
-const MATERIALS = [];
+let VIDEOS = [];
+let MATERIALS = [];
+let S_REPORT = null;
 const REPORT = {
   homeworkRate:0, retryRate:0, attendanceRate:0, avgScore:0,
   teacherComment:'아직 작성된 리포트가 없어요. 선생님이 리포트를 완성하면 여기에 표시돼요.',
@@ -518,6 +519,11 @@ async function loadStudentData(){
   const ex = await db.collection('exams').get();
   S_EXAMS = ex.docs.map(d=>({id:d.id,...d.data()})).filter(e=>ids.includes(e.classId))
     .sort((x,y)=>(y.date||'').localeCompare(x.date||''));
+  // 수업 영상 / 자료실 (내 반 또는 전체)
+  const vids = await db.collection('videos').get();
+  VIDEOS = vids.docs.map(d=>({id:d.id,...d.data()})).filter(v=>ids.includes(v.classId)||v.classId==='all').sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const mats = await db.collection('materials').get();
+  MATERIALS = mats.docs.map(d=>({id:d.id,...d.data()})).filter(m=>ids.includes(m.classId)||m.classId==='all').sort((a,b)=>(b.uploadDate||'').localeCompare(a.uploadDate||''));
   // 출석(내 기록만 추출)
   const att = await db.collection('attendance').get();
   S_ATTENDANCE = [];
@@ -532,7 +538,9 @@ async function loadStudentData(){
     S_EXAMSUBS = es.docs.map(d=>({id:d.id,...d.data()}));
     const q = await db.collection('questions').where('studentId','==',STUDENT.id).get();
     S_QUESTIONS = q.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
-  } else { S_SUBMISSIONS=[]; S_EXAMSUBS=[]; S_QUESTIONS=[]; }
+    const rep = await db.collection('reports').doc(STUDENT.id).get();
+    S_REPORT = rep.exists ? rep.data() : null;
+  } else { S_SUBMISSIONS=[]; S_EXAMSUBS=[]; S_QUESTIONS=[]; S_REPORT=null; }
 }
 
 // 시험 = Firebase 시험 + 내 답안/점수 상태 합치기
@@ -580,7 +588,7 @@ function getReport(){
     retryRate: 0,
     attendanceRate: attTotal?Math.round(att.filter(a=>a.status!=='absent').length/attTotal*100):0,
     avgScore: scored.length?Math.round(scored.reduce((s,e)=>s+e.score,0)/scored.length):0,
-    teacherComment: REPORT.teacherComment,
+    teacherComment: (S_REPORT && S_REPORT.teacherComment) || REPORT.teacherComment,
     homeworkReport:{ submitted:hwSub, total:hwTotal, lateCount:asn.filter(a=>a.status==='late').length },
     attendanceReport:{ present:att.filter(a=>a.status==='present').length, late:att.filter(a=>a.status==='late').length, absent:att.filter(a=>a.status==='absent').length, makeup:0 },
     gradeReport:{ labels:recent.map(e=>(e.title||'').slice(0,4)), scores:recent.map(e=>e.score) }
@@ -620,10 +628,11 @@ async function submitQuestion(data) {
   });
   await loadStudentData();
 }
-function submitConsultation(data) {
-  const cs = loadData('s_consultations',[]);
-  cs.push({ id:'cs'+Date.now(), ...data, status:'pending', submittedAt:new Date().toLocaleString('ko-KR') });
-  saveData('s_consultations', cs);
+async function submitConsultation(data) {
+  await db.collection('consultations').add({
+    ...data, studentId:STUDENT.id, studentName:STUDENT.name, className:STUDENT.className,
+    status:'pending', submittedAt:new Date().toLocaleString('ko-KR')
+  });
 }
 
 // ================================================================
@@ -1168,8 +1177,8 @@ function renderVideos() {
     <div class="filter-tabs">${filters.map(f=>`<div class="f-tab ${vFilter===f.key?'active':''}" onclick="setVF('${f.key}')">${f.label}</div>`).join('')}</div>
     <div class="video-grid">
       ${filtered.map(v=>`
-        <div class="video-card" onclick="showToast('영상 재생은 YouTube URL 연결 후 가능해요 🎬')">
-          <div class="v-thumb" style="background:${v.color}"><span>▶️</span><div class="v-dur">${v.duration}</div></div>
+        <div class="video-card" onclick="${v.url?`window.open('${v.url}','_blank')`:`showToast('영상 링크가 아직 없어요')`}">
+          <div class="v-thumb" style="background:${v.color||'#6366F1'}"><span>▶️</span>${v.duration?`<div class="v-dur">${v.duration}</div>`:''}</div>
           <div class="v-info">
             <div class="v-title">${v.title}</div>
             <div class="v-meta">${v.className} · ${v.date}</div>
@@ -1265,9 +1274,11 @@ function renderConsultation() {
       <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="doConsult()">상담 신청하기</button>
     </div>`;
 }
-function doConsult(){
-  submitConsultation({target:document.querySelector('input[name="ct"]:checked')?.value,type:document.querySelector('input[name="ctype"]:checked')?.value,method:document.querySelector('input[name="cm"]:checked')?.value,time:document.getElementById('c-time').value.trim(),note:document.getElementById('c-note').value.trim()});
-  consultDone=true;showToast('상담 신청이 완료되었어요! 📞','success');renderConsultation();
+async function doConsult(){
+  try{
+    await submitConsultation({target:document.querySelector('input[name="ct"]:checked')?.value,type:document.querySelector('input[name="ctype"]:checked')?.value,method:document.querySelector('input[name="cm"]:checked')?.value,time:document.getElementById('c-time').value.trim(),note:document.getElementById('c-note').value.trim()});
+    consultDone=true;showToast('상담 신청이 완료되었어요! 선생님께 전달됐어요 📞','success');renderConsultation();
+  }catch(e){ showToast('신청 실패: '+e.message,'error'); }
 }
 
 // ================================================================
@@ -1343,7 +1354,7 @@ async function enablePush(){
 // 로그아웃 — Firebase 로그아웃 + 세션 지우고 로그인 페이지로
 function logout(){
   if(!confirm('로그아웃 할까요?'))return;
-  ['bm_role','bm_email','bm_uid','bm_demo','bm_studentId','bm_studentName','bm_classId','bm_classIds','bm_className'].forEach(k=>localStorage.removeItem(k));
+  Object.keys(localStorage).forEach(k=>{ if(k.indexOf('bm_')===0) localStorage.removeItem(k); }); // 기기에 남는 학생 데이터 모두 정리
   location.href='index.html';
 }
 

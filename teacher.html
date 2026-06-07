@@ -339,20 +339,23 @@ async function loadQuestions(){ const s=await db.collection('questions').get(); 
 function getQuestions(){ return QUESTIONS_CACHE; }
 async function answerQ(qid,ans){ await db.collection('questions').doc(qid).update({teacherAnswer:ans, status:'answered'}); await loadQuestions(); }
 
-// ===== 아직 이 브라우저에만 저장 (다음 단계) =====
-function getVideos()        {return loadData('videos',[]);}
-function getMaterials()     {return loadData('materials',[]);}
-function getSchedule()      {return loadData('schedule',[]);}
-function getConsultations() {return loadData('consults',[]);}
-function getReports()       {return loadData('reports',[]);}
-function saveVideo(d){const l=getVideos();d.id='v'+Date.now();l.unshift(d);saveData('videos',l);}
-function deleteVideo(id){saveData('videos',getVideos().filter(v=>v.id!==id));}
-function saveMaterial(d){const l=getMaterials();d.id='m'+Date.now();d.uploadDate=new Date().toISOString().slice(0,10);l.unshift(d);saveData('materials',l);}
-function deleteMaterial(id){saveData('materials',getMaterials().filter(m=>m.id!==id));}
-function saveSchedItem(d){const l=getSchedule();d.id='sc'+Date.now();l.push(d);saveData('schedule',l);}
-function deleteSchedItem(id){saveData('schedule',getSchedule().filter(s=>s.id!==id));}
-function updateConsult(id,u){const l=getConsultations();const i=l.findIndex(c=>c.id===id);if(i>=0){Object.assign(l[i],u);saveData('consults',l);}}
-function saveReport(d){const l=getReports();const i=l.findIndex(r=>r.studentId===d.studentId);if(i>=0)l[i]=d;else l.push(d);saveData('reports',l);}
+// ===== 영상·자료실·상담·리포트 = Firebase 공유 =====
+let VIDEOS_CACHE=[], MATERIALS_CACHE=[], CONSULTS_CACHE=[], REPORTS_CACHE=[];
+async function loadVideos(){ const s=await db.collection('videos').get(); VIDEOS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.date||'').localeCompare(a.date||'')); }
+async function loadMaterials(){ const s=await db.collection('materials').get(); MATERIALS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.uploadDate||'').localeCompare(a.uploadDate||'')); }
+async function loadConsults(){ const s=await db.collection('consultations').get(); CONSULTS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.submittedAt||'').localeCompare(a.submittedAt||'')); }
+async function loadReports(){ const s=await db.collection('reports').get(); REPORTS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})); }
+function getVideos(){ return VIDEOS_CACHE; }
+function getMaterials(){ return MATERIALS_CACHE; }
+function getConsultations(){ return CONSULTS_CACHE; }
+function getReports(){ return REPORTS_CACHE; }
+async function saveVideo(d){ d.createdAt=new Date().toISOString().slice(0,10); await db.collection('videos').add(d); await loadVideos(); }
+async function deleteVideo(id){ await db.collection('videos').doc(id).delete(); await loadVideos(); }
+async function saveMaterial(d){ d.uploadDate=new Date().toISOString().slice(0,10); await db.collection('materials').add(d); await loadMaterials(); }
+async function deleteMaterial(id){ await db.collection('materials').doc(id).delete(); await loadMaterials(); }
+async function updateConsult(id,u){ await db.collection('consultations').doc(id).update(u); await loadConsults(); }
+async function saveReport(d){ await db.collection('reports').doc(d.studentId).set(d,{merge:true}); await loadReports(); }
+function getSchedule(){ return loadData('schedule',[]); } // (시간표는 반(class) 정보로 대체됨)
 
 // ================================================================
 // NAV
@@ -1043,15 +1046,17 @@ function rVideos(){
         </div>
       </div>`).join('')}`;
 }
-function doAddVid(){
+async function doAddVid(){
   const classId=document.getElementById('vi-cls').value,title=document.getElementById('vi-title').value.trim();
   if(!classId||!title){showToast('반과 제목을 입력해주세요','error');return;}
   const cls=CLASSES.find(c=>c.id===classId);
   const colors=['#6366F1','#F97316','#10B981','#8B5CF6','#EF4444','#F59E0B'];
-  saveVideo({classId,className:cls?.name||'',title,type:document.getElementById('vi-type').value,date:document.getElementById('vi-date').value,url:document.getElementById('vi-url').value.trim(),description:document.getElementById('vi-desc').value.trim(),color:colors[Math.floor(Math.random()*colors.length)]});
-  showToast('영상이 등록되었어요! 🎬','success');rVideos();
+  try{
+    await saveVideo({classId,className:cls?.name||'',title,type:document.getElementById('vi-type').value,date:document.getElementById('vi-date').value,url:document.getElementById('vi-url').value.trim(),description:document.getElementById('vi-desc').value.trim(),color:colors[Math.floor(Math.random()*colors.length)]});
+    showToast('영상 등록 완료! 해당 반 학생이 바로 볼 수 있어요 🎬','success');rVideos();
+  }catch(e){ showToast('등록 실패: '+e.message,'error'); }
 }
-function doDelVid(id){if(!confirm('이 영상을 삭제할까요?'))return;deleteVideo(id);showToast('영상이 삭제되었어요','warning');rVideos();}
+async function doDelVid(id){if(!confirm('이 영상을 삭제할까요?'))return; try{ await deleteVideo(id); showToast('영상이 삭제되었어요','warning'); rVideos(); }catch(e){ showToast('삭제 실패: '+e.message,'error'); }}
 
 // ================================================================
 // MATERIALS
@@ -1084,14 +1089,14 @@ function rMaterials(){
         </div>
       </div>`;}).join('')}`;
 }
-function doAddMat(){
+async function doAddMat(){
   const title=document.getElementById('mat-title').value.trim();
   if(!title){showToast('자료 이름을 입력해주세요','error');return;}
   const classId=document.getElementById('mat-cls').value,cls=classId==='all'?'전체':(CLASSES.find(c=>c.id===classId)?.name||'');
-  saveMaterial({classId,className:cls,type:document.getElementById('mat-type').value,title});
-  showToast('자료가 등록되었어요! 📁','success');rMaterials();
+  try{ await saveMaterial({classId,className:cls,type:document.getElementById('mat-type').value,title}); showToast('자료 등록 완료! 학생이 바로 볼 수 있어요 📁','success'); rMaterials(); }
+  catch(e){ showToast('등록 실패: '+e.message,'error'); }
 }
-function doDelMat(id){if(!confirm('이 자료를 삭제할까요?'))return;deleteMaterial(id);showToast('삭제되었어요','warning');rMaterials();}
+async function doDelMat(id){if(!confirm('이 자료를 삭제할까요?'))return; try{ await deleteMaterial(id); showToast('삭제되었어요','warning'); rMaterials(); }catch(e){ showToast('삭제 실패: '+e.message,'error'); }}
 
 // ================================================================
 // SCHEDULE
@@ -1208,8 +1213,8 @@ function rConsultation(){
     </table></div></div>`;
 }
 function toggleCSDetail(id){const r=document.getElementById('csd-'+id);if(r)r.style.display=r.style.display==='none'?'table-row':'none';}
-function doCSUpdate(id,st){updateConsult(id,{status:st});showToast({checked:'확인 처리했어요',done:'상담이 완료되었어요!'}[st],'success');rConsultation();}
-function doCSMemo(id){updateConsult(id,{memo:document.getElementById('csm-'+id)?.value.trim()});showToast('메모가 저장되었어요','success');}
+async function doCSUpdate(id,st){ try{ await updateConsult(id,{status:st}); showToast({checked:'확인 처리했어요',done:'상담이 완료되었어요!'}[st],'success'); rConsultation(); }catch(e){ showToast('실패: '+e.message,'error'); } }
+async function doCSMemo(id){ try{ await updateConsult(id,{memo:document.getElementById('csm-'+id)?.value.trim()}); showToast('메모가 저장되었어요','success'); }catch(e){ showToast('실패: '+e.message,'error'); } }
 
 // ================================================================
 // REPORT
@@ -1245,12 +1250,12 @@ function rReport(){
       </div>
       ${existing?`<div class="card" style="background:var(--green-light);border:1px solid var(--green)"><div class="card-title" style="color:var(--green)">✅ 저장된 리포트</div><p style="font-size:13px;color:#065F46;line-height:1.7">${existing.teacherComment}</p><div style="font-size:11px;color:var(--green);margin-top:8px">저장일: ${existing.savedAt}</div></div>`:''}`:''}`;
 }
-function doSaveRp(){
+async function doSaveRp(){
   if(!rpStId){showToast('학생을 선택해주세요','error');return;}
   const comment=document.getElementById('rp-comment')?.value.trim();
   if(!comment){showToast('코멘트를 입력해주세요','error');return;}
-  saveReport({studentId:rpStId,teacherComment:comment,savedAt:new Date().toLocaleString('ko-KR')});
-  showToast('리포트가 저장되었어요! 학생 포털에 반영됩니다 📊','success');rReport();
+  try{ await saveReport({studentId:rpStId,teacherComment:comment,savedAt:new Date().toLocaleString('ko-KR')}); showToast('리포트가 저장되었어요! 학생 포털에 반영됩니다 📊','success'); rReport(); }
+  catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
 
 // ================================================================
@@ -1276,6 +1281,10 @@ async function init(){
     await loadExams();           // 시험
     await loadExamSubs();        // 답안지/점수
     await loadQuestions();       // 질문
+    await loadVideos();          // 수업 영상
+    await loadMaterials();       // 자료실
+    await loadConsults();        // 상담
+    await loadReports();         // 리포트
   }catch(e){ showToast('데이터를 불러오지 못했어요: '+e.message,'error'); }
   rDashboard();
 }

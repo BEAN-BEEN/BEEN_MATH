@@ -11,3 +11,13 @@
 # firebase-admin은 번들 대신 그대로 포함 (esbuild 호환 문제 방지)
 [functions.notify]
   external_node_modules = ["firebase-admin"]
+
+# HTML은 항상 최신으로 (브라우저가 옛 코드를 캐시하지 않게)
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "no-cache, max-age=0, must-revalidate"
+[[headers]]
+  for = "/firebase-init.js"
+  [headers.values]
+    Cache-Control = "no-cache, max-age=0, must-revalidate"
