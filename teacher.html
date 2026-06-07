@@ -428,7 +428,7 @@ async function doAnalyzeExam(){
   out.innerHTML='<div style="padding:16px;color:var(--text-muted)">🤖 시험지를 분석하는 중이에요... (10~20초 걸려요)</div>';
   let img; try{ img=await compressImage(fi.files[0]); }catch(e){ try{ img={base64:await fileToBase64(fi.files[0]),mime:fi.files[0].type}; }catch(e2){ out.innerHTML='<div style="color:var(--red)">사진 처리 실패</div>'; return; } }
   try{
-    const res=await fetch('/.netlify/functions/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({imageBase64:img.base64,imageMime:img.mime})});
+    const res=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({imageBase64:img.base64,imageMime:img.mime})});
     const data=await res.json();
     if(!res.ok) throw new Error(data.error||'오류');
     lastAnalysis=data;
@@ -752,8 +752,8 @@ async function doCreateAsgn(){
     await saveAssignment({classId,className:cls?.name||'',title,content:document.getElementById('hw-content').value.trim(),dueDate:document.getElementById('hw-due').value,maxPhotos:parseInt(document.getElementById('hw-photos').value)||3});
     showToast(`"${title}" 과제 등록 완료! 학생들이 바로 볼 수 있어요 📝`,'success');rHomework();
     // 푸시 알림 발송 (알림 켠 학생에게)
-    fetch('/.netlify/functions/notify',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({classId, title:'새 숙제가 등록됐어요 📝', body:`${cls?.name||''} · ${title}`})})
+    fetch('/api/notify',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({tokens:classTokens(classId), title:'새 숙제가 등록됐어요 📝', body:`${cls?.name||''} · ${title}`})})
       .then(r=>r.json()).then(j=>{ if(j&&j.sent) showToast(`알림 ${j.sent}명에게 발송 📨`); }).catch(()=>{});
   }catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
@@ -772,14 +772,20 @@ function openSubPhotos(subId){
   const sub=getSubmissions().find(s=>s.id===subId);
   showPhotoModal(sub&&sub.photos);
 }
+// 특정 반 학생들의 푸시 토큰 모으기 (알림 켠 학생만)
+function classTokens(classId){
+  const tk=[];
+  getStudents().forEach(s=>{ const ids=s.classIds||(s.classId?[s.classId]:[]); if(ids.includes(classId)&&Array.isArray(s.fcmTokens)) s.fcmTokens.forEach(t=>{ if(t&&!tk.includes(t)) tk.push(t); }); });
+  return tk;
+}
 // 미제출 독촉 푸시
 function doRemind(classId,title){
   const cls=CLASSES.find(c=>c.id===classId);
   showToast('독촉 알림 보내는 중...');
-  fetch('/.netlify/functions/notify',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({classId, title:'숙제 제출 알림 ⏰', body:`${cls?.name||''} · "${title}" 아직 제출 안 했어요!`})})
+  fetch('/api/notify',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({tokens:classTokens(classId), title:'숙제 제출 알림 ⏰', body:`${cls?.name||''} · "${title}" 아직 제출 안 했어요!`})})
     .then(r=>r.json()).then(j=>{ showToast(j&&j.sent?`독촉 알림 ${j.sent}명 발송 📨`:'알림 켠 학생이 없어요','success'); })
-    .catch(()=>showToast('알림 발송 실패 (배포 후 가능)','warning'));
+    .catch(()=>showToast('알림 발송 실패','warning'));
 }
 
 // ================================================================

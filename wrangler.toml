@@ -1,6 +1,8 @@
 name = "been-math"
+main = "src/index.js"
 compatibility_date = "2026-06-08"
 
-# 정적 사이트(HTML/JS/SVG)를 그대로 서빙
+# 정적 사이트(HTML/JS/SVG)를 서빙 + Worker가 /api/* 처리
 [assets]
 directory = "."
+binding = "ASSETS"

@@ -1142,7 +1142,7 @@ async function doAIHint(level) {
     catch(e){ try{ imageBase64=await fileToBase64(fi.files[0]); imageMime=fi.files[0].type; }catch(e2){} }
   }
   try{
-    const res=await fetch('/.netlify/functions/ai',{
+    const res=await fetch('/api/ai',{
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({textbook,page,number,note,imageBase64,imageMime,level})
     });

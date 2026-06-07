@@ -1,9 +1,0 @@
-{
-  "name": "been-math",
-  "version": "1.0.0",
-  "private": true,
-  "description": "BEEN MATH 학원 관리 시스템 - Netlify Functions 의존성",
-  "dependencies": {
-    "firebase-admin": "^12.7.0"
-  }
-}
