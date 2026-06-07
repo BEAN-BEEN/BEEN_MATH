@@ -410,6 +410,42 @@ function classSelect(id='',all=false){
   return `<select class="form-select" id="${id}"><option value="">${all?'전체 반':'반 선택'}</option>${CLASSES.map(c=>`<option value="${c.id}">${c.name}${c.weekday?(' · '+(WD_LABEL[c.weekday]||'')+(c.slot||'')):''}</option>`).join('')}</select>`;
 }
 
+// ===== AI 시험지 분석 (사진 → 단원·능력·난이도) =====
+function fileToBase64(file){ return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]);r.onerror=rej;r.readAsDataURL(file);}); }
+function compressImage(file,maxDim=1280,q=0.72){ return new Promise((resolve,reject)=>{const img=new Image(),url=URL.createObjectURL(file);img.onload=()=>{let w=img.width,h=img.height;if(w>h&&w>maxDim){h=Math.round(h*maxDim/w);w=maxDim;}else if(h>maxDim){w=Math.round(w*maxDim/h);h=maxDim;}const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);let d;try{d=c.toDataURL('image/jpeg',q);}catch(e){URL.revokeObjectURL(url);return reject(e);}URL.revokeObjectURL(url);resolve({base64:d.split(',')[1],mime:'image/jpeg'});};img.onerror=reject;img.src=url;}); }
+async function doAnalyzeExam(){
+  const fi=document.getElementById('an-photo');
+  if(!fi||!fi.files||!fi.files[0]){ showToast('시험지 사진을 선택해주세요','error'); return; }
+  const out=document.getElementById('an-result');
+  out.innerHTML='<div style="padding:16px;color:var(--text-muted)">🤖 시험지를 분석하는 중이에요... (10~20초 걸려요)</div>';
+  let img; try{ img=await compressImage(fi.files[0]); }catch(e){ try{ img={base64:await fileToBase64(fi.files[0]),mime:fi.files[0].type}; }catch(e2){ out.innerHTML='<div style="color:var(--red)">사진 처리 실패</div>'; return; } }
+  try{
+    const res=await fetch('/.netlify/functions/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({imageBase64:img.base64,imageMime:img.mime})});
+    const data=await res.json();
+    if(!res.ok) throw new Error(data.error||'오류');
+    renderAnalysis(data);
+  }catch(e){
+    const msg=(e&&e.message)||'';
+    out.innerHTML='<div style="color:var(--text-muted)">⚠️ '+(/demand|overload|503|UNAVAILABLE|try again/i.test(msg)?'AI가 잠시 바빠요. 잠시 후 다시 시도해주세요.':('분석 실패: '+msg))+'</div>';
+  }
+}
+function renderAnalysis(data){
+  const out=document.getElementById('an-result');
+  const probs=(data&&data.problems)||[];
+  if(!probs.length){ out.innerHTML='<div style="color:var(--text-muted);padding:12px">'+((data&&data.summary)||'문제를 읽지 못했어요. 더 선명한 사진으로 다시 시도해주세요.')+'</div>'; return; }
+  const counts={}; probs.forEach(p=>{const a=p.ability||'기타';counts[a]=(counts[a]||0)+1;});
+  const total=probs.length;
+  const comp=Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([a,c])=>`<span class="badge b-primary" style="margin:2px">${a} ${Math.round(c/total*100)}%</span>`).join('');
+  out.innerHTML=`
+    <div style="background:var(--primary-light);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:12px;font-size:13px;color:var(--primary-dark)">📊 ${data.summary||''}</div>
+    <div style="margin-bottom:10px">${comp}</div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>번호</th><th>단원</th><th>요구 능력</th><th>난이도</th></tr></thead>
+      <tbody>${probs.map(p=>`<tr><td><strong>${p.no||'-'}</strong></td><td>${p.unit||'-'}</td><td><span class="badge b-primary">${p.ability||'-'}</span></td><td>${p.difficulty||'-'}</td></tr>`).join('')}</tbody>
+    </table></div>
+    <div style="font-size:11px;color:var(--text-muted);margin-top:8px">⚠️ AI 분석이라 가끔 부정확할 수 있어요. 참고용으로 봐주세요.</div>`;
+}
+
 // ================================================================
 // DASHBOARD
 // ================================================================
@@ -750,6 +786,15 @@ async function doSaveAtt(){
 function rGrades(){
   const exams=getExams(),esubs=getExamSubs(),pendSubs=esubs.filter(s=>s.score===null||s.score===undefined);
   document.getElementById('gradesContent').innerHTML=`
+    <div class="card" style="border-left:4px solid var(--primary)">
+      <div class="card-title">🤖 AI 시험지 분석 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(문제별 단원·요구능력·난이도)</span></div>
+      <div class="upload-area" onclick="this.querySelector('input').click()">
+        <div class="u-icon">📄</div><p id="an-label">시험지 사진을 선택하세요</p>
+        <input type="file" accept="image/*" id="an-photo" onchange="document.getElementById('an-label').textContent=this.files[0]?('📎 '+this.files[0].name):'시험지 사진을 선택하세요'">
+      </div>
+      <button class="btn btn-primary" onclick="doAnalyzeExam()">🤖 분석하기</button>
+      <div id="an-result" style="margin-top:14px"></div>
+    </div>
     <div class="card">
       <div class="card-title">📝 시험 만들기</div>
       <div class="form-row-2">
