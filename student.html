@@ -1087,17 +1087,17 @@ function doAskQ() {
 function fileToBase64(file){
   return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).split(',')[1]); r.onerror=rej; r.readAsDataURL(file); });
 }
-async function doAIHint() {
+async function doAIHint(level) {
+  level = Number(level) || 1;
   const textbook=document.getElementById('q-tb').value.trim();
   const page=document.getElementById('q-pg').value.trim();
   const number=document.getElementById('q-num').value.trim();
   const note=document.getElementById('q-note').value.trim();
   if(!textbook && !page && !number && !note){ showToast('교재·페이지·번호 중 하나는 입력해주세요','error'); return; }
+  const labels={1:'1단계 힌트',2:'2단계 힌트',3:'전체 풀이'};
   const box=document.getElementById('aiHintBox');
-  const btn=document.getElementById('aiHintBtn');
   box.style.display='block';
-  box.innerHTML='<div class="ai-label">🤖 AI 힌트</div><p>생각하는 중이에요... ✨</p>';
-  if(btn){ btn.disabled=true; }
+  box.innerHTML='<div class="ai-label">🤖 AI '+labels[level]+'</div><p>생각하는 중이에요... ✨</p>';
   // 첨부한 문제 사진을 AI에게 함께 보냄 (정확도 ↑)
   let imageBase64=null, imageMime=null;
   const fi=document.getElementById('q-photo');
@@ -1107,19 +1107,20 @@ async function doAIHint() {
   try{
     const res=await fetch('/.netlify/functions/ai',{
       method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({textbook,page,number,note,imageBase64,imageMime})
+      body:JSON.stringify({textbook,page,number,note,imageBase64,imageMime,level})
     });
     const data=await res.json();
     if(!res.ok) throw new Error(data.error||'오류');
-    box.innerHTML='<div class="ai-label">🤖 AI 힌트</div><p>'+(data.hint||'힌트를 받지 못했어요').replace(/\n/g,'<br>')+'</p>';
+    const next = level<3
+      ? `<button class="btn btn-outline btn-sm" style="margin-top:12px" onclick="doAIHint(${level+1})">${level===1?'🔍 2단계 힌트 더 보기':'✅ 전체 풀이 보기'}</button>`
+      : '<div style="margin-top:10px;font-size:12px;color:var(--text-muted)">스스로 한 번 더 풀어보면 진짜 내 실력이 돼요 💪</div>';
+    box.innerHTML='<div class="ai-label">🤖 AI '+labels[level]+'</div><p>'+(data.hint||'내용을 받지 못했어요').replace(/\n/g,'<br>')+'</p>'+next;
   }catch(e){
     const msg=(e&&e.message)||'';
     const friendly = /demand|overload|503|UNAVAILABLE|try again|resource|exhausted|quota/i.test(msg)
-      ? 'AI가 잠시 바빠요 🙏 5~10초 후 "1단계 힌트 보기"를 다시 눌러주세요.'
-      : (msg ? ('힌트를 받지 못했어요: '+msg) : '아직 AI가 연결되지 않았어요.');
+      ? 'AI가 잠시 바빠요 🙏 5~10초 후 다시 눌러주세요.'
+      : (msg ? ('내용을 받지 못했어요: '+msg) : '아직 AI가 연결되지 않았어요.');
     box.innerHTML='<div class="ai-label">🤖 AI 힌트</div><p style="color:var(--text-muted)">⚠️ '+friendly+'</p>';
-  }finally{
-    if(btn){ btn.disabled=false; }
   }
 }
 

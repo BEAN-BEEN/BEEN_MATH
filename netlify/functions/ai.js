@@ -15,7 +15,14 @@ exports.handler = async (event) => {
   }
 
   try {
-    const { textbook, page, number, note, imageBase64, imageMime } = JSON.parse(event.body || '{}');
+    const { textbook, page, number, note, imageBase64, imageMime, level } = JSON.parse(event.body || '{}');
+    const lv = Number(level) || 1;
+
+    const levelRule = lv === 1
+      ? '지금은 "1단계 힌트"야. 정답·풀이는 절대 알려주지 말고, 어떤 개념·공식을 떠올려야 하는지와 첫 접근 방법만 2~3문장으로 짧게 안내해줘.'
+      : lv === 2
+      ? '지금은 "2단계 힌트"야. 1단계보다 더 구체적으로, 어떤 식을 세우고 어떻게 전개하는지 풀이의 중간 단계까지 안내해줘. 단, 최종 정답은 남겨두고 학생이 마무리하게 해줘.'
+      : '지금은 "3단계 (전체 풀이)"야. 문제의 전체 풀이를 단계별로 자세히 보여주고 최종 정답까지 알려줘. 학생이 이해하기 쉽게 친절하게 설명해줘.';
 
     const prompt =
 `너는 친절하고 따뜻한 고등학교 수학 선생님이야.
@@ -26,12 +33,9 @@ exports.handler = async (event) => {
 - 문제 번호: ${number || '-'}
 - 학생이 어려워하는 점: ${note || '(없음)'}
 
-규칙:
-1) 정답을 바로 알려주지 마.
-2) 학생이 스스로 풀 수 있도록 "1단계 힌트"만 줘.
-3) 어떤 개념·공식을 떠올려야 하는지, 첫 접근을 어떻게 시작하면 좋은지 2~3문장으로 짧고 따뜻하게 안내해줘.
-4) 한국어로, 중·고등학생 눈높이로 설명해줘.
-${imageBase64 ? '5) 첨부된 문제 사진을 보고, 사진 속 실제 문제에 맞춰 힌트를 줘.' : ''}`;
+${levelRule}
+한국어로, 중·고등학생 눈높이로 설명해줘.
+${imageBase64 ? '첨부된 문제 사진을 보고, 사진 속 실제 문제에 맞춰 설명해줘.' : ''}`;
 
     const provider = (process.env.AI_PROVIDER || 'gemini').toLowerCase();
     let hint = '';
