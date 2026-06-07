@@ -763,13 +763,24 @@ function rGrades(){
       </div>
       <button class="btn btn-primary" onclick="doCreateExam()">시험 등록</button>
     </div>
+    <div class="card">
+      <div class="card-title">✍️ 점수 직접 입력 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(답안지 업로드 없이 바로 기입)</span></div>
+      <div class="form-group" style="max-width:360px">
+        <label class="form-label">시험 선택</label>
+        <select class="form-select" id="ds-exam" onchange="renderDirectScores()">
+          <option value="">시험을 선택하세요</option>
+          ${exams.map(e=>`<option value="${e.id}">${e.title} · ${e.className} (${e.date||'-'})</option>`).join('')}
+        </select>
+      </div>
+      <div id="directScores"></div>
+    </div>
     ${pendSubs.length?`
       <div class="sec-label" style="color:var(--orange)">⏳ 채점 대기 (${pendSubs.length}명)</div>
       ${pendSubs.map(sub=>`
         <div class="card" style="border-left:4px solid var(--orange);margin-bottom:10px">
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
             <div><strong>${sub.studentName}</strong><span style="margin-left:8px;font-size:13px;color:var(--text-muted)">${sub.examTitle} · ${sub.submittedAt}</span></div>
-            <button class="btn btn-outline btn-sm" onclick="showToast('Firebase Storage 연결 후 확인 가능해요')">📷 답안지 보기</button>
+            <button class="btn btn-outline btn-sm" onclick="showPhotoModal((getExamSubs().find(x=>x.id==='${sub.id}')||{}).photos)">📷 답안지 보기</button>
           </div>
           <div style="display:flex;gap:10px;align-items:flex-end">
             <div style="flex:0 0 100px"><label class="form-label">점수</label><input class="form-input" id="sc-${sub.id}" type="number" placeholder="0~100"></div>
@@ -814,6 +825,48 @@ async function doGrade(sid){
   try{
     await updateExamSub(sid,{score,comment:document.getElementById('cm-'+sid).value.trim()});
     showToast('채점이 완료되었어요! 🏆','success');rGrades();
+  }catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+// ✍️ 점수 직접 입력 (답안지 업로드 없이)
+function renderDirectScores(){
+  const examId=document.getElementById('ds-exam').value;
+  const el=document.getElementById('directScores'); if(!el) return;
+  if(!examId){ el.innerHTML=''; return; }
+  const exam=getExams().find(e=>e.id===examId); if(!exam){ el.innerHTML=''; return; }
+  const sts=getStudentsByClass(exam.classId), esubs=getExamSubs();
+  el.innerHTML = sts.length ? `
+    <div class="table-wrap"><table>
+      <thead><tr><th>학생</th><th>점수 (만점 ${exam.maxScore||100})</th><th>코멘트</th><th></th></tr></thead>
+      <tbody>${sts.map(st=>{ const es=esubs.find(s=>s.examId===examId&&s.studentId===st.id); return `
+        <tr>
+          <td><strong>${st.name}</strong></td>
+          <td><input class="form-input" style="width:90px" type="number" id="ds-sc-${st.id}" value="${es&&es.score!=null?es.score:''}" placeholder="0~${exam.maxScore||100}"></td>
+          <td><input class="form-input" id="ds-cm-${st.id}" value="${es?(es.comment||''):''}" placeholder="코멘트(선택)"></td>
+          <td><button class="btn btn-green btn-sm" onclick="doSaveDirect('${examId}','${st.id}')">저장</button></td>
+        </tr>`;}).join('')}</tbody>
+    </table></div>
+    <button class="btn btn-primary btn-sm" style="margin-top:10px" onclick="doSaveAllDirect('${examId}')">전체 한번에 저장</button>`
+  : '<div style="color:var(--text-muted);padding:12px">이 반에 배정된 학생이 없어요</div>';
+}
+async function upsertExamScore(exam, student, score, comment){
+  const existing=getExamSubs().find(s=>s.examId===exam.id && s.studentId===student.id);
+  if(existing){ await db.collection('examSubs').doc(existing.id).update({score, comment}); }
+  else{ await db.collection('examSubs').add({ examId:exam.id, examTitle:exam.title, classId:exam.classId, className:exam.className, studentId:student.id, studentName:student.name, submittedAt:new Date().toLocaleString('ko-KR'), score, comment }); }
+  await loadExamSubs();
+}
+async function doSaveDirect(examId, studentId){
+  const exam=getExams().find(e=>e.id===examId), st=getStudents().find(s=>s.id===studentId);
+  const v=document.getElementById('ds-sc-'+studentId).value;
+  if(v===''){ showToast('점수를 입력해주세요','error'); return; }
+  try{ await upsertExamScore(exam, st, parseInt(v), document.getElementById('ds-cm-'+studentId).value.trim()); showToast(`${st.name} ${parseInt(v)}점 저장 ✓`,'success'); }
+  catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+async function doSaveAllDirect(examId){
+  const exam=getExams().find(e=>e.id===examId), sts=getStudentsByClass(exam.classId);
+  let n=0;
+  try{
+    for(const st of sts){ const v=document.getElementById('ds-sc-'+st.id).value; if(v==='')continue; await upsertExamScore(exam, st, parseInt(v), document.getElementById('ds-cm-'+st.id).value.trim()); n++; }
+    showToast(`${n}명 점수 저장 완료 🏆`,'success'); renderDirectScores();
   }catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
 
