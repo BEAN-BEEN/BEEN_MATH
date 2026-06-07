@@ -18,6 +18,9 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
+// 푸시 알림(FCM) 공개 키 (VAPID) — 공개돼도 안전한 값이에요
+const FCM_VAPID_KEY = "BNvh-x2hLucnbXNZILzvs6O2RzhsrUvlrUIbtcS5F3RxQqej25oHhz8zz4s2_HoZ-Ue1EmEJzpSKlzS5VVeJiRo";
+
 // ================================================================
 // 예전 데모(가짜) 데이터 한 번만 청소 — 제로베이스 보장
 // ================================================================

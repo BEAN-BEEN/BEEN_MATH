@@ -474,11 +474,11 @@ function rDashboard(){
 // ================================================================
 // STUDENTS
 // ================================================================
-let showAdd=false;
+let showAdd=false, stSearch='';
 function rStudents(){
-  const sts=getStudents();
   document.getElementById('studentsContent').innerHTML=`
-    <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+      <input class="form-input" id="stSearchInput" style="max-width:260px" placeholder="🔍 학생 이름 검색" value="${stSearch}" oninput="stSearch=this.value;renderStudentRows()">
       <button class="btn btn-primary" onclick="showAdd=!showAdd;rStudents()">➕ 학생 추가</button>
     </div>
     ${showAdd?`
@@ -501,28 +501,30 @@ function rStudents(){
         </div>
         <div style="margin-top:10px;padding:10px;background:var(--green-light);border-radius:var(--radius-sm);font-size:12px;color:var(--green)">✅ 등록하면 학생은 <strong>이름 + 핸드폰 뒤 4자리</strong>로 바로 로그인할 수 있어요. (회원가입·이메일 필요 없음)</div>
       </div>`:``}
-    <div class="card">
-      ${sts.length===0?`<div style="text-align:center;padding:40px;color:var(--text-muted)">아직 등록된 학생이 없어요.<br>오른쪽 위 <strong>➕ 학생 추가</strong>로 첫 학생을 등록해보세요!</div>`:`
+    <div class="card"><div id="studentList"></div></div>
+    <div id="stDetailArea"></div>`;
+  renderStudentRows();
+}
+function renderStudentRows(){
+  const q=(stSearch||'').trim();
+  const sts=getStudents().filter(s=> !q || (s.name||'').includes(q));
+  const el=document.getElementById('studentList'); if(!el) return;
+  el.innerHTML = sts.length===0
+    ? `<div style="text-align:center;padding:40px;color:var(--text-muted)">${q?'🔍 검색 결과가 없어요':'아직 등록된 학생이 없어요. ➕ 학생 추가로 등록하세요!'}</div>`
+    : `<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">총 ${sts.length}명</div>
       <div class="table-wrap"><table>
         <thead><tr><th>이름</th><th>반</th><th>연락처</th><th>학부모 연락처</th><th>로그인 번호</th><th>관리</th></tr></thead>
         <tbody>${sts.map(s=>`
           <tr>
-            <td><strong>${s.name}</strong></td>
+            <td><strong>${s.name}</strong>${s.memo?' <span title="메모 있음">📝</span>':''}</td>
             <td>${classNamesOf(s).map(n=>`<span class="chip" style="margin:1px 2px">${n}</span>`).join('')||'-'}</td>
             <td>${s.phone||'-'}</td>
             <td>${s.parentPhone||'-'}</td>
             <td><span class="badge b-primary">${s.phoneLast4||'-'}</span></td>
-            <td>
-              <div class="btn-row">
-                <button class="btn btn-outline btn-sm" onclick="showStDetail('${s.id}')">상세</button>
-                <button class="btn btn-red btn-sm" onclick="doDelSt('${s.id}','${s.name}')">삭제</button>
-              </div>
-            </td>
+            <td><div class="btn-row"><button class="btn btn-outline btn-sm" onclick="showStDetail('${s.id}')">상세</button><button class="btn btn-red btn-sm" onclick="doDelSt('${s.id}','${s.name}')">삭제</button></div></td>
           </tr>`).join('')}
         </tbody>
-      </table></div>`}
-    </div>
-    <div id="stDetailArea"></div>`;
+      </table></div>`;
 }
 async function doAddSt(){
   const name=document.getElementById('ns-name').value.trim();
@@ -545,8 +547,14 @@ async function doDelSt(id,name){
   try{ await deleteStudentFS(id); showToast('학생이 삭제되었어요','warning'); rStudents(); }
   catch(e){ showToast('삭제 실패: '+e.message,'error'); }
 }
+async function updateStudentFS(id,upd){ await db.collection('students').doc(id).update(upd); await loadStudents(); }
 function showStDetail(id){
   const s=getStudents().find(x=>x.id===id);if(!s)return;
+  const ids=s.classIds||(s.classId?[s.classId]:[]);
+  const myAsgn=getAssignments().filter(a=>ids.includes(a.classId));
+  const mySubs=getSubmissions().filter(x=>x.studentId===s.id);
+  const submitted=myAsgn.filter(a=>mySubs.some(x=>x.assignmentId===a.id)).length;
+  const hwRate=myAsgn.length?Math.round(submitted/myAsgn.length*100)+'%':'-';
   document.getElementById('stDetailArea').innerHTML=`
     <div class="card" style="border-top:3px solid var(--primary)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
@@ -554,15 +562,25 @@ function showStDetail(id){
         <button class="btn btn-outline btn-sm" onclick="document.getElementById('stDetailArea').innerHTML=''">닫기</button>
       </div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
-        <div class="rp-stat"><div class="rp-val">-</div><div class="rp-lbl">숙제 제출률</div></div>
+        <div class="rp-stat"><div class="rp-val">${hwRate}</div><div class="rp-lbl">숙제 제출률 (${submitted}/${myAsgn.length})</div></div>
         <div class="rp-stat"><div class="rp-val">-</div><div class="rp-lbl">출석률</div></div>
         <div class="rp-stat"><div class="rp-val">-</div><div class="rp-lbl">최근 성적</div></div>
       </div>
       <div style="margin-top:12px;font-size:13px"><strong>수강 반</strong> ${classNamesOf(s).join(', ')||'-'}</div>
-      <div style="margin-top:4px;font-size:13px"><strong>연락처</strong> ${s.phone||'-'} · <strong>학부모</strong> ${s.parentPhone||'-'}</div>
-      <div style="margin-top:12px;font-size:12px;color:var(--text-muted)">📌 숙제·출석·성적이 Firebase에 연결되면 자동으로 계산돼요 (다음 단계)</div>
+      <div style="margin-top:4px;font-size:13px"><strong>연락처</strong> ${s.phone||'-'} · <strong>학부모</strong> ${s.parentPhone||'-'} · <strong>학교</strong> ${s.school||'-'}</div>
+      <div style="margin-top:16px">
+        <label class="form-label">📝 선생님 메모 <span style="color:var(--text-muted);font-weight:400">(학생·학부모에게 안 보임)</span></label>
+        <textarea class="form-textarea" id="st-memo-${s.id}" placeholder="특이사항, 통화 기록, 약한 단원 등">${s.memo||''}</textarea>
+        <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="doSaveStMemo('${s.id}')">메모 저장</button>
+      </div>
+      <div style="margin-top:10px;font-size:12px;color:var(--text-muted)">📌 출석률·성적은 다음 단계(Firebase 연결)에서 자동 계산돼요</div>
     </div>`;
   document.getElementById('stDetailArea').scrollIntoView({behavior:'smooth'});
+}
+async function doSaveStMemo(id){
+  const memo=document.getElementById('st-memo-'+id)?.value.trim()||'';
+  try{ await updateStudentFS(id,{memo}); showToast('메모가 저장되었어요 📝','success'); showStDetail(id); renderStudentRows(); }
+  catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
 
 // ================================================================
@@ -571,6 +589,7 @@ function showStDetail(id){
 let hwOpenId=null;
 function rHomework(){
   const asgn=getAssignments();
+  const _today=new Date().toISOString().slice(0,10);
   document.getElementById('homeworkContent').innerHTML=`
     <div class="card">
       <div class="card-title">➕ 새 과제 만들기</div>
@@ -584,14 +603,20 @@ function rHomework(){
       <button class="btn btn-primary" onclick="doCreateAsgn()">과제 저장하기</button>
     </div>
     <div class="sec-label">📋 제출 현황</div>
+    ${asgn.length===0?'<div class="card" style="text-align:center;padding:30px;color:var(--text-muted)">아직 만든 과제가 없어요. 위에서 첫 과제를 만들어보세요!</div>':''}
     ${asgn.map(a=>{
       const subs=getSubsByAssignment(a.id),sts=getStudentsByClass(a.classId),isOpen=hwOpenId===a.id;
+      const missing=Math.max(0, sts.length-subs.length);
+      const overdue=a.dueDate && a.dueDate < _today;
+      const badge = missing===0 ? '<span class="badge b-green">전원 제출 ✓</span>'
+                  : (overdue ? `<span class="badge b-red">마감 지남 · 미제출 ${missing}명</span>` : `<span class="badge b-orange">미제출 ${missing}명</span>`);
       return `
-        <div class="card" style="border-left:4px solid var(--primary);margin-bottom:12px">
+        <div class="card" style="border-left:4px solid ${overdue&&missing>0?'var(--red)':'var(--primary)'};margin-bottom:12px">
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-            <div><span class="chip">${a.className}</span><strong style="margin-left:8px">${a.title}</strong></div>
-            <div style="display:flex;align-items:center;gap:10px">
-              <span style="font-size:12px;color:var(--text-muted)">제출 ${subs.length}/${sts.length} · 마감 ${a.dueDate}</span>
+            <div><span class="chip">${a.className}</span><strong style="margin-left:8px">${a.title}</strong> ${badge}</div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span style="font-size:12px;color:var(--text-muted)">제출 ${subs.length}/${sts.length} · 마감 ${a.dueDate||'-'}</span>
+              ${missing>0?`<button class="btn btn-orange btn-sm" onclick="doRemind('${a.classId}','${(a.title||'').replace(/'/g,'')}')">🔔 독촉 알림</button>`:''}
               <button class="btn btn-outline btn-sm" onclick="hwOpenId=hwOpenId==='${a.id}'?null:'${a.id}';rHomework()">${isOpen?'접기':'현황 보기'}</button>
             </div>
           </div>
@@ -616,10 +641,23 @@ async function doCreateAsgn(){
   try{
     await saveAssignment({classId,className:cls?.name||'',title,content:document.getElementById('hw-content').value.trim(),dueDate:document.getElementById('hw-due').value,maxPhotos:parseInt(document.getElementById('hw-photos').value)||3});
     showToast(`"${title}" 과제 등록 완료! 학생들이 바로 볼 수 있어요 📝`,'success');rHomework();
+    // 푸시 알림 발송 (알림 켠 학생에게)
+    fetch('/.netlify/functions/notify',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({classId, title:'새 숙제가 등록됐어요 📝', body:`${cls?.name||''} · ${title}`})})
+      .then(r=>r.json()).then(j=>{ if(j&&j.sent) showToast(`알림 ${j.sent}명에게 발송 📨`); }).catch(()=>{});
   }catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
 async function doCheck(sid){ await updateSub(sid,{checked:true}); showToast('숙제 확인 완료!','success'); rHomework(); }
 async function doRetry(sid,v){ await updateSub(sid,{needsRetry:v}); showToast(v?'오답 재제출이 요청되었어요':'오답 요청이 취소되었어요',v?'warning':''); rHomework(); }
+// 미제출 독촉 푸시
+function doRemind(classId,title){
+  const cls=CLASSES.find(c=>c.id===classId);
+  showToast('독촉 알림 보내는 중...');
+  fetch('/.netlify/functions/notify',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({classId, title:'숙제 제출 알림 ⏰', body:`${cls?.name||''} · "${title}" 아직 제출 안 했어요!`})})
+    .then(r=>r.json()).then(j=>{ showToast(j&&j.sent?`독촉 알림 ${j.sent}명 발송 📨`:'알림 켠 학생이 없어요','success'); })
+    .catch(()=>showToast('알림 발송 실패 (배포 후 가능)','warning'));
+}
 
 // ================================================================
 // ATTENDANCE

@@ -7,3 +7,7 @@
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
+
+# firebase-admin은 번들 대신 그대로 포함 (esbuild 호환 문제 방지)
+[functions.notify]
+  external_node_modules = ["firebase-admin"]

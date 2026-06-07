@@ -468,6 +468,7 @@
 <!-- Firebase SDK (compat) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
 <script src="firebase-init.js"></script>
 
 <script>
@@ -669,6 +670,12 @@ function renderHome() {
       <h2>👋 ${STUDENT.name} 학생, 제출할 숙제가 ${pending.length}개 있어요!</h2>
       <p>완료한 과제부터 차례대로 제출하고, 어려웠던 문제는 질문으로 남겨보세요.</p>
     </div>
+    ${localStorage.getItem('bm_push_on')!=='1' ? `
+      <div class="alert-card" style="background:var(--primary-light);border-color:var(--primary)">
+        <div class="a-icon">🔔</div>
+        <div style="flex:1"><h4 style="color:var(--primary)">알림을 켜면 새 숙제·공지를 바로 받아요</h4><p>휴대폰 알림으로 알려드려요</p></div>
+        <button class="btn btn-primary btn-sm" onclick="enablePush()">알림 켜기</button>
+      </div>` : ''}
     ${MAKEUP_SCHEDULES.map(m=>`
       <div class="alert-card">
         <div class="a-icon">🔔</div>
@@ -1194,6 +1201,30 @@ function closeDrawer(){document.getElementById('drawerOverlay').classList.remove
 // ================================================================
 // INIT
 // ================================================================
+// 🔔 푸시 알림 켜기 — 권한 요청 + 토큰을 내 학생 문서에 저장
+async function enablePush(){
+  try{
+    if(!('Notification' in window) || !('serviceWorker' in navigator)){ showToast('이 기기는 알림을 지원하지 않아요','error'); return; }
+    const perm = await Notification.requestPermission();
+    if(perm!=='granted'){ showToast('알림이 거부되었어요. 브라우저 설정에서 허용해주세요','warning'); return; }
+    const reg = await navigator.serviceWorker.register('firebase-messaging-sw.js');
+    const messaging = firebase.messaging();
+    const token = await messaging.getToken({ vapidKey: FCM_VAPID_KEY, serviceWorkerRegistration: reg });
+    if(token && STUDENT.id){
+      await db.collection('students').doc(STUDENT.id).set(
+        { fcmTokens: firebase.firestore.FieldValue.arrayUnion(token) }, { merge:true }
+      );
+      // 앱이 켜져있을 때 오는 알림 → 토스트로 표시
+      messaging.onMessage(p=>{ showToast('🔔 '+((p.notification&&p.notification.title)||'새 알림')); });
+      localStorage.setItem('bm_push_on','1');
+      showToast('알림이 켜졌어요! 새 숙제가 오면 알려드릴게요 🔔','success');
+      renderHome();
+    } else {
+      showToast('알림 토큰을 받지 못했어요','error');
+    }
+  }catch(e){ showToast('알림 설정 실패: '+e.message,'error'); }
+}
+
 // 로그아웃 — Firebase 로그아웃 + 세션 지우고 로그인 페이지로
 function logout(){
   if(!confirm('로그아웃 할까요?'))return;
