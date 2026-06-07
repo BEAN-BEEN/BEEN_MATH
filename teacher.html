@@ -634,7 +634,7 @@ function rHomework(){
                 <td><strong>${st.name}</strong></td>
                 <td>${sub?'<span class="badge b-green">제출</span>':'<span class="badge b-red">미제출</span>'}</td>
                 <td style="color:var(--text-muted)">${sub?.submittedAt||'-'}</td>
-                <td>${sub?`<button class="btn btn-outline btn-sm" onclick="showToast('Firebase Storage 연결 후 사용 가능해요')">📷</button>`:'-'}</td>
+                <td>${sub?`<button class="btn btn-outline btn-sm" onclick="openSubPhotos('${sub.id}')">📷 ${(sub.photos&&sub.photos.length)||0}</button>`:'-'}</td>
                 <td>${sub?`<button class="btn ${sub.checked?'btn-green':'btn-outline'} btn-sm" onclick="doCheck('${sub.id}')">${sub.checked?'✓확인됨':'확인하기'}</button>`:'-'}</td>
                 <td>${sub?`<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px"><input type="checkbox" ${sub.needsRetry?'checked':''} onchange="doRetry('${sub.id}',this.checked)"> 오답</label>`:'-'}</td>
               </tr>`;}).join('')}</tbody>
@@ -656,6 +656,19 @@ async function doCreateAsgn(){
 }
 async function doCheck(sid){ await updateSub(sid,{checked:true}); showToast('숙제 확인 완료!','success'); rHomework(); }
 async function doRetry(sid,v){ await updateSub(sid,{needsRetry:v}); showToast(v?'오답 재제출이 요청되었어요':'오답 요청이 취소되었어요',v?'warning':''); rHomework(); }
+// 제출 사진 보기 (간단 뷰어)
+function showPhotoModal(urls){
+  if(!urls||!urls.length){ showToast('등록된 사진이 없어요'); return; }
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:3000;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:12px;padding:24px;overflow:auto;cursor:zoom-out';
+  ov.onclick=()=>ov.remove();
+  ov.innerHTML='<div style="color:#fff;font-size:13px;flex:0 0 auto">사진을 누르면 닫혀요 ✕</div>'+urls.map(u=>`<img src="${u}" style="max-width:92%;max-height:80vh;border-radius:8px">`).join('');
+  document.body.appendChild(ov);
+}
+function openSubPhotos(subId){
+  const sub=getSubmissions().find(s=>s.id===subId);
+  showPhotoModal(sub&&sub.photos);
+}
 // 미제출 독촉 푸시
 function doRemind(classId,title){
   const cls=CLASSES.find(c=>c.id===classId);

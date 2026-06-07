@@ -15,7 +15,7 @@ exports.handler = async (event) => {
   }
 
   try {
-    const { textbook, page, number, note } = JSON.parse(event.body || '{}');
+    const { textbook, page, number, note, imageBase64, imageMime } = JSON.parse(event.body || '{}');
 
     const prompt =
 `너는 친절하고 따뜻한 고등학교 수학 선생님이야.
@@ -30,13 +30,16 @@ exports.handler = async (event) => {
 1) 정답을 바로 알려주지 마.
 2) 학생이 스스로 풀 수 있도록 "1단계 힌트"만 줘.
 3) 어떤 개념·공식을 떠올려야 하는지, 첫 접근을 어떻게 시작하면 좋은지 2~3문장으로 짧고 따뜻하게 안내해줘.
-4) 한국어로, 중·고등학생 눈높이로 설명해줘.`;
+4) 한국어로, 중·고등학생 눈높이로 설명해줘.
+${imageBase64 ? '5) 첨부된 문제 사진을 보고, 사진 속 실제 문제에 맞춰 힌트를 줘.' : ''}`;
 
     const provider = (process.env.AI_PROVIDER || 'gemini').toLowerCase();
     let hint = '';
 
     if (provider === 'openai') {
-      // ---------- GPT (OpenAI) ----------
+      // ---------- GPT (OpenAI) — 이미지 있으면 vision ----------
+      const content = [{ type: 'text', text: prompt }];
+      if (imageBase64) content.push({ type: 'image_url', image_url: { url: `data:${imageMime || 'image/jpeg'};base64,${imageBase64}` } });
       const res = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -45,7 +48,7 @@ exports.handler = async (event) => {
         },
         body: JSON.stringify({
           model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-          messages: [{ role: 'user', content: prompt }],
+          messages: [{ role: 'user', content }],
           temperature: 0.7
         })
       });
@@ -54,13 +57,15 @@ exports.handler = async (event) => {
       hint = (data.choices?.[0]?.message?.content || '').trim();
 
     } else {
-      // ---------- Gemini (Google) ----------
+      // ---------- Gemini (Google) — 이미지 있으면 vision ----------
       const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`;
+      const parts = [{ text: prompt }];
+      if (imageBase64) parts.push({ inline_data: { mime_type: imageMime || 'image/jpeg', data: imageBase64 } });
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+        body: JSON.stringify({ contents: [{ parts }] })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error?.message || 'Gemini 호출 오류');

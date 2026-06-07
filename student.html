@@ -469,6 +469,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
 <script src="firebase-init.js"></script>
 
 <script>
@@ -583,12 +584,25 @@ function getReport(){
   };
 }
 
-// 숙제 제출 → Firebase에 저장 (선생님이 바로 확인)
+// 사진 → Firebase Storage 업로드 후 다운로드 URL 반환
+async function uploadPhotos(files, folder){
+  const urls=[];
+  for(const f of files){
+    const ref=firebase.storage().ref(folder+'/'+Date.now()+'_'+Math.random().toString(36).slice(2,7)+'_'+f.name);
+    await ref.put(f);
+    urls.push(await ref.getDownloadURL());
+  }
+  return urls;
+}
+// 숙제 제출 → 사진 Storage 업로드 + Firebase 저장 (선생님이 바로 확인)
 async function submitHomework(assignmentId) {
   const a = S_ASSIGNMENTS.find(x=>x.id===assignmentId);
+  let photos=[];
+  const fi=document.getElementById('hwfile-'+assignmentId);
+  if(fi && fi.files && fi.files.length){ photos=await uploadPhotos(fi.files, 'submissions/'+assignmentId); }
   await db.collection('submissions').add({
     assignmentId, assignmentTitle:a?a.title:'', classId:a?a.classId:'', className:a?a.className:'',
-    studentId:STUDENT.id, studentName:STUDENT.name,
+    studentId:STUDENT.id, studentName:STUDENT.name, photos,
     submittedAt:new Date().toLocaleString('ko-KR'), checked:false, needsRetry:false
   });
   await loadStudentData();
@@ -794,7 +808,7 @@ function renderHomework() {
           <div class="upload-area" onclick="this.querySelector('input').click()">
             <div class="u-icon">📷</div>
             <p>사진을 선택하세요 (최대 ${a.maxPhotos}장)<br><small>Firebase Storage 연결 시 업로드 활성화</small></p>
-            <input type="file" accept="image/*" multiple onchange="handlePreview(this,'${a.id}')">
+            <input type="file" accept="image/*" multiple id="hwfile-${a.id}" onchange="handlePreview(this,'${a.id}')">
           </div>
           <div id="prev-${a.id}" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"></div>
           <button class="btn btn-primary" onclick="doSubmit('${a.id}')">제출하기 ✓</button>
@@ -1034,8 +1048,8 @@ function renderQuestions() {
       </div>
       <div class="form-group"><label class="form-label">어려운 점 (선택)</label><textarea class="form-textarea" id="q-note" placeholder="어떤 부분이 막히는지 적어주세요"></textarea></div>
       <div class="upload-area" onclick="this.querySelector('input').click()">
-        <div class="u-icon">📷</div><p>문제 사진 첨부 (선택)</p>
-        <input type="file" accept="image/*">
+        <div class="u-icon">📷</div><p>문제 사진 첨부 <strong>(첨부하면 AI가 정확해져요!)</strong></p>
+        <input type="file" accept="image/*" id="q-photo" onchange="this.closest('.upload-area').querySelector('p').innerHTML=this.files[0]?('📎 '+this.files[0].name):'문제 사진 첨부'">
       </div>
       <div class="btn-row">
         <button class="btn btn-outline" id="aiHintBtn" onclick="doAIHint()">🤖 1단계 힌트 보기</button>
@@ -1069,6 +1083,10 @@ function doAskQ() {
 }
 
 // 🤖 AI 1단계 힌트 — Netlify 서버리스 함수(/.netlify/functions/ai) 호출
+// 파일 → base64 (AI 이미지 전송용)
+function fileToBase64(file){
+  return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).split(',')[1]); r.onerror=rej; r.readAsDataURL(file); });
+}
 async function doAIHint() {
   const textbook=document.getElementById('q-tb').value.trim();
   const page=document.getElementById('q-pg').value.trim();
@@ -1080,10 +1098,16 @@ async function doAIHint() {
   box.style.display='block';
   box.innerHTML='<div class="ai-label">🤖 AI 힌트</div><p>생각하는 중이에요... ✨</p>';
   if(btn){ btn.disabled=true; }
+  // 첨부한 문제 사진을 AI에게 함께 보냄 (정확도 ↑)
+  let imageBase64=null, imageMime=null;
+  const fi=document.getElementById('q-photo');
+  if(fi && fi.files && fi.files[0]){
+    try{ imageBase64=await fileToBase64(fi.files[0]); imageMime=fi.files[0].type; }catch(e){}
+  }
   try{
     const res=await fetch('/.netlify/functions/ai',{
       method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({textbook,page,number,note})
+      body:JSON.stringify({textbook,page,number,note,imageBase64,imageMime})
     });
     const data=await res.json();
     if(!res.ok) throw new Error(data.error||'오류');
