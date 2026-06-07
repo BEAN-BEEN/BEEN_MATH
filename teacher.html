@@ -329,7 +329,7 @@ async function loadExamSubs(){ const s=await db.collection('examSubs').get(); EX
 function getAttendance(){return ATTENDANCE_CACHE;}
 function getExams(){return EXAMS_CACHE;}
 function getExamSubs(){return EXAMSUBS_CACHE;}
-async function saveAttendance(d){ await db.collection('attendance').doc(d.date+'_'+d.classId).set(d); await loadAttendance(); }
+async function saveAttendance(d){ d.ts=Date.now(); await db.collection('attendance').doc(d.date+'_'+d.classId).set(d); await loadAttendance(); }
 async function saveExam(d){ d.createdAt=new Date().toISOString().slice(0,10); await db.collection('exams').add(d); await loadExams(); }
 async function updateExamSub(sid,u){ await db.collection('examSubs').doc(sid).update(u); await loadExamSubs(); }
 
@@ -969,7 +969,7 @@ function renderDirectScores(){
 async function upsertExamScore(exam, student, score, comment){
   const existing=getExamSubs().find(s=>s.examId===exam.id && s.studentId===student.id);
   if(existing){ await db.collection('examSubs').doc(existing.id).update({score, comment}); }
-  else{ await db.collection('examSubs').add({ examId:exam.id, examTitle:exam.title, classId:exam.classId, className:exam.className, studentId:student.id, studentName:student.name, submittedAt:new Date().toLocaleString('ko-KR'), score, comment }); }
+  else{ await db.collection('examSubs').add({ examId:exam.id, examTitle:exam.title, classId:exam.classId, className:exam.className, studentId:student.id, studentName:student.name, submittedAt:new Date().toLocaleString('ko-KR'), score, comment, ts:Date.now() }); }
   await loadExamSubs();
 }
 async function doSaveDirect(examId, studentId){
@@ -1274,6 +1274,30 @@ function logout(){
   location.href='index.html';
 }
 
+// ===== 3개월 자동삭제 (하루 1회) — 사진 비용 절약 =====
+// 사진: 3개월 지난 제출/답안지 사진을 Storage에서 삭제
+// 기록: 3개월 지난 출석·질문·상담 문서 삭제 (성적 점수는 보존)
+async function pruneOldFirebase(){
+  const today=new Date().toISOString().slice(0,10);
+  if(localStorage.getItem('bm_lastPrune')===today) return;  // 하루 1회만
+  const cutoff=Date.now() - 92*24*60*60*1000;  // 약 3개월
+  const delPhotos=async (urls)=>{ if(Array.isArray(urls)) for(const u of urls){ try{ await firebase.storage().refFromURL(u).delete(); }catch(e){} } };
+  try{
+    // 숙제 제출: 사진 + 문서 삭제
+    const subs=await db.collection('submissions').where('ts','<',cutoff).get();
+    for(const d of subs.docs){ await delPhotos(d.data().photos); await d.ref.delete(); }
+    // 답안지: 사진만 삭제(점수는 보존)
+    const es=await db.collection('examSubs').where('ts','<',cutoff).get();
+    for(const d of es.docs){ const s=d.data(); if(Array.isArray(s.photos)&&s.photos.length){ await delPhotos(s.photos); await d.ref.update({photos:[]}); } }
+    // 날짜 기록: 출석·질문·상담 문서 삭제
+    for(const col of ['attendance','questions','consultations']){
+      const snap=await db.collection(col).where('ts','<',cutoff).get();
+      for(const d of snap.docs){ await d.ref.delete(); }
+    }
+    localStorage.setItem('bm_lastPrune', today);
+  }catch(e){ /* 색인 준비 전이면 조용히 패스 */ }
+}
+
 async function init(){
   requireRole('teacher');   // 선생님 아니면 로그인 페이지로
   document.getElementById('todayDate').textContent=new Date().toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
@@ -1293,6 +1317,7 @@ async function init(){
     await loadReports();         // 리포트
   }catch(e){ showToast('데이터를 불러오지 못했어요: '+e.message,'error'); }
   rDashboard();
+  pruneOldFirebase();            // 3개월 지난 사진·기록 자동 정리 (백그라운드)
 }
 document.addEventListener('DOMContentLoaded',init);
 </script>
