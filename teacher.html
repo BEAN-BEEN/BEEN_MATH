@@ -520,7 +520,41 @@ function rDashboard(){
 // ================================================================
 // STUDENTS
 // ================================================================
-let showAdd=false, stSearch='';
+let showAdd=false, stSearch='', editStudentId=null;
+function renderEditCard(){
+  const s=getStudents().find(x=>x.id===editStudentId); if(!s) return '';
+  const ids=s.classIds||(s.classId?[s.classId]:[]);
+  return `<div class="card" id="editCard" style="border-left:4px solid var(--orange)">
+    <div class="card-title">✏️ ${s.name} 정보 수정</div>
+    <div class="form-row-2">
+      <div class="form-group"><label class="form-label">이름 *</label><input class="form-input" id="es-name" value="${s.name||''}"></div>
+      <div class="form-group"><label class="form-label">핸드폰 번호 *</label><input class="form-input" id="es-phone" value="${s.phone||''}"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">반 배정 <span style="color:var(--text-muted);font-weight:400">(반 이동 시 체크 변경 — 지난 기록은 유지돼요)</span></label>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${CLASSES.map(c=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;border:1.5px solid var(--border);border-radius:7px;padding:6px 9px;cursor:pointer"><input type="checkbox" class="es-class-chk" value="${c.id}" ${ids.includes(c.id)?'checked':''}> ${c.name} <span style="color:var(--text-muted)">${(WD_LABEL[c.weekday]||'')+(c.slot||'')}</span></label>`).join('')}
+      </div>
+    </div>
+    <div class="form-group" style="max-width:280px"><label class="form-label">학부모 연락처</label><input class="form-input" id="es-parent" value="${s.parentPhone||''}"></div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="doSaveEdit()">수정 저장</button>
+      <button class="btn btn-outline" onclick="editStudentId=null;rStudents()">취소</button>
+    </div>
+  </div>`;
+}
+async function doSaveEdit(){
+  const s=getStudents().find(x=>x.id===editStudentId); if(!s)return;
+  const name=document.getElementById('es-name').value.trim();
+  const phone=document.getElementById('es-phone').value.trim();
+  const parentPhone=document.getElementById('es-parent').value.trim();
+  const classIds=[...document.querySelectorAll('.es-class-chk:checked')].map(el=>el.value);
+  const classNames=classIds.map(id=>CLASSES.find(c=>c.id===id)?.name).filter(Boolean);
+  if(!name||!phone){showToast('이름과 핸드폰 번호를 입력해주세요','error');return;}
+  const last4=phone.replace(/[^0-9]/g,'').slice(-4);
+  try{ await updateStudentFS(editStudentId,{name,phone,phoneLast4:last4,parentPhone,classIds,classNames}); editStudentId=null; showToast(`${name} 정보 수정 완료 ✓`,'success'); rStudents(); }
+  catch(e){ showToast('수정 실패: '+e.message,'error'); }
+}
 function rStudents(){
   document.getElementById('studentsContent').innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
@@ -547,6 +581,7 @@ function rStudents(){
         </div>
         <div style="margin-top:10px;padding:10px;background:var(--green-light);border-radius:var(--radius-sm);font-size:12px;color:var(--green)">✅ 등록하면 학생은 <strong>이름 + 핸드폰 뒤 4자리</strong>로 바로 로그인할 수 있어요. (회원가입·이메일 필요 없음)</div>
       </div>`:``}
+    ${editStudentId?renderEditCard():''}
     <div class="card"><div id="studentList"></div></div>
     <div id="stDetailArea"></div>`;
   renderStudentRows();
@@ -567,7 +602,7 @@ function renderStudentRows(){
             <td>${s.phone||'-'}</td>
             <td>${s.parentPhone||'-'}</td>
             <td><span class="badge b-primary">${s.phoneLast4||'-'}</span></td>
-            <td><div class="btn-row"><button class="btn btn-outline btn-sm" onclick="showStDetail('${s.id}')">상세</button><button class="btn btn-red btn-sm" onclick="doDelSt('${s.id}','${s.name}')">삭제</button></div></td>
+            <td><div class="btn-row"><button class="btn btn-outline btn-sm" onclick="showStDetail('${s.id}')">상세</button><button class="btn btn-outline btn-sm" onclick="editStudentId='${s.id}';showAdd=false;rStudents();window.scrollTo(0,0)">수정</button><button class="btn btn-red btn-sm" onclick="doDelSt('${s.id}','${s.name}')">삭제</button></div></td>
           </tr>`).join('')}
         </tbody>
       </table></div>`;
