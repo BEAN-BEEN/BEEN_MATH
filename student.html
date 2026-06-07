@@ -1113,7 +1113,11 @@ async function doAIHint() {
     if(!res.ok) throw new Error(data.error||'오류');
     box.innerHTML='<div class="ai-label">🤖 AI 힌트</div><p>'+(data.hint||'힌트를 받지 못했어요').replace(/\n/g,'<br>')+'</p>';
   }catch(e){
-    box.innerHTML='<div class="ai-label">🤖 AI 힌트</div><p style="color:var(--text-muted)">아직 AI가 연결되지 않았어요. (Netlify 배포 + API 키 설정 후 사용 가능해요)</p>';
+    const msg=(e&&e.message)||'';
+    const friendly = /demand|overload|503|UNAVAILABLE|try again|resource|exhausted|quota/i.test(msg)
+      ? 'AI가 잠시 바빠요 🙏 5~10초 후 "1단계 힌트 보기"를 다시 눌러주세요.'
+      : (msg ? ('힌트를 받지 못했어요: '+msg) : '아직 AI가 연결되지 않았어요.');
+    box.innerHTML='<div class="ai-label">🤖 AI 힌트</div><p style="color:var(--text-muted)">⚠️ '+friendly+'</p>';
   }finally{
     if(btn){ btn.disabled=false; }
   }
