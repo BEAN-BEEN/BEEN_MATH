@@ -69,6 +69,6 @@ const FCM_VAPID_KEY = "BNvh-x2hLucnbXNZILzvs6O2RzhsrUvlrUIbtcS5F3RxQqej25oHhz8zz
 // ================================================================
 function requireRole(role){
   if (localStorage.getItem('bm_role') !== role) {
-    location.href = 'index.html';
+    location.href = 'login.html';
   }
 }

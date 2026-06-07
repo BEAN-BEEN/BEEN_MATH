@@ -21,3 +21,7 @@
   for = "/firebase-init.js"
   [headers.values]
     Cache-Control = "no-cache, max-age=0, must-revalidate"
+[[headers]]
+  for = "/icon.svg"
+  [headers.values]
+    Cache-Control = "no-cache, max-age=0, must-revalidate"

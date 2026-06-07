@@ -1265,7 +1265,7 @@ async function doSaveRp(){
 function logout(){
   if(!confirm('로그아웃 할까요?'))return;
   ['bm_role','bm_email','bm_uid','bm_demo','bm_studentId','bm_studentName','bm_classId','bm_classIds','bm_className'].forEach(k=>localStorage.removeItem(k));
-  location.href='index.html';
+  location.href='login.html';
 }
 
 async function init(){
