@@ -94,22 +94,17 @@ async function callModel(env, prompt, imageBase64, imageMime, jsonMode) {
     return (data.choices?.[0]?.message?.content || '').trim();
   }
   // Gemini
+  if (!env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY 환경변수가 없어요');
   const model = env.GEMINI_MODEL || 'gemini-2.5-flash';
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
   const parts = [{ text: prompt }];
   if (imageBase64) parts.push({ inline_data: { mime_type: imageMime || 'image/jpeg', data: imageBase64 } });
   const reqBody = { contents: [{ parts }] };
   if (jsonMode) reqBody.generationConfig = { responseMimeType: 'application/json' };
-  let lastErr = 'Gemini 오류';
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(reqBody) });
-    const data = await res.json();
-    if (res.ok) return (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
-    lastErr = data.error?.message || lastErr;
-    if (!/overload|UNAVAILABLE|503|high demand/i.test(lastErr)) break;
-    await new Promise(r => setTimeout(r, 800));
-  }
-  throw new Error(lastErr);
+  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(reqBody) });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error?.message || ('Gemini 오류 ' + res.status));
+  return (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
 }
 
 // ----------------------------------------------------------------
