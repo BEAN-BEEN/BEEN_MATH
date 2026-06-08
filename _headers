@@ -1,0 +1,10 @@
+# Cloudflare 정적 자산 헤더
+# HTML / 공유 JS는 항상 최신을 받도록 캐시 금지 (옛 코드가 박히는 문제 방지)
+/*.html
+  Cache-Control: no-cache, no-store, must-revalidate
+/
+  Cache-Control: no-cache, no-store, must-revalidate
+/firebase-init.js
+  Cache-Control: no-cache, no-store, must-revalidate
+/firebase-messaging-sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
