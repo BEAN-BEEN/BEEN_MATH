@@ -14,18 +14,23 @@
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
-      --primary:#5B6CF5; --primary-dark:#4F46E5; --primary-light:#EEF2FF;
+      --primary:#5B6CF5; --primary-dark:#4F46E5; --primary-light:#EEF2FF; --primary-2:#818CF8;
       --orange:#F97316; --orange-light:#FFF7ED;
       --green:#10B981; --green-light:#ECFDF5;
       --red:#F43F5E; --red-light:#FFF1F2;
       --yellow:#F59E0B; --yellow-light:#FFFBEB;
-      --bg:#F1F5F9; --surface:#FFFFFF;
+      --bg:#F4F6FB; --surface:#FFFFFF;
       --text:#0F172A; --text-sub:#334155; --text-muted:#64748B;
-      --border:#E2E8F0; --sidebar-w:250px;
-      --radius:12px; --radius-sm:8px;
-      --shadow:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.05);
-      --shadow-md:0 4px 6px -1px rgba(0,0,0,.1);
+      --border:#E8EDF4; --sidebar-w:250px;
+      --radius:16px; --radius-sm:11px;
+      --shadow:0 1px 2px rgba(16,24,40,.04),0 4px 12px rgba(16,24,40,.05);
+      --shadow-md:0 6px 16px -4px rgba(16,24,40,.1),0 4px 8px -4px rgba(16,24,40,.06);
     }
+    /* 🌸 계절 테마 — 브랜드(primary) 색만 바뀌고 상태색은 유지 */
+    [data-theme="spring"]{ --primary:#E96A9E; --primary-dark:#D5588C; --primary-light:#FDF1F7; --primary-2:#F6A6C6; }
+    [data-theme="summer"]{ --primary:#0EA5B7; --primary-dark:#0C8A99; --primary-light:#EBFDFF; --primary-2:#4FD1DE; }
+    [data-theme="autumn"]{ --primary:#DD7A2E; --primary-dark:#C2641C; --primary-light:#FFF6EC; --primary-2:#F0A862; }
+    [data-theme="winter"]{ --primary:#3F6FD1; --primary-dark:#3257AE; --primary-light:#EEF3FF; --primary-2:#7BA0E8; }
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:'Noto Sans KR',-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;overflow-x:hidden;-webkit-text-size-adjust:100%}
     img{max-width:100%;height:auto}
@@ -200,6 +205,8 @@
     </div>
     <div class="sidebar-nav" id="sidebarNav"></div>
     <div class="sidebar-footer">
+      <div style="font-size:11px;color:rgba(255,255,255,.5);font-weight:600;margin-bottom:7px">🎨 테마 색상</div>
+      <div id="themeDots" style="margin-bottom:12px"></div>
       <p style="margin-bottom:8px">👩‍🏫 혜빈쌤 로그인 중</p>
       <button onclick="logout()" style="width:100%;padding:8px;background:rgba(255,255,255,.1);color:rgba(255,255,255,.8);border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">🚪 로그아웃</button>
     </div>
@@ -256,7 +263,7 @@
 <!-- Firebase SDK (compat) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-<script src="firebase-init.js"></script>
+<script src="firebase-init.js?v=2026060902"></script>
 
 <script>
 // ================================================================
@@ -408,8 +415,10 @@ function buildSidebar(){
     <div class="nav-item ${n.id===curSec?'active':''}" onclick="navigate('${n.id}')" data-sec="${n.id}">
       <span class="nav-icon">${ICONS[n.id]||''}</span><span>${n.label}</span>
     </div>`).join('');
+  renderThemeDots();
 }
 function navigate(s){
+  window.__curView=s;
   document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));
   document.getElementById('sec-'+s)?.classList.add('active');
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.sec===s));
@@ -1508,6 +1517,7 @@ async function init(){
   requireRole('teacher');   // 선생님 아니면 로그인 페이지로
   document.getElementById('todayDate').textContent=new Date().toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
   buildSidebar();
+  loadThemeCloud();              // 학원 공통 테마 적용
   try{
     await loadClasses();         // 반 목록 (없으면 13개 자동 생성)
     await loadStudents();        // 학생 명단

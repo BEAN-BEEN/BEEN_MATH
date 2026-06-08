@@ -22,6 +22,57 @@ const db = firebase.firestore();
 const FCM_VAPID_KEY = "BNvh-x2hLucnbXNZILzvs6O2RzhsrUvlrUIbtcS5F3RxQqej25oHhz8zz4s2_HoZ-Ue1EmEJzpSKlzS5VVeJiRo";
 
 // ================================================================
+// 🌸 계절 테마 — 저장된 테마를 즉시 적용 (양 포털 공통)
+//  기본 / spring(봄) / summer(여름) / autumn(가을) / winter(겨울)
+// ================================================================
+const BM_THEMES = [
+  { id:'default', label:'기본', color:'#5B6CF5' },
+  { id:'spring',  label:'봄',   color:'#E96A9E' },
+  { id:'summer',  label:'여름', color:'#0EA5B7' },
+  { id:'autumn',  label:'가을', color:'#DD7A2E' },
+  { id:'winter',  label:'겨울', color:'#3F6FD1' }
+];
+// 저장된(캐시된) 테마를 즉시 적용 — 깜빡임 방지
+(function applyTheme(){
+  var t = localStorage.getItem('bm_theme');
+  if (t && t !== 'default') document.documentElement.setAttribute('data-theme', t);
+})();
+// 화면에만 테마 반영(저장 X)
+function applyThemeOnly(t){
+  if (t && t !== 'default') document.documentElement.setAttribute('data-theme', t);
+  else document.documentElement.removeAttribute('data-theme');
+  localStorage.setItem('bm_theme', t || 'default');
+  try { if (typeof renderThemeDots === 'function') renderThemeDots(); } catch(e){}
+  try { if (typeof navigate === 'function' && window.__curView) navigate(window.__curView); } catch(e){}
+}
+// 선생님이 테마 선택 → 화면 반영 + 학원 전체(Firebase)에 저장
+function setTheme(t){
+  applyThemeOnly(t);
+  try { db.collection('config').doc('theme').set({ theme: t || 'default', ts: Date.now() }); } catch(e){}
+}
+// 로그인/시작 시 학원 공통 테마를 Firebase에서 불러와 적용 (모든 학생 동일 색)
+async function loadThemeCloud(){
+  try {
+    var d = await db.collection('config').doc('theme').get();
+    if (d.exists && d.data().theme) applyThemeOnly(d.data().theme);
+  } catch(e){}
+}
+function currentTheme(){ return localStorage.getItem('bm_theme') || 'default'; }
+// 사이드바의 #themeDots 영역을 채움
+function renderThemeDots(){ var el=document.getElementById('themeDots'); if(el) el.innerHTML=themeDotsHtml(); }
+// 테마 선택 점들 HTML (사이드바에서 사용)
+function themeDotsHtml(){
+  var cur = currentTheme();
+  return '<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">' +
+    BM_THEMES.map(function(t){
+      var on = t.id===cur;
+      return '<button title="'+t.label+'" onclick="setTheme(\''+t.id+'\')" '+
+        'style="width:22px;height:22px;border-radius:50%;cursor:pointer;background:'+t.color+';'+
+        'border:2px solid '+(on?'#fff':'transparent')+';box-shadow:0 0 0 '+(on?'2px '+t.color:'1px rgba(0,0,0,.12)')+';transition:all .15s"></button>';
+    }).join('') + '</div>';
+}
+
+// ================================================================
 // 예전 데모(가짜) 데이터 한 번만 청소 — 제로베이스 보장
 // ================================================================
 (function cleanupOldData(){

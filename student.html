@@ -14,18 +14,23 @@
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
-      --primary:#5B6CF5; --primary-dark:#4F46E5; --primary-light:#EEF2FF;
+      --primary:#5B6CF5; --primary-dark:#4F46E5; --primary-light:#EEF2FF; --primary-2:#818CF8;
       --orange:#F97316; --orange-light:#FFF7ED;
       --green:#10B981; --green-light:#ECFDF5;
       --red:#F43F5E; --red-light:#FFF1F2;
       --yellow:#F59E0B; --yellow-light:#FFFBEB;
-      --bg:#F1F5F9; --surface:#FFFFFF;
+      --bg:#F4F6FB; --surface:#FFFFFF;
       --text:#0F172A; --text-sub:#334155; --text-muted:#64748B;
-      --border:#E2E8F0; --sidebar-w:240px;
-      --radius:12px; --radius-sm:8px;
-      --shadow:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.05);
-      --shadow-md:0 4px 6px -1px rgba(0,0,0,.1),0 2px 4px -2px rgba(0,0,0,.06);
+      --border:#E8EDF4; --sidebar-w:240px;
+      --radius:16px; --radius-sm:11px;
+      --shadow:0 1px 2px rgba(16,24,40,.04),0 4px 12px rgba(16,24,40,.05);
+      --shadow-md:0 6px 16px -4px rgba(16,24,40,.1),0 4px 8px -4px rgba(16,24,40,.06);
     }
+    /* 🌸 계절 테마 — 브랜드(primary) 색만 바뀌고 상태색은 유지 */
+    [data-theme="spring"]{ --primary:#E96A9E; --primary-dark:#D5588C; --primary-light:#FDF1F7; --primary-2:#F6A6C6; }
+    [data-theme="summer"]{ --primary:#0EA5B7; --primary-dark:#0C8A99; --primary-light:#EBFDFF; --primary-2:#4FD1DE; }
+    [data-theme="autumn"]{ --primary:#DD7A2E; --primary-dark:#C2641C; --primary-light:#FFF6EC; --primary-2:#F0A862; }
+    [data-theme="winter"]{ --primary:#3F6FD1; --primary-dark:#3257AE; --primary-light:#EEF3FF; --primary-2:#7BA0E8; }
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:'Noto Sans KR',-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;overflow-x:hidden;-webkit-text-size-adjust:100%}
     img{max-width:100%;height:auto}
@@ -58,7 +63,7 @@
     .card-title{font-size:15px;font-weight:700;margin-bottom:14px}
 
     /* === HERO === */
-    .hero-banner{background:linear-gradient(135deg,var(--primary) 0%,#818CF8 100%);border-radius:var(--radius);padding:28px;color:#fff;margin-bottom:20px}
+    .hero-banner{background:linear-gradient(135deg,var(--primary) 0%,var(--primary-2) 100%);border-radius:var(--radius);padding:28px;color:#fff;margin-bottom:20px}
     .hero-banner h2{font-size:20px;font-weight:700;letter-spacing:-.5px;margin-bottom:8px}
     .hero-banner p{font-size:13px;opacity:.9;line-height:1.7}
 
@@ -131,7 +136,7 @@
     .bar-row{display:flex;align-items:center;gap:12px;margin-bottom:12px}
     .bar-lbl{font-size:12px;color:var(--text-muted);min-width:85px;text-align:right}
     .bar-track{flex:1;height:28px;background:var(--bg);border-radius:4px;overflow:hidden}
-    .bar-fill{height:100%;background:linear-gradient(90deg,var(--primary) 0%,#818CF8 100%);border-radius:4px;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;transition:width .7s ease}
+    .bar-fill{height:100%;background:linear-gradient(90deg,var(--primary) 0%,var(--primary-2) 100%);border-radius:4px;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;transition:width .7s ease}
     .bar-fill span{font-size:12px;font-weight:700;color:#fff}
 
     /* === REPORT === */
@@ -140,7 +145,7 @@
     .rp-stat .rval{font-size:28px;font-weight:800;color:var(--primary);letter-spacing:-1px;line-height:1}
     .rp-stat .runit{font-size:14px;font-weight:700;color:var(--primary)}
     .rp-stat .rlabel{font-size:12px;color:var(--text-muted);margin-top:6px}
-    .tc-card{background:linear-gradient(135deg,#6366F1 0%,#8B5CF6 100%);border-radius:var(--radius);padding:22px;color:#fff;display:flex;gap:16px;align-items:flex-start;margin-bottom:16px}
+    .tc-card{background:linear-gradient(135deg,var(--primary) 0%,var(--primary-2) 100%);border-radius:var(--radius);padding:22px;color:#fff;display:flex;gap:16px;align-items:flex-start;margin-bottom:16px}
     .tc-avatar{width:50px;height:50px;background:rgba(255,255,255,.2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0}
     .tc-content h4{font-size:13px;font-weight:700;margin-bottom:8px;opacity:.9}
     .tc-content p{font-size:14px;line-height:1.7}
@@ -206,7 +211,7 @@
     .success-screen p{font-size:14px;color:var(--text-muted)}
 
     /* === TEACHER PAGE === */
-    .teacher-hero{background:linear-gradient(135deg,#667EEA 0%,#764BA2 100%);border-radius:var(--radius);padding:32px;color:#fff;text-align:center;margin-bottom:20px}
+    .teacher-hero{background:linear-gradient(135deg,var(--primary) 0%,var(--primary-2) 100%);border-radius:var(--radius);padding:32px;color:#fff;text-align:center;margin-bottom:20px}
     .teacher-hero .t-emoji{font-size:64px;margin-bottom:12px}
     .teacher-hero h2{font-size:22px;font-weight:800;margin-bottom:8px}
     .teacher-hero p{font-size:14px;opacity:.9;line-height:1.7;max-width:420px;margin:0 auto}
@@ -474,7 +479,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
-<script src="firebase-init.js"></script>
+<script src="firebase-init.js?v=2026060902"></script>
 
 <script>
 // ================================================================
@@ -722,9 +727,11 @@ function buildSidebar() {
     <div class="nav-item ${n.id===currentSection?'active':''}" onclick="navigate('${n.id}')" data-sec="${n.id}">
       <span class="nav-icon">${ICONS[n.id]||''}</span><span>${n.label}</span>
     </div>`).join('');
+  renderThemeDots();
 }
 
 function navigate(sec) {
+  window.__curView = sec;
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.getElementById('sec-'+sec)?.classList.add('active');
   document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.sec===sec));
@@ -1064,13 +1071,14 @@ function renderGrades() {
     const yFor=v=> H-pad - (v/100)*(H-2*pad);
     const linePts=recent.map((e,i)=>`${xFor(i).toFixed(1)},${yFor(e.score).toFixed(1)}`).join(' ');
     const avg=Math.round(recent.reduce((a,e)=>a+e.score,0)/n);
+    const pc=(getComputedStyle(document.documentElement).getPropertyValue('--primary')||'#5B6CF5').trim();
     html += `
       <div class="card">
         <div class="card-title">📈 성적 변화 (평균 ${avg}점)</div>
         <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;overflow:visible">
           ${[0,25,50,75,100].map(g=>`<line x1="${pad}" y1="${yFor(g).toFixed(1)}" x2="${W-pad}" y2="${yFor(g).toFixed(1)}" stroke="#E2E8F0" stroke-width="1"/><text x="${pad-6}" y="${(yFor(g)+3).toFixed(1)}" font-size="9" fill="#94A3B8" text-anchor="end">${g}</text>`).join('')}
-          ${n>1?`<polyline points="${linePts}" fill="none" stroke="#5B6CF5" stroke-width="2.5" stroke-linejoin="round"/>`:''}
-          ${recent.map((e,i)=>`<circle cx="${xFor(i).toFixed(1)}" cy="${yFor(e.score).toFixed(1)}" r="4" fill="#5B6CF5"/><text x="${xFor(i).toFixed(1)}" y="${(yFor(e.score)-9).toFixed(1)}" font-size="11" font-weight="700" fill="#5B6CF5" text-anchor="middle">${e.score}</text><text x="${xFor(i).toFixed(1)}" y="${H-8}" font-size="9" fill="#64748B" text-anchor="middle">${(e.title||'').slice(0,7)}</text>`).join('')}
+          ${n>1?`<polyline points="${linePts}" fill="none" stroke="${pc}" stroke-width="2.5" stroke-linejoin="round"/>`:''}
+          ${recent.map((e,i)=>`<circle cx="${xFor(i).toFixed(1)}" cy="${yFor(e.score).toFixed(1)}" r="4" fill="${pc}"/><text x="${xFor(i).toFixed(1)}" y="${(yFor(e.score)-9).toFixed(1)}" font-size="11" font-weight="700" fill="${pc}" text-anchor="middle">${e.score}</text><text x="${xFor(i).toFixed(1)}" y="${H-8}" font-size="9" fill="#64748B" text-anchor="middle">${(e.title||'').slice(0,7)}</text>`).join('')}
         </svg>
         <div style="font-size:12px;color:var(--text-muted);text-align:center;margin-top:8px">꾸준히 성장하고 있어요! 다음 목표는 90점 이상 🎯</div>
       </div>`;
@@ -1464,6 +1472,7 @@ async function init(){
   const info = document.getElementById('sidebarUserInfo');
   if(info) info.textContent = STUDENT.name + ' 학생' + (STUDENT.className ? (' · ' + STUDENT.className) : '');
   buildSidebar();
+  loadThemeCloud();                 // 학원 공통 테마 적용
   try{ await loadStudentData(); }   // Firebase에서 내 반·숙제·제출 불러오기
   catch(e){ showToast('데이터를 불러오지 못했어요: '+e.message,'error'); }
   renderHome();
