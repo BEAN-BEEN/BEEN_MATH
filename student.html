@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
@@ -27,7 +27,8 @@
       --shadow-md:0 4px 6px -1px rgba(0,0,0,.1),0 2px 4px -2px rgba(0,0,0,.06);
     }
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'Noto Sans KR',-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px}
+    body{font-family:'Noto Sans KR',-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;overflow-x:hidden;-webkit-text-size-adjust:100%}
+    img{max-width:100%;height:auto}
 
     /* === LAYOUT === */
     .app-layout{display:flex;min-height:100vh}
@@ -271,9 +272,9 @@
     /* === RESPONSIVE === */
     @media(max-width:768px){
       .sidebar{display:none}
-      .main-content{margin-left:0;padding-top:56px;padding-bottom:80px}
-      .mobile-header{display:flex}
-      .bottom-nav{display:flex}
+      .main-content{margin-left:0;padding-top:calc(56px + env(safe-area-inset-top));padding-bottom:calc(80px + env(safe-area-inset-bottom))}
+      .mobile-header{display:flex;height:auto;min-height:56px;padding-top:env(safe-area-inset-top)}
+      .bottom-nav{display:flex;height:auto;min-height:64px;padding-bottom:env(safe-area-inset-bottom)}
       .page-header{padding:16px 16px 0}
       .content-area{padding:0 16px}
       .stats-grid{grid-template-columns:repeat(2,1fr)}
@@ -554,7 +555,7 @@ function getExams(){
     if(!es) status='pending_submission';
     else if(es.score==null) status='grading';
     else status='scored';
-    return { ...e, status, score:es?es.score:null, comment:es?es.comment:'' };
+    return { ...e, status, score:es?es.score:null, comment:es?es.comment:'', weakAbilities:(es&&es.weakAbilities)||[], perQuestion:(es&&es.perQuestion)||[], wrongNos:(es&&es.wrongNos)||'' };
   });
 }
 // 답안지 제출 → Firebase
@@ -576,7 +577,7 @@ function getAssignments(){
     let status;
     if(sub) status='submitted';
     else status=(a.dueDate && a.dueDate < today) ? 'late' : 'pending';
-    return { ...a, status, submittedAt:sub?sub.submittedAt:null, teacherChecked:sub?!!sub.checked:false, needsRetry:sub?!!sub.needsRetry:false };
+    return { ...a, status, submittedAt:sub?sub.submittedAt:null, teacherChecked:sub?!!sub.checked:false, needsRetry:sub?!!sub.needsRetry:false, offline:sub?!!sub.offline:false };
   });
 }
 function getAttendance()  { return S_ATTENDANCE; }
@@ -632,7 +633,17 @@ async function submitHomework(assignmentId) {
   if(fi && fi.files && fi.files.length){ photos=await uploadPhotos(fi.files, 'submissions/'+assignmentId); }
   await db.collection('submissions').add({
     assignmentId, assignmentTitle:a?a.title:'', classId:a?a.classId:'', className:a?a.className:'',
-    studentId:STUDENT.id, studentName:STUDENT.name, photos,
+    studentId:STUDENT.id, studentName:STUDENT.name, photos, offline:false,
+    submittedAt:new Date().toLocaleString('ko-KR'), checked:false, needsRetry:false, ts:Date.now()
+  });
+  await loadStudentData();
+}
+// ✋ 사진 없이 교실에서 직접 검사받기 요청
+async function submitHomeworkOffline(assignmentId) {
+  const a = S_ASSIGNMENTS.find(x=>x.id===assignmentId);
+  await db.collection('submissions').add({
+    assignmentId, assignmentTitle:a?a.title:'', classId:a?a.classId:'', className:a?a.className:'',
+    studentId:STUDENT.id, studentName:STUDENT.name, photos:[], offline:true,
     submittedAt:new Date().toLocaleString('ko-KR'), checked:false, needsRetry:false, ts:Date.now()
   });
   await loadStudentData();
@@ -843,21 +854,23 @@ function renderHomework() {
         ${isPending ? `
           <div class="upload-area" onclick="this.querySelector('input').click()">
             <div class="u-icon">📷</div>
-            <p>사진을 선택하세요 (최대 ${a.maxPhotos}장)<br><small>Firebase Storage 연결 시 업로드 활성화</small></p>
+            <p>사진을 선택하세요 (최대 ${a.maxPhotos}장)</p>
             <input type="file" accept="image/*" multiple id="hwfile-${a.id}" onchange="handlePreview(this,'${a.id}')">
           </div>
           <div id="prev-${a.id}" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"></div>
-          <button class="btn btn-primary" onclick="doSubmit('${a.id}')">제출하기 ✓</button>
+          <div class="btn-row">
+            <button class="btn btn-primary" onclick="doSubmit('${a.id}')">📷 사진으로 제출 ✓</button>
+            <button class="btn btn-outline" onclick="doSubmitOffline('${a.id}')">✋ 교실에서 직접 검사받기</button>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:8px">사진 찍기 어려우면 '직접 검사받기'를 누르고 수업 때 공책을 보여주세요!</div>
         ` : `
           <div class="divider"></div>
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
             <div style="font-size:12px;color:var(--text-muted)">
-              ✅ 제출: ${a.submittedAt||''} &nbsp;·&nbsp; ${a.teacherChecked?'👁 선생님 확인 완료':'⏳ 선생님 확인 중'}
+              ${a.offline?'✋ 직접 검사 요청':'✅ 사진 제출'}: ${a.submittedAt||''} &nbsp;·&nbsp; ${a.teacherChecked?'👁 선생님 확인 완료':'⏳ 선생님 확인 중'}
             </div>
             <div class="btn-row">
-              <button class="btn btn-outline btn-sm" onclick="showToast('사진 보기는 Firebase Storage 연결 후 사용 가능해요')">📷 제출 사진 보기</button>
-              ${a.needsRetry?`<button class="btn btn-orange btn-sm" onclick="showToast('오답 제출 준비 중이에요','warning')">✏️ 오답 제출하기</button>`:``}
-              ${a.needsRetry?`<span class="badge b-red" style="align-self:center">⚠️ 오답 있음</span>`:''}
+              ${a.needsRetry?`<span class="badge b-red" style="align-self:center">⚠️ 오답 있음 — 다시 풀어오세요</span>`:''}
             </div>
           </div>`}
       </div>`;
@@ -881,12 +894,22 @@ function handlePreview(input, id) {
   });
 }
 async function doSubmit(id) {
+  const fi=document.getElementById('hwfile-'+id);
+  if(!fi || !fi.files || !fi.files.length){ showToast('사진을 먼저 선택해주세요. (사진 없이 검사받으려면 ‘직접 검사받기’)','warning'); return; }
   try{
     await submitHomework(id);
     launchConfetti();
     showToast('숙제 제출 완료! 잘했어요 🎉','success');
     renderHomework();
   }catch(e){ showToast('제출 실패: '+e.message,'error'); }
+}
+async function doSubmitOffline(id) {
+  if(!confirm('사진 없이 ‘직접 검사받기’로 신청할까요?\n수업 때 선생님께 공책을 보여주면 돼요.')) return;
+  try{
+    await submitHomeworkOffline(id);
+    showToast('직접 검사 신청 완료! 수업 때 공책을 보여주세요 ✋','success');
+    renderHomework();
+  }catch(e){ showToast('신청 실패: '+e.message,'error'); }
 }
 async function doSubmitAnswer(examId){
   try{
@@ -987,7 +1010,13 @@ function renderGrades() {
         <div class="hw-title" style="margin-bottom:4px">${e.title}</div>
         <div class="hw-body">범위: ${e.range}</div>
         <div class="hw-due">📅 ${fmtDateFull(e.date)}</div>
-        ${e.comment?`<div style="background:var(--green-light);border-radius:var(--radius-sm);padding:10px 14px;font-size:13px;color:#065F46">💬 ${e.comment}</div>`:''}
+        ${(e.weakAbilities&&e.weakAbilities.length)?`<div style="margin:8px 0;display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span style="font-size:12px;color:var(--text-muted)">보완할 능력:</span>${e.weakAbilities.map(a=>`<span class="badge b-orange">${a}</span>`).join('')}</div>`:''}
+        ${e.comment?`<div style="background:var(--green-light);border-radius:var(--radius-sm);padding:10px 14px;font-size:13px;color:#065F46;margin-bottom:8px">💬 ${e.comment}</div>`:''}
+        ${(e.perQuestion&&e.perQuestion.length)?`
+          <div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:var(--radius-sm);padding:10px 14px">
+            <div style="font-size:12px;font-weight:700;color:#C2410C;margin-bottom:6px">✏️ 문항별 피드백 — 이 부분을 더 연습해요!</div>
+            ${e.perQuestion.map(p=>`<div style="font-size:13px;color:#7C2D12;padding:4px 0;border-top:1px solid #FFEDD5"><strong>${p.no}번</strong> · ${p.text||p.feedback||''}</div>`).join('')}
+          </div>`:''}
       </div>`).join('');
   }
   if (scored.length >= 1) {

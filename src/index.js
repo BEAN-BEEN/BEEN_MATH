@@ -10,9 +10,10 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     try {
-      if (url.pathname === '/api/ai' && request.method === 'POST')      return await aiHint(request, env);
-      if (url.pathname === '/api/analyze' && request.method === 'POST') return await analyzeExam(request, env);
-      if (url.pathname === '/api/notify' && request.method === 'POST')  return await notify(request, env);
+      if (url.pathname === '/api/ai' && request.method === 'POST')       return await aiHint(request, env);
+      if (url.pathname === '/api/analyze' && request.method === 'POST')  return await analyzeExam(request, env);
+      if (url.pathname === '/api/feedback' && request.method === 'POST') return await examFeedback(request, env);
+      if (url.pathname === '/api/notify' && request.method === 'POST')   return await notify(request, env);
     } catch (e) {
       return json({ error: e.message }, 500);
     }
@@ -69,6 +70,31 @@ async function analyzeExam(request, env) {
   let parsed;
   try { parsed = JSON.parse(raw.replace(/```json/gi, '').replace(/```/g, '').trim()); }
   catch (e) { return json({ problems: [], summary: raw }); }
+  return json(parsed);
+}
+
+// ----------------------------------------------------------------
+// 성적 리포트 — 틀린 문항 → 능력·문항별 피드백 (JSON)
+// ----------------------------------------------------------------
+async function examFeedback(request, env) {
+  const { examTitle, range, maxScore, wrongNos, imageBase64, imageMime } = await request.json();
+  if (!wrongNos && !imageBase64) return json({ error: '틀린 문항 번호 또는 시험지 사진이 필요해요' }, 400);
+  const prompt =
+`너는 고등학교 수학 선생님이야. 한 학생의 시험 결과를 보고 학생에게 줄 피드백을 작성해줘.
+- 시험명: ${examTitle || '(미입력)'}
+- 출제 범위: ${range || '(미입력)'}
+- 만점: ${maxScore || 100}
+- 학생이 틀린 문항 번호: ${wrongNos || '(사진 참고)'}
+
+각 틀린 문항에 대해 "왜 틀렸을 가능성이 높은지(개념/계산 등) + 무엇을 더 연습해야 하는지"를 1~2문장으로 구체적으로 써줘.
+그리고 틀린 문항들을 종합해 이 학생이 보완해야 할 '요구 능력'을 다음 중에서 골라줘 → "추론" / "계산" / "그래프활용" / "개념이해" / "문제해석".
+중·고등학생 눈높이의 한국어로, 따뜻하지만 핵심을 콕 집어서.
+반드시 아래 JSON 형식으로만 답해 (설명 문장 없이 JSON만):
+{"weakAbilities":["계산","그래프활용"],"perQuestion":[{"no":"3","feedback":"이차함수 최댓값을 구할 때 꼭짓점 공식을 헷갈렸어요. 완전제곱식 변형을 5문제 더 연습해요."}],"summary":"전반적으로 계산 실수가 많아요. 검산 습관과 그래프 해석 연습이 필요해요."}`;
+  const raw = await callModel(env, prompt, imageBase64, imageMime, true);
+  let parsed;
+  try { parsed = JSON.parse(raw.replace(/```json/gi, '').replace(/```/g, '').trim()); }
+  catch (e) { return json({ weakAbilities: [], perQuestion: [], summary: raw }); }
   return json(parsed);
 }
 

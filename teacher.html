@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
@@ -27,7 +27,8 @@
       --shadow-md:0 4px 6px -1px rgba(0,0,0,.1);
     }
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'Noto Sans KR',-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px}
+    body{font-family:'Noto Sans KR',-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;overflow-x:hidden;-webkit-text-size-adjust:100%}
+    img{max-width:100%;height:auto}
     .app-layout{display:flex;min-height:100vh}
 
     /* SIDEBAR */
@@ -165,8 +166,8 @@
 
     @media(max-width:900px){
       .sidebar{transform:translateX(-100%);transition:transform .3s}
-      .main-content{margin-left:0;padding-top:56px}
-      .mobile-header{display:flex}
+      .main-content{margin-left:0;padding-top:calc(56px + env(safe-area-inset-top))}
+      .mobile-header{display:flex;height:auto;min-height:56px;padding-top:env(safe-area-inset-top)}
       .page-header{padding:16px 16px 0}
       .content-area{padding:0 16px}
       .stats-grid{grid-template-columns:repeat(2,1fr)}
@@ -738,10 +739,10 @@ function rHomework(){
               <thead><tr><th>학생</th><th>제출</th><th>제출 시간</th><th>사진</th><th>확인</th><th>오답</th></tr></thead>
               <tbody>${sts.map(st=>{const sub=subs.find(s=>s.studentId===st.id);return`<tr>
                 <td><strong>${st.name}</strong></td>
-                <td>${sub?'<span class="badge b-green">제출</span>':'<span class="badge b-red">미제출</span>'}</td>
+                <td>${sub?(sub.offline?'<span class="badge b-orange">✋직접검사</span>':'<span class="badge b-green">📷제출</span>'):'<span class="badge b-red">미제출</span>'}</td>
                 <td style="color:var(--text-muted)">${sub?.submittedAt||'-'}</td>
-                <td>${sub?`<button class="btn btn-outline btn-sm" onclick="openSubPhotos('${sub.id}')">📷 ${(sub.photos&&sub.photos.length)||0}</button>`:'-'}</td>
-                <td>${sub?`<button class="btn ${sub.checked?'btn-green':'btn-outline'} btn-sm" onclick="doCheck('${sub.id}')">${sub.checked?'✓확인됨':'확인하기'}</button>`:'-'}</td>
+                <td>${sub?(sub.offline?'<span style="font-size:12px;color:var(--text-muted)">공책 확인</span>':`<button class="btn btn-outline btn-sm" onclick="openSubPhotos('${sub.id}')">📷 ${(sub.photos&&sub.photos.length)||0}</button>`):'-'}</td>
+                <td>${sub?`<button class="btn ${sub.checked?'btn-green':'btn-outline'} btn-sm" onclick="doCheck('${sub.id}')">${sub.checked?'✓확인됨':'확인하기'}</button>`:`<button class="btn btn-outline btn-sm" onclick="doCheckOffline('${a.id}','${st.id}')">✓ 직접 확인</button>`}</td>
                 <td>${sub?`<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px"><input type="checkbox" ${sub.needsRetry?'checked':''} onchange="doRetry('${sub.id}',this.checked)"> 오답</label>`:'-'}</td>
               </tr>`;}).join('')}</tbody>
             </table></div></div>`:``}
@@ -761,6 +762,20 @@ async function doCreateAsgn(){
   }catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
 async function doCheck(sid){ await updateSub(sid,{checked:true}); showToast('숙제 확인 완료!','success'); rHomework(); }
+// 미제출 학생을 교실에서 직접 검사 → 확인됨 처리(사진 없는 제출 생성)
+async function doCheckOffline(assignmentId, studentId){
+  const a=getAssignments().find(x=>x.id===assignmentId), st=getStudents().find(s=>s.id===studentId);
+  if(!a||!st) return;
+  try{
+    await db.collection('submissions').add({
+      assignmentId, assignmentTitle:a.title||'', classId:a.classId||'', className:a.className||'',
+      studentId:st.id, studentName:st.name, photos:[], offline:true,
+      submittedAt:new Date().toLocaleString('ko-KR'), checked:true, needsRetry:false, ts:Date.now()
+    });
+    await loadSubmissions();
+    showToast(`${st.name} 직접 검사 완료로 표시했어요 ✓`,'success'); rHomework();
+  }catch(e){ showToast('처리 실패: '+e.message,'error'); }
+}
 async function doRetry(sid,v){ await updateSub(sid,{needsRetry:v}); showToast(v?'오답 재제출이 요청되었어요':'오답 요청이 취소되었어요',v?'warning':''); rHomework(); }
 // 제출 사진 보기 (간단 뷰어)
 function showPhotoModal(urls){
@@ -895,6 +910,16 @@ function rGrades(){
       </div>
       <div id="directScores"></div>
     </div>
+    <div class="card" style="border-left:4px solid var(--green)">
+      <div class="card-title">📋 성적 리포트 — 능력·문항 피드백 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(AI 초안 + 직접 수정 → 학생 ‘성적’ 탭에 표시)</span></div>
+      <div class="form-row-2">
+        <div class="form-group"><label class="form-label">시험</label>
+          <select class="form-select" id="fb-exam" onchange="fbOnExam()"><option value="">시험 선택</option>${exams.map(e=>`<option value="${e.id}">${e.title} · ${e.className}</option>`).join('')}</select></div>
+        <div class="form-group"><label class="form-label">학생</label>
+          <select class="form-select" id="fb-student" onchange="renderFeedbackEditor()"><option value="">시험을 먼저 선택</option></select></div>
+      </div>
+      <div id="feedbackEditor"><div style="color:var(--text-muted);padding:10px;font-size:13px">시험과 학생을 선택하면 점수·틀린 문항을 입력하고 AI 피드백을 만들 수 있어요.</div></div>
+    </div>
     ${pendSubs.length?`
       <div class="sec-label" style="color:var(--orange)">⏳ 채점 대기 (${pendSubs.length}명)</div>
       ${pendSubs.map(sub=>`
@@ -988,6 +1013,83 @@ async function doSaveAllDirect(examId){
   try{
     for(const st of sts){ const v=document.getElementById('ds-sc-'+st.id).value; if(v==='')continue; await upsertExamScore(exam, st, parseInt(v), document.getElementById('ds-cm-'+st.id).value.trim()); n++; }
     showToast(`${n}명 점수 저장 완료 🏆`,'success'); renderDirectScores();
+  }catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+
+// 📋 성적 리포트 — 능력·문항별 피드백 (AI 초안 + 직접 수정)
+function fbOnExam(){
+  const examId=document.getElementById('fb-exam').value, sel=document.getElementById('fb-student');
+  const exam=getExams().find(e=>e.id===examId), sts=exam?getStudentsByClass(exam.classId):[];
+  sel.innerHTML='<option value="">학생 선택</option>'+sts.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+  renderFeedbackEditor();
+}
+function perqRowsHtml(wrongStr, perqArr){
+  const nos=(wrongStr||'').split(',').map(s=>s.trim()).filter(Boolean);
+  if(!nos.length) return '<div style="font-size:12px;color:var(--text-muted);padding:6px">틀린 문항 번호를 입력하고 ‘문항칸 만들기’ 또는 ‘AI 피드백 생성’을 누르세요</div>';
+  const map={}; (perqArr||[]).forEach(p=>{ map[String(p.no)]=p.text||p.feedback||''; });
+  return nos.map(no=>`<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px">
+    <div style="flex:0 0 50px;text-align:center;background:#FEE2E2;color:var(--red);border-radius:8px;padding:9px 0;font-weight:700">${no}번</div>
+    <textarea class="form-textarea" id="fb-q-${no}" style="flex:1;min-height:52px" placeholder="${no}번: 왜 틀렸고 무엇을 더 연습할지">${map[no]||''}</textarea>
+  </div>`).join('');
+}
+function collectPerq(){
+  const out=[]; document.querySelectorAll('[id^="fb-q-"]').forEach(t=>{ out.push({no:t.id.replace('fb-q-',''), text:t.value}); }); return out;
+}
+function buildPerqRows(){ const w=document.getElementById('fb-wrong').value; document.getElementById('fb-perq').innerHTML=perqRowsHtml(w, collectPerq()); }
+function renderFeedbackEditor(){
+  const el=document.getElementById('feedbackEditor'); if(!el) return;
+  const examId=document.getElementById('fb-exam').value, stId=document.getElementById('fb-student').value;
+  if(!examId||!stId){ el.innerHTML='<div style="color:var(--text-muted);padding:10px;font-size:13px">시험과 학생을 선택하세요.</div>'; return; }
+  const exam=getExams().find(e=>e.id===examId), st=getStudents().find(s=>s.id===stId);
+  const sub=getExamSubs().find(s=>s.examId===examId&&s.studentId===stId);
+  const wrong=(sub&&sub.wrongNos)||'', weak=(sub&&sub.weakAbilities&&sub.weakAbilities.join(', '))||'', summary=(sub&&sub.comment)||'', perq=(sub&&sub.perQuestion)||[];
+  el.innerHTML=`
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
+      <div style="flex:0 0 110px"><label class="form-label">점수 (만점 ${exam.maxScore||100})</label><input class="form-input" id="fb-score" type="number" value="${sub&&sub.score!=null?sub.score:''}" placeholder="0~${exam.maxScore||100}"></div>
+      <div style="flex:1;min-width:150px"><label class="form-label">틀린 문항 번호</label><input class="form-input" id="fb-wrong" value="${wrong}" placeholder="예: 3, 7, 12"></div>
+      <button class="btn btn-primary" onclick="doGenFeedback()">🤖 AI 피드백 생성</button>
+      <button class="btn btn-outline" onclick="buildPerqRows()">문항칸 만들기</button>
+    </div>
+    <div class="form-group"><label class="form-label">부족했던 능력 <span style="font-size:11px;color:var(--text-muted)">(쉼표로 구분)</span></label><input class="form-input" id="fb-weak" value="${weak}" placeholder="예: 계산, 그래프활용"></div>
+    <div class="form-group"><label class="form-label">시험 총평</label><textarea class="form-textarea" id="fb-summary" style="min-height:72px" placeholder="이 시험에서 어떤 능력이 부족했는지 종합 코멘트">${summary}</textarea></div>
+    <label class="form-label">문항별 피드백</label>
+    <div id="fb-perq">${perqRowsHtml(wrong, perq)}</div>
+    <button class="btn btn-green" style="margin-top:12px" onclick="doSaveFeedback()">💾 성적 리포트 저장</button>`;
+}
+async function doGenFeedback(){
+  const exam=getExams().find(e=>e.id===document.getElementById('fb-exam').value);
+  const wrong=document.getElementById('fb-wrong').value.trim();
+  if(!exam){ showToast('시험을 선택하세요','error'); return; }
+  if(!wrong){ showToast('틀린 문항 번호를 입력해주세요','error'); return; }
+  showToast('AI가 피드백을 만드는 중...');
+  try{
+    const r=await fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({examTitle:exam.title,range:exam.range||'',maxScore:exam.maxScore||100,wrongNos:wrong})});
+    const j=await r.json();
+    if(j.error){ showToast('AI 오류: '+j.error,'error'); return; }
+    if(Array.isArray(j.weakAbilities)) document.getElementById('fb-weak').value=j.weakAbilities.join(', ');
+    if(j.summary) document.getElementById('fb-summary').value=j.summary;
+    document.getElementById('fb-perq').innerHTML=perqRowsHtml(wrong, (j.perQuestion||[]).map(p=>({no:p.no, text:p.feedback||p.advice||p.reason||p.text})));
+    showToast('AI 초안 완성! 다듬어서 저장하세요 ✍️','success');
+  }catch(e){ showToast('생성 실패: '+e.message,'error'); }
+}
+async function doSaveFeedback(){
+  const examId=document.getElementById('fb-exam').value, stId=document.getElementById('fb-student').value;
+  const exam=getExams().find(e=>e.id===examId), st=getStudents().find(s=>s.id===stId);
+  if(!exam||!st){ showToast('시험·학생을 선택하세요','error'); return; }
+  const scoreV=document.getElementById('fb-score').value;
+  const payload={
+    wrongNos:document.getElementById('fb-wrong').value.trim(),
+    weakAbilities:document.getElementById('fb-weak').value.split(',').map(s=>s.trim()).filter(Boolean),
+    comment:document.getElementById('fb-summary').value.trim(),
+    perQuestion:collectPerq().filter(p=>p.text.trim())
+  };
+  if(scoreV!=='') payload.score=parseInt(scoreV);
+  try{
+    const existing=getExamSubs().find(s=>s.examId===examId&&s.studentId===stId);
+    if(existing){ await db.collection('examSubs').doc(existing.id).update(payload); }
+    else{ await db.collection('examSubs').add({ examId:exam.id, examTitle:exam.title, classId:exam.classId, className:exam.className, studentId:st.id, studentName:st.name, submittedAt:new Date().toLocaleString('ko-KR'), score:scoreV!==''?parseInt(scoreV):null, ts:Date.now(), ...payload }); }
+    await loadExamSubs();
+    showToast(`${st.name} 성적 리포트 저장 완료 📊`,'success'); renderFeedbackEditor();
   }catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
 
@@ -1229,8 +1331,26 @@ async function doCSMemo(id){ try{ await updateConsult(id,{memo:document.getEleme
 // REPORT
 // ================================================================
 let rpStId='';
+function studentStats(st){
+  if(!st) return {hwRate:'-',retryRate:'-',attRate:'-',recent:'-'};
+  const myClassIds=st.classIds||(st.classId?[st.classId]:[]);
+  const myAsgn=getAssignments().filter(a=>myClassIds.includes(a.classId));
+  const mySubs=getSubmissions().filter(s=>s.studentId===st.id);
+  const subAids=new Set(mySubs.map(s=>s.assignmentId));
+  const submitted=myAsgn.filter(a=>subAids.has(a.id)).length;
+  const hwRate=myAsgn.length?Math.round(submitted/myAsgn.length*100)+'%':'-';
+  const retrySubs=mySubs.filter(s=>s.needsRetry).length;
+  const retryRate=mySubs.length&&retrySubs?Math.round((1-retrySubs/mySubs.length)*100)+'%':(mySubs.length?'100%':'-');
+  const myAtt=getAttendance().filter(a=>(a.records||[]).some(r=>r.studentId===st.id));
+  const present=myAtt.filter(a=>(a.records||[]).some(r=>r.studentId===st.id&&r.status!=='absent')).length;
+  const attRate=myAtt.length?Math.round(present/myAtt.length*100)+'%':'-';
+  const myScores=getExamSubs().filter(s=>s.studentId===st.id&&s.score!=null).sort((a,b)=>(b.ts||0)-(a.ts||0));
+  const recent=myScores.length?myScores[0].score+'점':'-';
+  return {hwRate,retryRate,attRate,recent};
+}
 function rReport(){
   const sts=getStudents(),reports=getReports(),sel=sts.find(s=>s.id===rpStId),existing=reports.find(r=>r.studentId===rpStId);
+  const stat=studentStats(sel);
   document.getElementById('reportContent').innerHTML=`
     <div class="card">
       <div class="card-title">📊 학생별 리포트 작성</div>
@@ -1246,10 +1366,10 @@ function rReport(){
       <div class="card">
         <div class="card-title">📈 ${sel.name} 학습 지표 (자동 계산)</div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
-          <div class="rp-stat"><div class="rp-val">82%</div><div class="rp-lbl">숙제 제출률</div></div>
-          <div class="rp-stat"><div class="rp-val">75%</div><div class="rp-lbl">오답 완료율</div></div>
-          <div class="rp-stat"><div class="rp-val">90%</div><div class="rp-lbl">출석률</div></div>
-          <div class="rp-stat"><div class="rp-val">88점</div><div class="rp-lbl">최근 성적</div></div>
+          <div class="rp-stat"><div class="rp-val">${stat.hwRate}</div><div class="rp-lbl">숙제 제출률</div></div>
+          <div class="rp-stat"><div class="rp-val">${stat.retryRate}</div><div class="rp-lbl">오답 완료율</div></div>
+          <div class="rp-stat"><div class="rp-val">${stat.attRate}</div><div class="rp-lbl">출석률</div></div>
+          <div class="rp-stat"><div class="rp-val">${stat.recent}</div><div class="rp-lbl">최근 성적</div></div>
         </div>
         <div class="form-group"><label class="form-label">혜빈쌤 코멘트 ✍️</label><textarea class="form-textarea" id="rp-comment" style="min-height:120px" placeholder="학생에게 남기는 종합 피드백...">${existing?.teacherComment||''}</textarea></div>
         <div class="btn-row">
