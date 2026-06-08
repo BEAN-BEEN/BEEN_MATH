@@ -509,7 +509,7 @@ const REPORT = {
 const WD_LABEL={mon:'월',tue:'화',wed:'수',thu:'목',fri:'금',sat:'토',sun:'일'};
 
 // ===== Firebase에서 내 반·숙제·제출·출석·성적 불러오기 =====
-let S_CLASSES=[], ALL_CLASSES=[], S_ASSIGNMENTS=[], S_SUBMISSIONS=[], S_ATTENDANCE=[], S_EXAMS=[], S_EXAMSUBS=[], S_QUESTIONS=[];
+let S_CLASSES=[], ALL_CLASSES=[], S_ASSIGNMENTS=[], S_SUBMISSIONS=[], S_ATTENDANCE=[], S_EXAMS=[], S_EXAMSUBS=[], S_QUESTIONS=[], S_NOTICES=[];
 function myClassIds(){ try{ return JSON.parse(localStorage.getItem('bm_classIds')||'[]'); }catch(e){ return STUDENT.classId?[STUDENT.classId]:[]; } }
 async function loadStudentData(){
   const ids = myClassIds();
@@ -545,6 +545,9 @@ async function loadStudentData(){
     const rep = await db.collection('reports').doc(STUDENT.id).get();
     S_REPORT = rep.exists ? rep.data() : null;
   } else { S_SUBMISSIONS=[]; S_EXAMSUBS=[]; S_QUESTIONS=[]; S_REPORT=null; }
+  // 공지사항 (전체 공통)
+  try{ const nt = await db.collection('notices').get(); S_NOTICES = nt.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.ts||0)-(a.ts||0)); }
+  catch(e){ S_NOTICES=[]; }
 }
 
 // 시험 = Firebase 시험 + 내 답안/점수 상태 합치기
@@ -577,7 +580,7 @@ function getAssignments(){
     let status;
     if(sub) status='submitted';
     else status=(a.dueDate && a.dueDate < today) ? 'late' : 'pending';
-    return { ...a, status, submittedAt:sub?sub.submittedAt:null, teacherChecked:sub?!!sub.checked:false, needsRetry:sub?!!sub.needsRetry:false, offline:sub?!!sub.offline:false };
+    return { ...a, status, submittedAt:sub?sub.submittedAt:null, teacherChecked:sub?!!sub.checked:false, needsRetry:sub?!!sub.needsRetry:false, offline:sub?!!sub.offline:false, late:sub?!!sub.late:false, retryDone:sub?!!sub.retryDone:false, subId:sub?sub.id:null };
   });
 }
 function getAttendance()  { return S_ATTENDANCE; }
@@ -631,21 +634,33 @@ async function submitHomework(assignmentId) {
   let photos=[];
   const fi=document.getElementById('hwfile-'+assignmentId);
   if(fi && fi.files && fi.files.length){ photos=await uploadPhotos(fi.files, 'submissions/'+assignmentId); }
+  const today=new Date().toISOString().slice(0,10);
+  const late = !!(a && a.dueDate && today > a.dueDate);
   await db.collection('submissions').add({
     assignmentId, assignmentTitle:a?a.title:'', classId:a?a.classId:'', className:a?a.className:'',
-    studentId:STUDENT.id, studentName:STUDENT.name, photos, offline:false,
-    submittedAt:new Date().toLocaleString('ko-KR'), checked:false, needsRetry:false, ts:Date.now()
+    studentId:STUDENT.id, studentName:STUDENT.name, photos, offline:false, late,
+    submittedAt:new Date().toLocaleString('ko-KR'), checked:false, needsRetry:false, retryDone:false, ts:Date.now()
   });
   await loadStudentData();
 }
 // ✋ 사진 없이 교실에서 직접 검사받기 요청
 async function submitHomeworkOffline(assignmentId) {
   const a = S_ASSIGNMENTS.find(x=>x.id===assignmentId);
+  const today=new Date().toISOString().slice(0,10);
+  const late = !!(a && a.dueDate && today > a.dueDate);
   await db.collection('submissions').add({
     assignmentId, assignmentTitle:a?a.title:'', classId:a?a.classId:'', className:a?a.className:'',
-    studentId:STUDENT.id, studentName:STUDENT.name, photos:[], offline:true,
-    submittedAt:new Date().toLocaleString('ko-KR'), checked:false, needsRetry:false, ts:Date.now()
+    studentId:STUDENT.id, studentName:STUDENT.name, photos:[], offline:true, late,
+    submittedAt:new Date().toLocaleString('ko-KR'), checked:false, needsRetry:false, retryDone:false, ts:Date.now()
   });
+  await loadStudentData();
+}
+// ✏️ 오답 고쳐서 다시 제출
+async function submitHomeworkRetry(subId, assignmentId){
+  const fi=document.getElementById('retryfile-'+assignmentId);
+  let photos=[];
+  if(fi && fi.files && fi.files.length){ photos=await uploadPhotos(fi.files, 'submissions/'+assignmentId+'/retry'); }
+  await db.collection('submissions').doc(subId).update({ retryPhotos:photos, retryDone:true, retrySubmittedAt:new Date().toLocaleString('ko-KR') });
   await loadStudentData();
 }
 // 질문 남기기 → Firebase 저장 (선생님이 바로 봐요)
@@ -773,6 +788,11 @@ function renderHome() {
   const changeStr = change===null ? '-' : (change>=0 ? '▲ '+change+'점' : '▼ '+Math.abs(change)+'점');
 
   document.getElementById('homeContent').innerHTML = `
+    ${(S_NOTICES&&S_NOTICES.length)?`
+      <div style="background:#FEF9C3;border:1px solid #FDE047;border-radius:var(--radius);padding:14px 16px;margin-bottom:16px">
+        <div style="font-size:13px;font-weight:800;color:#854D0E;margin-bottom:6px">📢 공지사항</div>
+        ${S_NOTICES.map(n=>`<div style="font-size:14px;color:#713F12;padding:3px 0">• ${n.text}</div>`).join('')}
+      </div>`:''}
     <div class="hero-banner">
       <h2>👋 ${STUDENT.name} 학생, 제출할 숙제가 ${pending.length}개 있어요!</h2>
       <p>완료한 과제부터 차례대로 제출하고, 어려웠던 문제는 질문으로 남겨보세요.</p>
@@ -850,7 +870,7 @@ function renderHomework() {
         </div>
         <div class="hw-title" style="margin-bottom:6px">${a.title}</div>
         <div class="hw-body">${a.content}</div>
-        <div class="hw-due">📅 마감: ${fmtDateFull(a.dueDate)}</div>
+        <div class="hw-due">📅 ${a.startDate?fmtDateFull(a.startDate)+' ~ ':''}${fmtDateFull(a.dueDate)} 까지 제출</div>
         ${isPending ? `
           <div class="upload-area" onclick="this.querySelector('input').click()">
             <div class="u-icon">📷</div>
@@ -867,12 +887,19 @@ function renderHomework() {
           <div class="divider"></div>
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
             <div style="font-size:12px;color:var(--text-muted)">
-              ${a.offline?'✋ 직접 검사 요청':'✅ 사진 제출'}: ${a.submittedAt||''} &nbsp;·&nbsp; ${a.teacherChecked?'👁 선생님 확인 완료':'⏳ 선생님 확인 중'}
+              ${a.offline?'✋ 직접 검사 요청':'✅ 사진 제출'}: ${a.submittedAt||''}${a.late?' · <span style="color:var(--red);font-weight:700">⏰지각 제출</span>':''} &nbsp;·&nbsp; ${a.teacherChecked?'👁 선생님 확인 완료':'⏳ 선생님 확인 중'}
             </div>
-            <div class="btn-row">
-              ${a.needsRetry?`<span class="badge b-red" style="align-self:center">⚠️ 오답 있음 — 다시 풀어오세요</span>`:''}
-            </div>
-          </div>`}
+          </div>
+          ${a.needsRetry?`
+            <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:var(--radius-sm);padding:12px;margin-top:10px">
+              <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:8px">⚠️ 오답이 있어요 — 고쳐서 다시 제출해요!</div>
+              ${a.retryDone?`<div style="font-size:13px;color:var(--green);font-weight:600">🔁 오답 재제출 완료! 선생님 확인을 기다려요 👍</div>`:`
+                <div class="upload-area" onclick="this.querySelector('input').click()" style="padding:16px;margin-bottom:8px">
+                  <div class="u-icon">📷</div><p>오답 고친 사진을 업로드하세요</p>
+                  <input type="file" accept="image/*" multiple id="retryfile-${a.id}">
+                </div>
+                <button class="btn btn-orange btn-sm" onclick="doSubmitRetry('${a.subId}','${a.id}')">오답 재제출하기 ✓</button>`}
+            </div>`:''}`}
       </div>`;
   }
 
@@ -910,6 +937,16 @@ async function doSubmitOffline(id) {
     showToast('직접 검사 신청 완료! 수업 때 공책을 보여주세요 ✋','success');
     renderHomework();
   }catch(e){ showToast('신청 실패: '+e.message,'error'); }
+}
+async function doSubmitRetry(subId, id) {
+  const fi=document.getElementById('retryfile-'+id);
+  if(!fi || !fi.files || !fi.files.length){ showToast('오답 고친 사진을 선택해주세요','warning'); return; }
+  try{
+    await submitHomeworkRetry(subId, id);
+    launchConfetti();
+    showToast('오답 재제출 완료! 정말 잘했어요 🎉','success');
+    renderHomework();
+  }catch(e){ showToast('재제출 실패: '+e.message,'error'); }
 }
 async function doSubmitAnswer(examId){
   try{

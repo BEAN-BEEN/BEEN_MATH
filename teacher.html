@@ -349,6 +349,18 @@ async function loadVideos(){ const s=await db.collection('videos').get(); VIDEOS
 async function loadMaterials(){ const s=await db.collection('materials').get(); MATERIALS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.uploadDate||'').localeCompare(a.uploadDate||'')); }
 async function loadConsults(){ const s=await db.collection('consultations').get(); CONSULTS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.submittedAt||'').localeCompare(a.submittedAt||'')); }
 async function loadReports(){ const s=await db.collection('reports').get(); REPORTS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})); }
+let NOTICES_CACHE=[];
+async function loadNotices(){ const s=await db.collection('notices').get(); NOTICES_CACHE=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.ts||0)-(a.ts||0)); }
+function getNotices(){ return NOTICES_CACHE; }
+async function addNotice(text){ await db.collection('notices').add({text, ts:Date.now(), createdAt:new Date().toLocaleString('ko-KR')}); await loadNotices(); }
+async function delNotice(id){ await db.collection('notices').doc(id).delete(); await loadNotices(); }
+async function doAddNotice(){
+  const t=document.getElementById('notice-text').value.trim();
+  if(!t){ showToast('공지 내용을 입력해주세요','error'); return; }
+  try{ await addNotice(t); showToast('공지를 올렸어요! 학생 홈에 표시돼요 📢','success'); rDashboard(); }
+  catch(e){ showToast('등록 실패: '+e.message,'error'); }
+}
+async function doDelNotice(id){ if(!confirm('이 공지를 삭제할까요?'))return; try{ await delNotice(id); showToast('공지를 삭제했어요','warning'); rDashboard(); }catch(e){ showToast('삭제 실패: '+e.message,'error'); } }
 function getVideos(){ return VIDEOS_CACHE; }
 function getMaterials(){ return MATERIALS_CACHE; }
 function getConsultations(){ return CONSULTS_CACHE; }
@@ -510,6 +522,18 @@ function rDashboard(){
       <div class="stat-card" onclick="navigate('homework')"><div class="stat-icon">📝</div><div class="stat-value" style="color:var(--orange)">${unchecked}</div><div class="stat-label">미확인 숙제</div></div>
       <div class="stat-card" onclick="navigate('questions')"><div class="stat-icon">💬</div><div class="stat-value" style="color:var(--red)">${pending}</div><div class="stat-label">답변 대기 질문</div></div>
     </div>
+    <div class="card" style="border-left:4px solid var(--yellow)">
+      <div class="card-title">📢 공지사항 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(학생 홈 화면 상단에 표시돼요)</span></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <input class="form-input" id="notice-text" style="flex:1;min-width:200px" placeholder="예: 6월 6일 현충일에도 정상 수업합니다!">
+        <button class="btn btn-primary" onclick="doAddNotice()">공지 올리기</button>
+      </div>
+      ${getNotices().length?getNotices().map(n=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;background:var(--yellow-light);border-radius:8px;margin-bottom:6px">
+          <div style="font-size:13px;color:#92400E"><strong>📢</strong> ${n.text} <span style="font-size:11px;color:var(--text-muted)">· ${n.createdAt||''}</span></div>
+          <button class="btn btn-red btn-sm" onclick="doDelNotice('${n.id}')">삭제</button>
+        </div>`).join(''):'<div style="font-size:13px;color:var(--text-muted)">올린 공지가 없어요. 휴일 정상수업 안내 등을 올려보세요.</div>'}
+    </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
       <div class="card">
         <div class="card-title">📅 오늘 수업</div>
@@ -545,7 +569,7 @@ function rDashboard(){
       <div class="card-title">📬 최근 제출 숙제</div>
       <div class="table-wrap"><table>
         <thead><tr><th>학생</th><th>반</th><th>숙제명</th><th>제출시간</th><th>확인</th></tr></thead>
-        <tbody>${subs.slice(0,5).map(s=>`<tr><td><strong>${s.studentName}</strong></td><td><span class="chip">${s.className}</span></td><td>${s.assignmentTitle}</td><td style="color:var(--text-muted)">${s.submittedAt}</td><td>${s.checked?'<span class="badge b-green">확인 완료</span>':'<span class="badge b-orange">미확인</span>'}</td></tr>`).join('')}</tbody>
+        <tbody>${subs.slice().sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,5).map(s=>{const at=typeof s.submittedAt==='string'?s.submittedAt:(s.submittedAt&&s.submittedAt.seconds?new Date(s.submittedAt.seconds*1000).toLocaleString('ko-KR'):'-');return `<tr><td><strong>${s.studentName||'-'}</strong></td><td>${s.className?`<span class="chip">${s.className}</span>`:'-'}</td><td>${s.assignmentTitle||'-'}</td><td style="color:var(--text-muted)">${at}</td><td>${s.checked?'<span class="badge b-green">확인 완료</span>':'<span class="badge b-orange">미확인</span>'}</td></tr>`;}).join('')}</tbody>
       </table></div>
     </div>`;
 }
@@ -707,8 +731,9 @@ function rHomework(){
   document.getElementById('homeworkContent').innerHTML=`
     <div class="card">
       <div class="card-title">➕ 새 과제 만들기</div>
-      <div class="form-row-2">
+      <div class="form-row-3">
         <div class="form-group"><label class="form-label">대상 반</label>${classSelect('hw-cls')}</div>
+        <div class="form-group"><label class="form-label">출제일 (내준 날)</label><input class="form-input" id="hw-start" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
         <div class="form-group"><label class="form-label">마감일</label><input class="form-input" id="hw-due" type="date"></div>
       </div>
       <div class="form-group"><label class="form-label">과제 제목 *</label><input class="form-input" id="hw-title" placeholder="예: 수학Ⅱ 3단원 연습문제"></div>
@@ -729,7 +754,7 @@ function rHomework(){
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
             <div><span class="chip">${a.className}</span><strong style="margin-left:8px">${a.title}</strong> ${badge}</div>
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-              <span style="font-size:12px;color:var(--text-muted)">제출 ${subs.length}/${sts.length} · 마감 ${a.dueDate||'-'}</span>
+              <span style="font-size:12px;color:var(--text-muted)">제출 ${subs.length}/${sts.length} · 기간 ${a.startDate||'?'}~${a.dueDate||'-'}</span>
               ${missing>0?`<button class="btn btn-orange btn-sm" onclick="doRemind('${a.classId}','${(a.title||'').replace(/'/g,'')}')">🔔 독촉 알림</button>`:''}
               <button class="btn btn-outline btn-sm" onclick="hwOpenId=hwOpenId==='${a.id}'?null:'${a.id}';rHomework()">${isOpen?'접기':'현황 보기'}</button>
             </div>
@@ -739,11 +764,11 @@ function rHomework(){
               <thead><tr><th>학생</th><th>제출</th><th>제출 시간</th><th>사진</th><th>확인</th><th>오답</th></tr></thead>
               <tbody>${sts.map(st=>{const sub=subs.find(s=>s.studentId===st.id);return`<tr>
                 <td><strong>${st.name}</strong></td>
-                <td>${sub?(sub.offline?'<span class="badge b-orange">✋직접검사</span>':'<span class="badge b-green">📷제출</span>'):'<span class="badge b-red">미제출</span>'}</td>
+                <td>${sub?(sub.offline?'<span class="badge b-orange">✋직접검사</span>':'<span class="badge b-green">📷제출</span>')+(sub.late?' <span class="badge b-red">지각</span>':''):'<span class="badge b-red">미제출</span>'}</td>
                 <td style="color:var(--text-muted)">${sub?.submittedAt||'-'}</td>
-                <td>${sub?(sub.offline?'<span style="font-size:12px;color:var(--text-muted)">공책 확인</span>':`<button class="btn btn-outline btn-sm" onclick="openSubPhotos('${sub.id}')">📷 ${(sub.photos&&sub.photos.length)||0}</button>`):'-'}</td>
+                <td>${sub?(sub.offline?'<span style="font-size:12px;color:var(--text-muted)">공책 확인</span>':`<button class="btn btn-outline btn-sm" onclick="openSubPhotos('${sub.id}')">📷 ${(sub.photos&&sub.photos.length)||0}</button>${sub.retryDone?` <button class="btn btn-outline btn-sm" onclick="showPhotoModal((getSubmissions().find(x=>x.id==='${sub.id}')||{}).retryPhotos)">🔁 오답사진</button>`:''}`):'-'}</td>
                 <td>${sub?`<button class="btn ${sub.checked?'btn-green':'btn-outline'} btn-sm" onclick="doCheck('${sub.id}')">${sub.checked?'✓확인됨':'확인하기'}</button>`:`<button class="btn btn-outline btn-sm" onclick="doCheckOffline('${a.id}','${st.id}')">✓ 직접 확인</button>`}</td>
-                <td>${sub?`<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px"><input type="checkbox" ${sub.needsRetry?'checked':''} onchange="doRetry('${sub.id}',this.checked)"> 오답</label>`:'-'}</td>
+                <td>${sub?`<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px"><input type="checkbox" ${sub.needsRetry?'checked':''} onchange="doRetry('${sub.id}',this.checked)"> 오답</label>${sub.needsRetry?(sub.retryDone?'<div style="font-size:11px;color:var(--green);margin-top:2px">🔁 재제출 완료</div>':'<div style="font-size:11px;color:var(--orange);margin-top:2px">재제출 대기</div>'):''}`:'-'}</td>
               </tr>`;}).join('')}</tbody>
             </table></div></div>`:``}
         </div>`;}).join('')}`;
@@ -753,7 +778,7 @@ async function doCreateAsgn(){
   if(!classId||!title){showToast('반과 제목을 입력해주세요','error');return;}
   const cls=CLASSES.find(c=>c.id===classId);
   try{
-    await saveAssignment({classId,className:cls?.name||'',title,content:document.getElementById('hw-content').value.trim(),dueDate:document.getElementById('hw-due').value,maxPhotos:parseInt(document.getElementById('hw-photos').value)||3});
+    await saveAssignment({classId,className:cls?.name||'',title,content:document.getElementById('hw-content').value.trim(),startDate:document.getElementById('hw-start').value,dueDate:document.getElementById('hw-due').value,maxPhotos:parseInt(document.getElementById('hw-photos').value)||3});
     showToast(`"${title}" 과제 등록 완료! 학생들이 바로 볼 수 있어요 📝`,'success');rHomework();
     // 푸시 알림 발송 (알림 켠 학생에게)
     fetch('/api/notify',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -776,7 +801,7 @@ async function doCheckOffline(assignmentId, studentId){
     showToast(`${st.name} 직접 검사 완료로 표시했어요 ✓`,'success'); rHomework();
   }catch(e){ showToast('처리 실패: '+e.message,'error'); }
 }
-async function doRetry(sid,v){ await updateSub(sid,{needsRetry:v}); showToast(v?'오답 재제출이 요청되었어요':'오답 요청이 취소되었어요',v?'warning':''); rHomework(); }
+async function doRetry(sid,v){ await updateSub(sid, v?{needsRetry:true}:{needsRetry:false,retryDone:false,checked:true}); showToast(v?'오답 재제출이 요청되었어요':'오답 해결로 확인 처리했어요',v?'warning':'success'); rHomework(); }
 // 제출 사진 보기 (간단 뷰어)
 function showPhotoModal(urls){
   if(!urls||!urls.length){ showToast('등록된 사진이 없어요'); return; }
@@ -1438,6 +1463,7 @@ async function init(){
     await loadMaterials();       // 자료실
     await loadConsults();        // 상담
     await loadReports();         // 리포트
+    await loadNotices();         // 공지사항
   }catch(e){ showToast('데이터를 불러오지 못했어요: '+e.message,'error'); }
   rDashboard();
   pruneOldFirebase();            // 3개월 지난 사진·기록 자동 정리 (백그라운드)
