@@ -1311,13 +1311,28 @@ function renderTeacher() {
       <p>수학이 어렵게 느껴지더라도 포기하지 마세요.<br>함께라면 반드시 실력이 늘어요. 언제든지 질문하고, 성실하게 따라와 주세요 💪</p>
     </div>
     <div class="card" style="margin-bottom:16px">
-      <div class="card-title">📅 혜빈쌤 수업 시간표</div>
-      <div class="table-wrap"><table>
-        <thead><tr><th>반</th><th>요일</th><th>시간</th><th>과목</th></tr></thead>
-        <tbody>
-          ${ALL_CLASSES.length ? ALL_CLASSES.map(c=>`<tr><td><span class="chip">${c.name}</span></td><td>${(WD_LABEL[c.weekday]||'-')}요일 ${c.slot||''}</td><td>${c.startTime&&c.endTime?(c.startTime+'~'+c.endTime):'시간 미정'}</td><td>${c.subject||'-'}</td></tr>`).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:16px">등록된 반이 없어요</td></tr>'}
-        </tbody>
-      </table></div>
+      <div class="card-title">📅 혜빈쌤 수업 시간표 <span style="font-size:12px;font-weight:500;color:var(--text-muted)">(⭐ 내 수업)</span></div>
+      ${(function(){
+        const days=['mon','tue','wed','thu','fri','sat','sun'];
+        const dayLabels={mon:'월',tue:'화',wed:'수',thu:'목',fri:'금',sat:'토',sun:'일'};
+        const todayKey={0:'sun',1:'mon',2:'tue',3:'wed',4:'thu',5:'fri',6:'sat'}[new Date().getDay()];
+        if(!ALL_CLASSES.length) return '<div style="text-align:center;color:var(--text-muted);padding:16px">등록된 반이 없어요</div>';
+        const mine=id=>S_CLASSES.some(c=>c.id===id);
+        return `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px;padding:0 4px"><div style="display:grid;grid-template-columns:repeat(7,minmax(102px,1fr));gap:8px;min-width:740px">${days.map(d=>{
+          const list=ALL_CLASSES.filter(c=>c.weekday===d).sort((a,b)=>(a.slot||'').localeCompare(b.slot||''));
+          const isToday=d===todayKey;
+          return `<div class="day-card ${list.length?'has-class':''} ${isToday?'today':''}">
+            <div class="day-lbl">${dayLabels[d]}${isToday?' ·오늘':''}</div>
+            ${list.length?list.map(c=>{
+              const m=mine(c.id);
+              return `<div style="margin-bottom:8px;padding:6px 4px;border-radius:8px;${m?'background:var(--primary);box-shadow:0 1px 4px rgba(17,76,86,.25)':''}">
+                <div class="c-time" ${m?'style="color:#fff"':''}>${c.startTime&&c.endTime?(c.startTime+'~'+c.endTime):(c.slot||'')}</div>
+                <div class="c-name" ${m?'style="color:#fff"':''}>${m?'⭐ ':''}${c.name}</div>
+                <div class="c-subject" ${m?'style="color:rgba(255,255,255,.8)"':''}>${c.subject||''}</div>
+              </div>`;}).join('')
+            :`<div class="no-class">수업 없음</div>`}
+          </div>`;}).join('')}</div></div>`;
+      })()}
     </div>
     <div class="card-title" style="margin-bottom:12px">📋 혜빈쌤의 관리 방법</div>
     <div class="mgmt-grid">
