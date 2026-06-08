@@ -724,22 +724,39 @@ async function doSaveStMemo(id){
 // ================================================================
 // HOMEWORK
 // ================================================================
-let hwOpenId=null;
+let hwOpenId=null, hwEditId=null;
+// 그동안 쓴 교재 모음 (반 기본교재 + 과거 숙제 교재) — 칩으로 빠른선택
+function allTextbooks(){
+  const set=new Set();
+  CLASSES.forEach(c=>{ if(c.subject) set.add(c.subject); });
+  getAssignments().forEach(a=>{ if(a.textbook) set.add(a.textbook); });
+  return [...set].slice(0,16);
+}
 function rHomework(){
   const asgn=getAssignments();
   const _today=new Date().toISOString().slice(0,10);
+  const editA=hwEditId?asgn.find(x=>x.id===hwEditId):null;
+  const tbChips=allTextbooks();
+  const esc=s=>(s||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   document.getElementById('homeworkContent').innerHTML=`
-    <div class="card">
-      <div class="card-title">➕ 새 과제 만들기</div>
+    <div class="card" ${editA?'style="border-left:4px solid var(--orange)"':''}>
+      <div class="card-title">${editA?'✏️ 과제 수정':'➕ 새 과제 만들기'}</div>
       <div class="form-row-3">
         <div class="form-group"><label class="form-label">대상 반</label>${classSelect('hw-cls')}</div>
-        <div class="form-group"><label class="form-label">출제일 (내준 날)</label><input class="form-input" id="hw-start" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
-        <div class="form-group"><label class="form-label">마감일</label><input class="form-input" id="hw-due" type="date"></div>
+        <div class="form-group"><label class="form-label">출제일 (내준 날)</label><input class="form-input" id="hw-start" type="date" value="${editA?(editA.startDate||''):new Date().toISOString().slice(0,10)}"></div>
+        <div class="form-group"><label class="form-label">마감일</label><input class="form-input" id="hw-due" type="date" value="${editA?(editA.dueDate||''):''}"></div>
       </div>
-      <div class="form-group"><label class="form-label">과제 제목 *</label><input class="form-input" id="hw-title" placeholder="예: 수학Ⅱ 3단원 연습문제"></div>
-      <div class="form-group"><label class="form-label">과제 내용</label><textarea class="form-textarea" id="hw-content" placeholder="교재 페이지, 문제 범위 등"></textarea></div>
-      <div class="form-group" style="max-width:180px"><label class="form-label">최대 사진 수</label><input class="form-input" id="hw-photos" type="number" value="3" min="1" max="10"></div>
-      <button class="btn btn-primary" onclick="doCreateAsgn()">과제 저장하기</button>
+      <div class="form-group"><label class="form-label">교재 <span style="font-size:11px;color:var(--text-muted)">(아래 칩을 누르면 자동 입력)</span></label>
+        <input class="form-input" id="hw-textbook" placeholder="예: 쎈 공통수학1" value="${editA?esc(editA.textbook):''}">
+        ${tbChips.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${tbChips.map(t=>`<button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('hw-textbook').value=this.dataset.t" data-t="${esc(t)}">📘 ${t}</button>`).join('')}</div>`:''}
+      </div>
+      <div class="form-group"><label class="form-label">과제 제목 *</label><input class="form-input" id="hw-title" placeholder="예: 수학Ⅱ 3단원 연습문제" value="${editA?esc(editA.title):''}"></div>
+      <div class="form-group"><label class="form-label">과제 내용</label><textarea class="form-textarea" id="hw-content" placeholder="교재 페이지, 문제 범위 등">${editA?(editA.content||''):''}</textarea></div>
+      <div class="form-group" style="max-width:180px"><label class="form-label">최대 사진 수</label><input class="form-input" id="hw-photos" type="number" value="${editA?(editA.maxPhotos||3):3}" min="1" max="10"></div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="doSaveAsgn()">${editA?'수정 저장 💾':'과제 저장하기'}</button>
+        ${editA?`<button class="btn btn-outline" onclick="hwEditId=null;rHomework()">취소</button>`:''}
+      </div>
     </div>
     <div class="sec-label">📋 제출 현황</div>
     ${asgn.length===0?'<div class="card" style="text-align:center;padding:30px;color:var(--text-muted)">아직 만든 과제가 없어요. 위에서 첫 과제를 만들어보세요!</div>':''}
@@ -752,11 +769,13 @@ function rHomework(){
       return `
         <div class="card" style="border-left:4px solid ${overdue&&missing>0?'var(--red)':'var(--primary)'};margin-bottom:12px">
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-            <div><span class="chip">${a.className}</span><strong style="margin-left:8px">${a.title}</strong> ${badge}</div>
+            <div><span class="chip">${a.className}</span><strong style="margin-left:8px">${a.title}</strong> ${badge}${a.textbook?`<span style="margin-left:8px;font-size:12px;color:var(--text-muted)">📘 ${a.textbook}</span>`:''}</div>
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
               <span style="font-size:12px;color:var(--text-muted)">제출 ${subs.length}/${sts.length} · 기간 ${a.startDate||'?'}~${a.dueDate||'-'}</span>
               ${missing>0?`<button class="btn btn-orange btn-sm" onclick="doRemind('${a.classId}','${(a.title||'').replace(/'/g,'')}')">🔔 독촉 알림</button>`:''}
               <button class="btn btn-outline btn-sm" onclick="hwOpenId=hwOpenId==='${a.id}'?null:'${a.id}';rHomework()">${isOpen?'접기':'현황 보기'}</button>
+              <button class="btn btn-outline btn-sm" onclick="hwEditId='${a.id}';rHomework();window.scrollTo({top:0,behavior:'smooth'})">✏️ 수정</button>
+              <button class="btn btn-red btn-sm" onclick="doDelAsgn('${a.id}','${(a.title||'').replace(/'/g,'')}')">삭제</button>
             </div>
           </div>
           ${isOpen?`
@@ -772,19 +791,33 @@ function rHomework(){
               </tr>`;}).join('')}</tbody>
             </table></div></div>`:``}
         </div>`;}).join('')}`;
+  // 수정 모드면 대상 반 셀렉트를 해당 반으로 맞춤
+  if(hwEditId){ const a=asgn.find(x=>x.id===hwEditId); const cs=document.getElementById('hw-cls'); if(a&&cs) cs.value=a.classId; }
 }
-async function doCreateAsgn(){
+async function updateAssignment(id,d){ await db.collection('assignments').doc(id).update(d); await loadAssignments(); }
+async function deleteAssignment(id){ await db.collection('assignments').doc(id).delete(); await loadAssignments(); }
+async function doSaveAsgn(){
   const classId=document.getElementById('hw-cls').value,title=document.getElementById('hw-title').value.trim();
   if(!classId||!title){showToast('반과 제목을 입력해주세요','error');return;}
   const cls=CLASSES.find(c=>c.id===classId);
+  const data={classId,className:cls?.name||'',title,content:document.getElementById('hw-content').value.trim(),textbook:document.getElementById('hw-textbook').value.trim(),startDate:document.getElementById('hw-start').value,dueDate:document.getElementById('hw-due').value,maxPhotos:parseInt(document.getElementById('hw-photos').value)||3};
   try{
-    await saveAssignment({classId,className:cls?.name||'',title,content:document.getElementById('hw-content').value.trim(),startDate:document.getElementById('hw-start').value,dueDate:document.getElementById('hw-due').value,maxPhotos:parseInt(document.getElementById('hw-photos').value)||3});
-    showToast(`"${title}" 과제 등록 완료! 학생들이 바로 볼 수 있어요 📝`,'success');rHomework();
-    // 푸시 알림 발송 (알림 켠 학생에게)
-    fetch('/api/notify',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({tokens:classTokens(classId), title:'새 숙제가 등록됐어요 📝', body:`${cls?.name||''} · ${title}`})})
-      .then(r=>r.json()).then(j=>{ if(j&&j.sent) showToast(`알림 ${j.sent}명에게 발송 📨`); }).catch(()=>{});
+    if(hwEditId){
+      await updateAssignment(hwEditId,data); hwEditId=null;
+      showToast(`"${title}" 과제 수정 완료 ✏️`,'success'); rHomework();
+    }else{
+      await saveAssignment(data);
+      showToast(`"${title}" 과제 등록 완료! 학생들이 바로 볼 수 있어요 📝`,'success'); rHomework();
+      fetch('/api/notify',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({tokens:classTokens(classId), title:'새 숙제가 등록됐어요 📝', body:`${cls?.name||''} · ${title}`})})
+        .then(r=>r.json()).then(j=>{ if(j&&j.sent) showToast(`알림 ${j.sent}명에게 발송 📨`); }).catch(()=>{});
+    }
   }catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+async function doDelAsgn(id,title){
+  if(!confirm(`"${title}" 과제를 삭제할까요?\n(이미 제출한 기록은 남아있을 수 있어요)`)) return;
+  try{ await deleteAssignment(id); if(hwEditId===id)hwEditId=null; showToast('과제를 삭제했어요','warning'); rHomework(); }
+  catch(e){ showToast('삭제 실패: '+e.message,'error'); }
 }
 async function doCheck(sid){ await updateSub(sid,{checked:true}); showToast('숙제 확인 완료!','success'); rHomework(); }
 // 미제출 학생을 교실에서 직접 검사 → 확인됨 처리(사진 없는 제출 생성)
@@ -899,8 +932,10 @@ async function doSaveAtt(){
 // ================================================================
 // GRADES
 // ================================================================
+let exEditId=null;
 function rGrades(){
   const exams=getExams(),esubs=getExamSubs(),pendSubs=esubs.filter(s=>s.score===null||s.score===undefined);
+  const editE=exEditId?exams.find(e=>e.id===exEditId):null;
   document.getElementById('gradesContent').innerHTML=`
     <div class="card" style="border-left:4px solid var(--primary)">
       <div class="card-title">🤖 AI 시험지 분석 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(문제별 단원·요구능력·난이도)</span></div>
@@ -911,19 +946,33 @@ function rGrades(){
       <button class="btn btn-primary" onclick="doAnalyzeExam()">🤖 분석하기</button>
       <div id="an-result" style="margin-top:14px"></div>
     </div>
-    <div class="card">
-      <div class="card-title">📝 시험 만들기</div>
+    <div class="card" ${editE?'style="border-left:4px solid var(--orange)"':''}>
+      <div class="card-title">${editE?'✏️ 시험 수정':'📝 시험 만들기'}</div>
       <div class="form-row-2">
         <div class="form-group"><label class="form-label">반</label>${classSelect('ex-cls')}</div>
-        <div class="form-group"><label class="form-label">시험명 *</label><input class="form-input" id="ex-title" placeholder="예: 6월 단원평가"></div>
+        <div class="form-group"><label class="form-label">시험명 *</label><input class="form-input" id="ex-title" placeholder="예: 6월 단원평가" value="${editE?(editE.title||'').replace(/"/g,'&quot;'):''}"></div>
       </div>
       <div class="form-row-3">
-        <div class="form-group"><label class="form-label">출제 범위</label><input class="form-input" id="ex-range" placeholder="예: 수학Ⅱ 1~3단원"></div>
-        <div class="form-group"><label class="form-label">만점</label><input class="form-input" id="ex-max" type="number" value="100"></div>
-        <div class="form-group"><label class="form-label">시험 날짜</label><input class="form-input" id="ex-date" type="date"></div>
+        <div class="form-group"><label class="form-label">출제 범위</label><input class="form-input" id="ex-range" placeholder="예: 수학Ⅱ 1~3단원" value="${editE?(editE.range||'').replace(/"/g,'&quot;'):''}"></div>
+        <div class="form-group"><label class="form-label">만점</label><input class="form-input" id="ex-max" type="number" value="${editE?(editE.maxScore||100):100}"></div>
+        <div class="form-group"><label class="form-label">시험 날짜</label><input class="form-input" id="ex-date" type="date" value="${editE?(editE.date||''):''}"></div>
       </div>
-      <button class="btn btn-primary" onclick="doCreateExam()">시험 등록</button>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="doSaveExam()">${editE?'수정 저장 💾':'시험 등록'}</button>
+        ${editE?`<button class="btn btn-outline" onclick="exEditId=null;rGrades()">취소</button>`:''}
+      </div>
     </div>
+    ${exams.length?`<div class="card">
+      <div class="card-title">🗂️ 시험 목록 / 수정·삭제</div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>시험명</th><th>반</th><th>범위</th><th>만점</th><th>날짜</th><th>관리</th></tr></thead>
+        <tbody>${exams.map(e=>`<tr>
+          <td><strong>${e.title}</strong></td><td><span class="chip">${e.className}</span></td>
+          <td style="color:var(--text-muted)">${e.range||'-'}</td><td>${e.maxScore||100}</td><td style="color:var(--text-muted)">${e.date||'-'}</td>
+          <td style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="exEditId='${e.id}';rGrades();window.scrollTo({top:0,behavior:'smooth'})">✏️ 수정</button> <button class="btn btn-red btn-sm" onclick="doDelExam('${e.id}','${(e.title||'').replace(/'/g,'')}')">삭제</button></td>
+        </tr>`).join('')}</tbody>
+      </table></div>
+    </div>`:''}
     <div class="card">
       <div class="card-title">✍️ 점수 직접 입력 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(답안지 업로드 없이 바로 기입)</span></div>
       <div class="form-group" style="max-width:360px">
@@ -980,15 +1029,24 @@ function rGrades(){
         <tbody>${getStudents().map(st=>`<tr><td><strong>${st.name}</strong></td><td>${classNamesOf(st).map(n=>`<span class="chip" style="margin:1px">${n}</span>`).join('')||'-'}</td>${exams.slice(0,3).map(e=>{const s=esubs.find(x=>x.studentId===st.id&&x.examId===e.id);return`<td>${s?.score!=null?`<strong>${s.score}점</strong>`:'<span style="color:var(--text-muted)">-</span>'}</td>`;}).join('')}</tr>`).join('')}</tbody>
       </table></div>
     </div>`;
+  if(exEditId){ const e=exams.find(x=>x.id===exEditId); const cs=document.getElementById('ex-cls'); if(e&&cs) cs.value=e.classId; }
 }
-async function doCreateExam(){
+async function updateExam(id,d){ await db.collection('exams').doc(id).update(d); await loadExams(); }
+async function deleteExam(id){ await db.collection('exams').doc(id).delete(); await loadExams(); }
+async function doSaveExam(){
   const classId=document.getElementById('ex-cls').value,title=document.getElementById('ex-title').value.trim();
   if(!classId||!title){showToast('반과 시험명을 입력해주세요','error');return;}
   const cls=CLASSES.find(c=>c.id===classId);
+  const data={classId,className:cls?.name||'',title,range:document.getElementById('ex-range').value.trim(),maxScore:parseInt(document.getElementById('ex-max').value)||100,date:document.getElementById('ex-date').value};
   try{
-    await saveExam({classId,className:cls?.name||'',title,range:document.getElementById('ex-range').value.trim(),maxScore:parseInt(document.getElementById('ex-max').value)||100,date:document.getElementById('ex-date').value});
-    showToast(`"${title}" 시험이 등록되었어요! 📋`,'success');rGrades();
+    if(exEditId){ await updateExam(exEditId,data); exEditId=null; showToast(`"${title}" 시험 수정 완료 ✏️`,'success'); rGrades(); }
+    else{ await saveExam(data); showToast(`"${title}" 시험이 등록되었어요! 📋`,'success'); rGrades(); }
   }catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+async function doDelExam(id,title){
+  if(!confirm(`"${title}" 시험을 삭제할까요?\n(입력된 점수·피드백도 함께 사라질 수 있어요)`)) return;
+  try{ await deleteExam(id); if(exEditId===id)exEditId=null; showToast('시험을 삭제했어요','warning'); rGrades(); }
+  catch(e){ showToast('삭제 실패: '+e.message,'error'); }
 }
 async function doGrade(sid){
   const score=parseInt(document.getElementById('sc-'+sid).value);

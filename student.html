@@ -869,6 +869,7 @@ function renderHomework() {
           <span style="font-size:12px;color:var(--text-muted)">최대 ${a.maxPhotos}장</span>
         </div>
         <div class="hw-title" style="margin-bottom:6px">${a.title}</div>
+        ${a.textbook?`<div style="font-size:12px;color:var(--primary);font-weight:600;margin-bottom:4px">📘 ${a.textbook}</div>`:''}
         <div class="hw-body">${a.content}</div>
         <div class="hw-due">📅 ${a.startDate?fmtDateFull(a.startDate)+' ~ ':''}${fmtDateFull(a.dueDate)} 까지 제출</div>
         ${isPending ? `
