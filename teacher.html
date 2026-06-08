@@ -952,7 +952,7 @@ function rGrades(){
       <div class="card-title">개인별 성적</div>
       <div class="table-wrap"><table>
         <thead><tr><th>학생</th><th>반</th>${exams.slice(0,3).map(e=>`<th>${e.title}</th>`).join('')}</tr></thead>
-        <tbody>${getStudents().map(st=>`<tr><td><strong>${st.name}</strong></td><td><span class="chip">${st.className}</span></td>${exams.slice(0,3).map(e=>{const s=esubs.find(x=>x.studentId===st.id&&x.examId===e.id);return`<td>${s?.score!=null?`<strong>${s.score}점</strong>`:'<span style="color:var(--text-muted)">-</span>'}</td>`;}).join('')}</tr>`).join('')}</tbody>
+        <tbody>${getStudents().map(st=>`<tr><td><strong>${st.name}</strong></td><td>${classNamesOf(st).map(n=>`<span class="chip" style="margin:1px">${n}</span>`).join('')||'-'}</td>${exams.slice(0,3).map(e=>{const s=esubs.find(x=>x.studentId===st.id&&x.examId===e.id);return`<td>${s?.score!=null?`<strong>${s.score}점</strong>`:'<span style="color:var(--text-muted)">-</span>'}</td>`;}).join('')}</tr>`).join('')}</tbody>
       </table></div>
     </div>`;
 }
@@ -1358,7 +1358,7 @@ function rReport(){
         <label class="form-label">학생 선택</label>
         <select class="form-select" onchange="rpStId=this.value;rReport()" style="max-width:300px">
           <option value="">학생을 선택하세요</option>
-          ${sts.map(s=>`<option value="${s.id}" ${s.id===rpStId?'selected':''}>${s.name} (${s.className})</option>`).join('')}
+          ${sts.map(s=>`<option value="${s.id}" ${s.id===rpStId?'selected':''}>${s.name} (${classNamesOf(s).join(', ')||'반 미배정'})</option>`).join('')}
         </select>
       </div>
     </div>
