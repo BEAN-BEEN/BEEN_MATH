@@ -1336,6 +1336,13 @@ function setMF(f){mFilter=f;renderMaterials();}
 // ================================================================
 // SCHEDULE
 // ================================================================
+// 운영기간 있는 반(특강 등)은 기간 내에만 표시
+function isClassActive(c){
+  const today=new Date().toISOString().slice(0,10);
+  if(c.endDate && today>c.endDate) return false;
+  if(c.startDate && today<c.startDate) return false;
+  return true;
+}
 function renderSchedule() {
   const days=['mon','tue','wed','thu','fri','sat','sun'];
   const dayLabels={mon:'월요일',tue:'화요일',wed:'수요일',thu:'목요일',fri:'금요일',sat:'토요일',sun:'일요일'};
@@ -1348,7 +1355,7 @@ function renderSchedule() {
   document.getElementById('scheduleContent').innerHTML = `
     <div class="sched-grid">
       ${days.map(d=>{
-        const list=S_CLASSES.filter(c=>c.weekday===d);
+        const list=S_CLASSES.filter(c=>c.weekday===d && isClassActive(c));
         const isToday=d===todayKey;
         return `<div class="day-card ${list.length?'has-class':''} ${isToday?'today':''}">
           <div class="day-lbl">${dayLabels[d]}</div>
@@ -1424,7 +1431,7 @@ function renderTeacher() {
         if(!ALL_CLASSES.length) return '<div style="text-align:center;color:var(--text-muted);padding:16px">등록된 반이 없어요</div>';
         const mine=id=>S_CLASSES.some(c=>c.id===id);
         return `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px;padding:0 4px"><div style="display:grid;grid-template-columns:repeat(7,minmax(102px,1fr));gap:8px;min-width:740px">${days.map(d=>{
-          const list=ALL_CLASSES.filter(c=>c.weekday===d).sort((a,b)=>(a.slot||'').localeCompare(b.slot||''));
+          const list=ALL_CLASSES.filter(c=>c.weekday===d && isClassActive(c)).sort((a,b)=>(a.slot||'').localeCompare(b.slot||''));
           const isToday=d===todayKey;
           return `<div class="day-card ${list.length?'has-class':''} ${isToday?'today':''}">
             <div class="day-lbl">${dayLabels[d]}${isToday?' ·오늘':''}</div>

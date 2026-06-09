@@ -581,7 +581,7 @@ function rDashboard(){
   const today=new Date();
   document.getElementById('todayDate').textContent=today.toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
   const dayKey=['sun','mon','tue','wed','thu','fri','sat'][today.getDay()];
-  const todayCls=CLASSES.filter(c=>c.weekday===dayKey);
+  const todayCls=CLASSES.filter(c=>c.weekday===dayKey && isClassActive(c));
   const unchecked=subs.filter(s=>!s.checked).length;
   const pending=qs.filter(q=>q.status==='pending').length;
 
@@ -1046,7 +1046,7 @@ function rAttendance(){
   const today=new Date().toISOString().slice(0,10);
   if(!attDate) attDate=today;
   const wd=['sun','mon','tue','wed','thu','fri','sat'][new Date(attDate).getDay()];
-  const dayClasses=CLASSES.filter(c=>c.weekday===wd);
+  const dayClasses=CLASSES.filter(c=>c.weekday===wd && isClassActive(c));
   document.getElementById('attendanceContent').innerHTML=`
     <div class="card">
       <div class="card-title">✅ 출석 체크</div>
@@ -1471,6 +1471,20 @@ async function doDelMat(id){if(!confirm('이 자료를 삭제할까요?'))return
 // SCHEDULE
 // ================================================================
 const TYPE_BADGE={'정규':'b-primary','보강':'b-orange','특강':'b-yellow'};
+// 운영기간 있는 반(특강 등)은 기간 내에만 시간표에 표시
+function isClassActive(c, today){
+  today=today||new Date().toISOString().slice(0,10);
+  if(c.endDate && today>c.endDate) return false;
+  if(c.startDate && today<c.startDate) return false;
+  return true;
+}
+function classPeriodStatus(c, today){
+  today=today||new Date().toISOString().slice(0,10);
+  if(!c.startDate && !c.endDate) return '';
+  if(c.endDate && today>c.endDate) return '<span class="badge b-gray">종료</span>';
+  if(c.startDate && today<c.startDate) return '<span class="badge b-yellow">예정</span>';
+  return '<span class="badge b-green">진행중</span>';
+}
 function rSchedule(){
   const days=['mon','tue','wed','thu','fri','sat','sun'];
   document.getElementById('scheduleContent').innerHTML=`
@@ -1486,15 +1500,20 @@ function rSchedule(){
         <div class="form-group"><label class="form-label">시작</label><input class="form-input" id="sc-start" type="time"></div>
         <div class="form-group"><label class="form-label">종료</label><input class="form-input" id="sc-end" type="time"></div>
       </div>
-      <div class="form-group" style="max-width:220px"><label class="form-label">유형</label><select class="form-select" id="sc-type"><option value="정규">정규 수업</option><option value="보강">보강</option><option value="특강">특강</option></select></div>
+      <div class="form-row-3">
+        <div class="form-group"><label class="form-label">유형</label><select class="form-select" id="sc-type"><option value="정규">정규 수업</option><option value="보강">보강</option><option value="특강">특강</option></select></div>
+        <div class="form-group"><label class="form-label">운영 시작일 <span style="color:var(--text-muted);font-weight:400">(특강 등, 선택)</span></label><input class="form-input" id="sc-sd" type="date"></div>
+        <div class="form-group"><label class="form-label">운영 종료일 <span style="color:var(--text-muted);font-weight:400">(지나면 자동 사라짐)</span></label><input class="form-input" id="sc-ed" type="date"></div>
+      </div>
       <button class="btn btn-primary" onclick="doAddClass()">반 추가</button>
+      <div style="margin-top:8px;font-size:12px;color:var(--text-muted)">💡 특강처럼 단발성 수업은 운영기간을 정하면 그 기간에만 시간표에 떴다가 자동으로 사라져요.</div>
     </div>
     <div class="card">
       <div class="card-title">📋 주간 시간표 (요일별)</div>
       <div style="overflow-x:auto"><table class="sched-tbl">
         <thead><tr>${days.map(d=>`<th>${WD_LABEL[d]}요일</th>`).join('')}</tr></thead>
         <tbody><tr>${days.map(d=>{
-          const list=CLASSES.filter(c=>c.weekday===d).sort((a,b)=>(a.slot||'').localeCompare(b.slot||''));
+          const list=CLASSES.filter(c=>c.weekday===d && isClassActive(c)).sort((a,b)=>(a.slot||'').localeCompare(b.slot||''));
           return `<td style="vertical-align:top;min-width:120px">${list.map(c=>`
             <div class="sc-cell ${c.type==='보강'?'mk':''}" style="${c.type==='특강'?'background:var(--yellow-light);border:1px solid var(--yellow)':''}">
               <div class="sc-name">${c.name}</div>
@@ -1508,14 +1527,15 @@ function rSchedule(){
     <div class="card">
       <div class="card-title">⚙️ 반 목록 / 시간·삭제</div>
       <div class="table-wrap"><table>
-        <thead><tr><th>반</th><th>요일</th><th>교시</th><th>시간</th><th>유형</th><th>학생</th><th>관리</th></tr></thead>
+        <thead><tr><th>반</th><th>요일</th><th>교시</th><th>시간</th><th>유형</th><th>운영기간 (특강)</th><th>학생</th><th>관리</th></tr></thead>
         <tbody>${CLASSES.map(c=>`
           <tr>
             <td><strong>${c.name}</strong><br><span style="font-size:11px;color:var(--text-muted)">${c.subject||''}</span></td>
             <td>${WD_LABEL[c.weekday]||'-'}</td>
             <td>${c.slot||'-'}</td>
-            <td style="min-width:230px"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><input type="time" class="form-input" style="width:130px;padding:6px 8px" id="ct-s-${c.id}" value="${c.startTime||''}"><span>~</span><input type="time" class="form-input" style="width:130px;padding:6px 8px" id="ct-e-${c.id}" value="${c.endTime||''}"><button class="btn btn-outline btn-sm" onclick="doSaveClassTime('${c.id}')">저장</button></div></td>
+            <td style="min-width:230px"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><input type="time" class="form-input" style="width:120px;padding:6px 8px" id="ct-s-${c.id}" value="${c.startTime||''}"><span>~</span><input type="time" class="form-input" style="width:120px;padding:6px 8px" id="ct-e-${c.id}" value="${c.endTime||''}"><button class="btn btn-outline btn-sm" onclick="doSaveClassTime('${c.id}')">저장</button></div></td>
             <td><span class="badge ${TYPE_BADGE[c.type]||'b-gray'}">${c.type||'정규'}</span></td>
+            <td style="min-width:230px"><div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap"><input type="date" class="form-input" style="width:135px;padding:5px 6px" id="cp-s-${c.id}" value="${c.startDate||''}"><span>~</span><input type="date" class="form-input" style="width:135px;padding:5px 6px" id="cp-e-${c.id}" value="${c.endDate||''}"><button class="btn btn-outline btn-sm" onclick="doSaveClassPeriod('${c.id}')">저장</button> ${classPeriodStatus(c)}</div></td>
             <td>${getStudentsByClass(c.id).length}명</td>
             <td><button class="btn btn-red btn-sm" onclick="doDelClass('${c.id}','${c.name}')">삭제</button></td>
           </tr>`).join('')}</tbody>
@@ -1529,7 +1549,9 @@ async function doAddClass(){
     name, subject:document.getElementById('sc-subject').value.trim(),
     weekday:document.getElementById('sc-day').value, slot:document.getElementById('sc-slot').value.trim(),
     startTime:document.getElementById('sc-start').value, endTime:document.getElementById('sc-end').value,
-    type:document.getElementById('sc-type').value, order:(CLASSES.length?Math.max(...CLASSES.map(c=>c.order||0))+1:0)
+    type:document.getElementById('sc-type').value,
+    startDate:document.getElementById('sc-sd').value, endDate:document.getElementById('sc-ed').value,
+    order:(CLASSES.length?Math.max(...CLASSES.map(c=>c.order||0))+1:0)
   };
   try{ await addClassFS(data); showToast(`"${name}" 반이 추가되었어요! 📅`,'success'); rSchedule(); }
   catch(e){ showToast('추가 실패: '+e.message,'error'); }
@@ -1537,6 +1559,11 @@ async function doAddClass(){
 async function doSaveClassTime(id){
   const s=document.getElementById('ct-s-'+id).value, e=document.getElementById('ct-e-'+id).value;
   try{ await updateClassFS(id,{startTime:s,endTime:e}); showToast('시간이 저장되었어요 ⏰','success'); rSchedule(); }
+  catch(err){ showToast('저장 실패: '+err.message,'error'); }
+}
+async function doSaveClassPeriod(id){
+  const s=document.getElementById('cp-s-'+id).value, e=document.getElementById('cp-e-'+id).value;
+  try{ await updateClassFS(id,{startDate:s,endDate:e}); showToast('운영기간이 저장되었어요 📅','success'); rSchedule(); }
   catch(err){ showToast('저장 실패: '+err.message,'error'); }
 }
 async function doDelClass(id,name){
