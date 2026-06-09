@@ -368,6 +368,70 @@ async function doAddNotice(){
   catch(e){ showToast('등록 실패: '+e.message,'error'); }
 }
 async function doDelNotice(id){ if(!confirm('이 공지를 삭제할까요?'))return; try{ await delNotice(id); showToast('공지를 삭제했어요','warning'); rDashboard(); }catch(e){ showToast('삭제 실패: '+e.message,'error'); } }
+// 🏫 학교별 내신 시험 일정
+let SCHOOLEXAMS_CACHE=[];
+async function loadSchoolExams(){ const s=await db.collection('schoolExams').get(); SCHOOLEXAMS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.mathDate||'').localeCompare(b.mathDate||'')); }
+function getSchoolExams(){ return SCHOOLEXAMS_CACHE; }
+async function addSchoolExam(d){ await db.collection('schoolExams').add({...d, ts:Date.now()}); await loadSchoolExams(); }
+async function updateSchoolExam(id,d){ await db.collection('schoolExams').doc(id).update(d); await loadSchoolExams(); }
+async function deleteSchoolExam(id){ await db.collection('schoolExams').doc(id).delete(); await loadSchoolExams(); }
+// 학생 명단에 있는 학교 목록(중복 제거) — 빠른 선택용
+function allSchools(){ const set=new Set(); getStudents().forEach(s=>{ if(s.school) set.add(s.school); }); getSchoolExams().forEach(e=>{ if(e.school) set.add(e.school); }); return [...set]; }
+function ddayBadge(mathDate){
+  if(!mathDate) return '';
+  const t=new Date(); t.setHours(0,0,0,0);
+  const d=new Date(mathDate+'T00:00:00');
+  const diff=Math.round((d-t)/86400000);
+  if(diff>0) return `<span class="badge b-red">수학 D-${diff}</span>`;
+  if(diff===0) return `<span class="badge b-red">수학 D-DAY 🔥</span>`;
+  return `<span class="badge b-gray">종료</span>`;
+}
+let seEditId=null;
+function schoolExamCardHtml(){
+  const list=getSchoolExams(), editS=seEditId?list.find(e=>e.id===seEditId):null, schools=allSchools();
+  const esc=s=>(s||'').replace(/"/g,'&quot;');
+  return `<div class="card" ${editS?'style="border-left:4px solid var(--orange)"':'style="border-left:4px solid var(--primary)"'}>
+    <div class="card-title">${editS?'✏️ 내신 일정 수정':'🏫 학교별 내신 시험 일정'} <span style="font-size:12px;color:var(--text-muted);font-weight:400">(학생 ‘학교’와 자동 매칭 → 학생 홈에 D-day)</span></div>
+    <div class="form-row-2">
+      <div class="form-group"><label class="form-label">학교 *</label><input class="form-input" id="se-school" list="se-schools" value="${editS?esc(editS.school):''}" placeholder="예: 송도고등학교"><datalist id="se-schools">${schools.map(s=>`<option value="${esc(s)}">`).join('')}</datalist></div>
+      <div class="form-group"><label class="form-label">시험명 *</label><input class="form-input" id="se-title" value="${editS?esc(editS.title):''}" placeholder="예: 1학기 중간고사"></div>
+    </div>
+    <div class="form-row-4">
+      <div class="form-group"><label class="form-label">학년(선택)</label><input class="form-input" id="se-grade" value="${editS?esc(editS.grade):''}" placeholder="예: 고1"></div>
+      <div class="form-group"><label class="form-label">시험기간 시작</label><input class="form-input" id="se-start" type="date" value="${editS?(editS.startDate||''):''}"></div>
+      <div class="form-group"><label class="form-label">시험기간 끝</label><input class="form-input" id="se-end" type="date" value="${editS?(editS.endDate||''):''}"></div>
+      <div class="form-group"><label class="form-label">수학 시험일 *</label><input class="form-input" id="se-math" type="date" value="${editS?(editS.mathDate||''):''}"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="doSaveSchoolExam()">${editS?'수정 저장 💾':'일정 추가'}</button>
+      ${editS?`<button class="btn btn-outline" onclick="seEditId=null;rGrades()">취소</button>`:''}
+    </div>
+    ${list.length?`<div class="table-wrap" style="margin-top:14px"><table>
+      <thead><tr><th>학교</th><th>시험</th><th>시험기간</th><th>수학</th><th>D-day</th><th>관리</th></tr></thead>
+      <tbody>${list.map(e=>`<tr>
+        <td><span class="chip">${e.school}</span></td>
+        <td><strong>${e.title||'-'}</strong>${e.grade?` <span style="font-size:11px;color:var(--text-muted)">${e.grade}</span>`:''}</td>
+        <td style="color:var(--text-muted)">${e.startDate||'?'}~${e.endDate||'?'}</td>
+        <td><strong>${e.mathDate||'-'}</strong></td>
+        <td>${ddayBadge(e.mathDate)}</td>
+        <td style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="seEditId='${e.id}';rGrades();window.scrollTo({top:0,behavior:'smooth'})">수정</button> <button class="btn btn-red btn-sm" onclick="doDelSchoolExam('${e.id}','${(e.school||'')+' '+(e.title||'')}')">삭제</button></td>
+      </tr>`).join('')}</tbody>
+    </table></div>`:'<div style="margin-top:12px;font-size:13px;color:var(--text-muted)">아직 등록된 내신 일정이 없어요. 학교별로 추가하면 그 학교 학생 전원이 D-day를 봐요.</div>'}
+  </div>`;
+}
+async function doSaveSchoolExam(){
+  const school=document.getElementById('se-school').value.trim();
+  const title=document.getElementById('se-title').value.trim();
+  const mathDate=document.getElementById('se-math').value;
+  if(!school||!title||!mathDate){ showToast('학교·시험명·수학 시험일은 필수예요','error'); return; }
+  const data={school,title,grade:document.getElementById('se-grade').value.trim(),startDate:document.getElementById('se-start').value,endDate:document.getElementById('se-end').value,mathDate};
+  try{
+    if(seEditId){ await updateSchoolExam(seEditId,data); seEditId=null; showToast('내신 일정 수정 완료 ✏️','success'); }
+    else{ await addSchoolExam(data); showToast(`${school} 내신 일정 추가 완료 🏫`,'success'); }
+    rGrades();
+  }catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+async function doDelSchoolExam(id,label){ if(!confirm(`"${label}" 내신 일정을 삭제할까요?`))return; try{ await deleteSchoolExam(id); if(seEditId===id)seEditId=null; showToast('삭제했어요','warning'); rGrades(); }catch(e){ showToast('삭제 실패: '+e.message,'error'); } }
 function getVideos(){ return VIDEOS_CACHE; }
 function getMaterials(){ return MATERIALS_CACHE; }
 function getConsultations(){ return CONSULTS_CACHE; }
@@ -602,7 +666,10 @@ function renderEditCard(){
         ${CLASSES.map(c=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;border:1.5px solid var(--border);border-radius:7px;padding:6px 9px;cursor:pointer"><input type="checkbox" class="es-class-chk" value="${c.id}" ${ids.includes(c.id)?'checked':''}> ${c.name} <span style="color:var(--text-muted)">${(WD_LABEL[c.weekday]||'')+(c.slot||'')}</span></label>`).join('')}
       </div>
     </div>
-    <div class="form-group" style="max-width:280px"><label class="form-label">학부모 연락처</label><input class="form-input" id="es-parent" value="${s.parentPhone||''}"></div>
+    <div class="form-row-2">
+      <div class="form-group"><label class="form-label">학교 <span style="color:var(--text-muted);font-weight:400">(내신 시험 일정 매칭용)</span></label><input class="form-input" id="es-school" value="${s.school||''}" placeholder="예: 송도고등학교"></div>
+      <div class="form-group"><label class="form-label">학부모 연락처</label><input class="form-input" id="es-parent" value="${s.parentPhone||''}"></div>
+    </div>
     <div class="btn-row">
       <button class="btn btn-primary" onclick="doSaveEdit()">수정 저장</button>
       <button class="btn btn-outline" onclick="editStudentId=null;rStudents()">취소</button>
@@ -616,9 +683,10 @@ async function doSaveEdit(){
   const parentPhone=document.getElementById('es-parent').value.trim();
   const classIds=[...document.querySelectorAll('.es-class-chk:checked')].map(el=>el.value);
   const classNames=classIds.map(id=>CLASSES.find(c=>c.id===id)?.name).filter(Boolean);
+  const school=document.getElementById('es-school').value.trim();
   if(!name||!phone){showToast('이름과 핸드폰 번호를 입력해주세요','error');return;}
   const last4=phone.replace(/[^0-9]/g,'').slice(-4);
-  try{ await updateStudentFS(editStudentId,{name,phone,phoneLast4:last4,parentPhone,classIds,classNames}); editStudentId=null; showToast(`${name} 정보 수정 완료 ✓`,'success'); rStudents(); }
+  try{ await updateStudentFS(editStudentId,{name,phone,phoneLast4:last4,parentPhone,classIds,classNames,school}); editStudentId=null; showToast(`${name} 정보 수정 완료 ✓`,'success'); rStudents(); }
   catch(e){ showToast('수정 실패: '+e.message,'error'); }
 }
 function rStudents(){
@@ -640,7 +708,10 @@ function rStudents(){
             ${CLASSES.map(c=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;border:1.5px solid var(--border);border-radius:7px;padding:6px 9px;cursor:pointer"><input type="checkbox" class="ns-class-chk" value="${c.id}"> ${c.name} <span style="color:var(--text-muted)">${(WD_LABEL[c.weekday]||'')+(c.slot||'')}</span></label>`).join('')}
           </div>
         </div>
-        <div class="form-group" style="max-width:280px"><label class="form-label">학부모 연락처</label><input class="form-input" id="ns-parent" placeholder="010-0000-0000"></div>
+        <div class="form-row-2">
+          <div class="form-group"><label class="form-label">학교 <span style="color:var(--text-muted);font-weight:400">(내신 시험 일정 매칭용)</span></label><input class="form-input" id="ns-school" placeholder="예: 송도고등학교"></div>
+          <div class="form-group"><label class="form-label">학부모 연락처</label><input class="form-input" id="ns-parent" placeholder="010-0000-0000"></div>
+        </div>
         <div class="btn-row">
           <button class="btn btn-primary" onclick="doAddSt()">등록하기</button>
           <button class="btn btn-outline" onclick="showAdd=false;rStudents()">취소</button>
@@ -679,11 +750,12 @@ async function doAddSt(){
   const parentPhone=document.getElementById('ns-parent').value.trim();
   const classIds=[...document.querySelectorAll('.ns-class-chk:checked')].map(el=>el.value);
   const classNames=classIds.map(id=>CLASSES.find(c=>c.id===id)?.name).filter(Boolean);
+  const school=document.getElementById('ns-school').value.trim();
   if(!name||!phone){showToast('이름과 핸드폰 번호를 입력해주세요','error');return;}
   const last4=phone.replace(/[^0-9]/g,'').slice(-4);
   if(last4.length<4){showToast('핸드폰 번호를 정확히 입력해주세요','error');return;}
   try{
-    await addStudentFS({ name, phone, phoneLast4:last4, classIds, classNames, parentPhone, enrollDate:new Date().toISOString().slice(0,10) });
+    await addStudentFS({ name, phone, phoneLast4:last4, classIds, classNames, parentPhone, school, enrollDate:new Date().toISOString().slice(0,10) });
     showAdd=false;
     showToast(`${name} 학생 등록 완료! 로그인: 이름 + ${last4}`,'success');
     rStudents();
@@ -946,6 +1018,7 @@ function rGrades(){
   const exams=getExams(),esubs=getExamSubs(),pendSubs=esubs.filter(s=>s.score===null||s.score===undefined);
   const editE=exEditId?exams.find(e=>e.id===exEditId):null;
   document.getElementById('gradesContent').innerHTML=`
+    ${schoolExamCardHtml()}
     <div class="card" style="border-left:4px solid var(--primary)">
       <div class="card-title">🤖 AI 시험지 분석 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(문제별 단원·요구능력·난이도)</span></div>
       <div class="upload-area" onclick="this.querySelector('input').click()">
@@ -1532,6 +1605,7 @@ async function init(){
     await loadConsults();        // 상담
     await loadReports();         // 리포트
     await loadNotices();         // 공지사항
+    await loadSchoolExams();     // 학교별 내신 시험 일정
   }catch(e){ showToast('데이터를 불러오지 못했어요: '+e.message,'error'); }
   rDashboard();
   pruneOldFirebase();            // 3개월 지난 사진·기록 자동 정리 (백그라운드)

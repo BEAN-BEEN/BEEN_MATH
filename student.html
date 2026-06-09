@@ -515,6 +515,7 @@ const WD_LABEL={mon:'월',tue:'화',wed:'수',thu:'목',fri:'금',sat:'토',sun:
 
 // ===== Firebase에서 내 반·숙제·제출·출석·성적 불러오기 =====
 let S_CLASSES=[], ALL_CLASSES=[], S_ASSIGNMENTS=[], S_SUBMISSIONS=[], S_ATTENDANCE=[], S_EXAMS=[], S_EXAMSUBS=[], S_QUESTIONS=[], S_NOTICES=[];
+let S_SCHOOL='', S_SCHOOLEXAM=null;
 function myClassIds(){ try{ return JSON.parse(localStorage.getItem('bm_classIds')||'[]'); }catch(e){ return STUDENT.classId?[STUDENT.classId]:[]; } }
 async function loadStudentData(){
   const ids = myClassIds();
@@ -549,7 +550,16 @@ async function loadStudentData(){
     S_QUESTIONS = q.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
     const rep = await db.collection('reports').doc(STUDENT.id).get();
     S_REPORT = rep.exists ? rep.data() : null;
-  } else { S_SUBMISSIONS=[]; S_EXAMSUBS=[]; S_QUESTIONS=[]; S_REPORT=null; }
+    // 내 학교 내신 시험 일정 (가장 가까운 예정 1개)
+    const meDoc = await db.collection('students').doc(STUDENT.id).get();
+    S_SCHOOL = meDoc.exists ? (meDoc.data().school||'') : '';
+    if(S_SCHOOL){
+      const se = await db.collection('schoolExams').where('school','==',S_SCHOOL).get();
+      const today=new Date().toISOString().slice(0,10);
+      const up = se.docs.map(d=>d.data()).filter(e=>e.mathDate && e.mathDate>=today).sort((a,b)=>(a.mathDate||'').localeCompare(b.mathDate||''));
+      S_SCHOOLEXAM = up[0] || null;
+    } else { S_SCHOOLEXAM=null; }
+  } else { S_SUBMISSIONS=[]; S_EXAMSUBS=[]; S_QUESTIONS=[]; S_REPORT=null; S_SCHOOLEXAM=null; }
   // 공지사항 (전체 공통)
   try{ const nt = await db.collection('notices').get(); S_NOTICES = nt.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.ts||0)-(a.ts||0)); }
   catch(e){ S_NOTICES=[]; }
@@ -800,6 +810,21 @@ function renderHome() {
         <div style="font-size:13px;font-weight:800;color:#854D0E;margin-bottom:6px">📢 공지사항</div>
         ${S_NOTICES.map(n=>`<div style="font-size:14px;color:#713F12;padding:3px 0">• ${n.text}</div>`).join('')}
       </div>`:''}
+    ${S_SCHOOLEXAM?(function(){
+      const e=S_SCHOOLEXAM, t=new Date(); t.setHours(0,0,0,0);
+      const diff=Math.round((new Date(e.mathDate+'T00:00:00')-t)/86400000);
+      const dday=diff>0?('D-'+diff):(diff===0?'D-DAY🔥':'');
+      return `<div style="background:linear-gradient(135deg,#EF4444 0%,#F97316 100%);border-radius:var(--radius);padding:16px 18px;margin-bottom:16px;color:#fff">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+          <div>
+            <div style="font-size:12px;opacity:.92;font-weight:600">📅 ${e.school} ${e.title||''}${e.grade?(' · '+e.grade):''}</div>
+            <div style="font-size:16px;font-weight:800;margin-top:3px">수학 시험 ${fmtDateFull(e.mathDate)}</div>
+            <div style="font-size:12px;opacity:.88;margin-top:2px">시험기간 ${e.startDate||'?'} ~ ${e.endDate||'?'}</div>
+          </div>
+          <div style="font-size:30px;font-weight:900;letter-spacing:-1px">${dday}</div>
+        </div>
+      </div>`;
+    })():''}
     <div class="hero-banner">
       <h2>👋 ${STUDENT.name} 학생, 제출할 숙제가 ${pending.length}개 있어요!</h2>
       <p>완료한 과제부터 차례대로 제출하고, 어려웠던 문제는 질문으로 남겨보세요.</p>
