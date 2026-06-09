@@ -593,9 +593,10 @@ function getAssignments(){
   return S_ASSIGNMENTS.map(a=>{
     const sub = S_SUBMISSIONS.find(s=>s.assignmentId===a.id);
     let status;
-    if(sub) status='submitted';
+    if(sub && sub.rejected) status='rejected';
+    else if(sub) status='submitted';
     else status=(a.dueDate && a.dueDate < today) ? 'late' : 'pending';
-    return { ...a, status, submittedAt:sub?sub.submittedAt:null, teacherChecked:sub?!!sub.checked:false, needsRetry:sub?!!sub.needsRetry:false, offline:sub?!!sub.offline:false, late:sub?!!sub.late:false, retryDone:sub?!!sub.retryDone:false, subId:sub?sub.id:null };
+    return { ...a, status, submittedAt:sub?sub.submittedAt:null, teacherChecked:sub?!!sub.checked:false, needsRetry:sub?!!sub.needsRetry:false, offline:sub?!!sub.offline:false, late:sub?!!sub.late:false, retryDone:sub?!!sub.retryDone:false, rejected:sub?!!sub.rejected:false, rejectReason:sub?(sub.rejectReason||''):'', subId:sub?sub.id:null };
   });
 }
 function getAttendance()  { return S_ATTENDANCE; }
@@ -651,11 +652,10 @@ async function submitHomework(assignmentId) {
   if(fi && fi.files && fi.files.length){ photos=await uploadPhotos(fi.files, 'submissions/'+assignmentId); }
   const today=new Date().toISOString().slice(0,10);
   const late = !!(a && a.dueDate && today > a.dueDate);
-  await db.collection('submissions').add({
-    assignmentId, assignmentTitle:a?a.title:'', classId:a?a.classId:'', className:a?a.className:'',
-    studentId:STUDENT.id, studentName:STUDENT.name, photos, offline:false, late,
-    submittedAt:new Date().toLocaleString('ko-KR'), checked:false, needsRetry:false, retryDone:false, ts:Date.now()
-  });
+  const base={ photos, offline:false, late, submittedAt:new Date().toLocaleString('ko-KR'), checked:false, needsRetry:false, retryDone:false, rejected:false, rejectReason:'' };
+  const exist=S_SUBMISSIONS.find(s=>s.assignmentId===assignmentId);
+  if(exist){ await db.collection('submissions').doc(exist.id).update(base); }
+  else{ await db.collection('submissions').add({ assignmentId, assignmentTitle:a?a.title:'', classId:a?a.classId:'', className:a?a.className:'', studentId:STUDENT.id, studentName:STUDENT.name, ...base, ts:Date.now() }); }
   await loadStudentData();
 }
 // ✋ 사진 없이 교실에서 직접 검사받기 요청
@@ -663,11 +663,10 @@ async function submitHomeworkOffline(assignmentId) {
   const a = S_ASSIGNMENTS.find(x=>x.id===assignmentId);
   const today=new Date().toISOString().slice(0,10);
   const late = !!(a && a.dueDate && today > a.dueDate);
-  await db.collection('submissions').add({
-    assignmentId, assignmentTitle:a?a.title:'', classId:a?a.classId:'', className:a?a.className:'',
-    studentId:STUDENT.id, studentName:STUDENT.name, photos:[], offline:true, late,
-    submittedAt:new Date().toLocaleString('ko-KR'), checked:false, needsRetry:false, retryDone:false, ts:Date.now()
-  });
+  const base={ photos:[], offline:true, late, submittedAt:new Date().toLocaleString('ko-KR'), checked:false, needsRetry:false, retryDone:false, rejected:false, rejectReason:'' };
+  const exist=S_SUBMISSIONS.find(s=>s.assignmentId===assignmentId);
+  if(exist){ await db.collection('submissions').doc(exist.id).update(base); }
+  else{ await db.collection('submissions').add({ assignmentId, assignmentTitle:a?a.title:'', classId:a?a.classId:'', className:a?a.className:'', studentId:STUDENT.id, studentName:STUDENT.name, ...base, ts:Date.now() }); }
   await loadStudentData();
 }
 // ✏️ 오답 고쳐서 다시 제출
@@ -783,7 +782,7 @@ function fmtDate(str) {
   return `${d.getMonth()+1}월 ${d.getDate()}일`;
 }
 function statusBadge(s) {
-  return ({ pending:'<span class="badge b-primary">제출 대기</span>', late:'<span class="badge b-red">미제출 (지각)</span>', submitted:'<span class="badge b-green">제출 완료</span>', answered:'<span class="badge b-green">답변 완료</span>', ai_draft:'<span class="badge b-primary">AI 초안</span>', present:'<span class="badge b-green">출석</span>', absent:'<span class="badge b-red">결석</span>', grading:'<span class="badge b-yellow">채점 중</span>', scored:'<span class="badge b-green">점수 확인</span>', pending_submission:'<span class="badge b-orange">답안지 제출 대기</span>' }[s] || `<span class="badge b-gray">${s}</span>`);
+  return ({ pending:'<span class="badge b-primary">제출 대기</span>', late:'<span class="badge b-red">미제출 (지각)</span>', submitted:'<span class="badge b-green">제출 완료</span>', rejected:'<span class="badge b-red">🔁 반려됨</span>', answered:'<span class="badge b-green">답변 완료</span>', ai_draft:'<span class="badge b-primary">AI 초안</span>', present:'<span class="badge b-green">출석</span>', absent:'<span class="badge b-red">결석</span>', grading:'<span class="badge b-yellow">채점 중</span>', scored:'<span class="badge b-green">점수 확인</span>', pending_submission:'<span class="badge b-orange">답안지 제출 대기</span>' }[s] || `<span class="badge b-gray">${s}</span>`);
 }
 
 // ================================================================
@@ -791,7 +790,7 @@ function statusBadge(s) {
 // ================================================================
 function renderHome() {
   const asgn = getAssignments();
-  const pending = asgn.filter(a => ['pending','late'].includes(a.status));
+  const pending = asgn.filter(a => ['pending','late','rejected'].includes(a.status));
   const submitted = asgn.filter(a => a.status==='submitted');
   const needsRetry = submitted.filter(a => a.needsRetry).length;
   const checking = submitted.filter(a => !a.teacherChecked).length;
@@ -893,7 +892,7 @@ function renderHomework() {
   const submitted = asgn.filter(a => a.status==='submitted');
 
   function card(a) {
-    const isPending = ['pending','late'].includes(a.status);
+    const isPending = ['pending','late','rejected'].includes(a.status);
     return `
       <div class="hw-card ${a.status}" id="hwcard-${a.id}">
         <div class="hw-head">
@@ -904,6 +903,10 @@ function renderHomework() {
         ${a.textbook?`<div style="font-size:12px;color:var(--primary);font-weight:600;margin-bottom:4px">📘 ${a.textbook}</div>`:''}
         <div class="hw-body">${a.content}</div>
         <div class="hw-due">📅 ${a.startDate?fmtDateFull(a.startDate)+' ~ ':''}${fmtDateFull(a.dueDate)} 까지 제출</div>
+        ${a.rejected?`<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:var(--radius-sm);padding:12px;margin:10px 0">
+          <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:4px">🔁 숙제가 반려됐어요 — 다시 제출해주세요</div>
+          ${a.rejectReason?`<div style="font-size:13px;color:#7F1D1D">사유: ${a.rejectReason}</div>`:''}
+        </div>`:''}
         ${isPending ? `
           <div class="upload-area" onclick="this.querySelector('input').click()">
             <div class="u-icon">📷</div>
@@ -936,7 +939,9 @@ function renderHomework() {
       </div>`;
   }
 
+  const rejected = asgn.filter(a => a.status==='rejected');
   let html = '';
+  if (rejected.length) html += `<div class="sec-label" style="color:var(--red)">🔁 반려됨 — 다시 제출 (${rejected.length})</div>` + rejected.map(card).join('');
   if (pending.length) html += `<div class="sec-label">📌 제출할 숙제 (${pending.length})</div>` + pending.map(card).join('');
   if (late.length)    html += `<div class="sec-label" style="color:var(--red)">⚠️ 미제출 / 지각 (${late.length})</div>` + late.map(card).join('');
   if (submitted.length) html += `<div class="sec-label">✅ 제출 완료 (${submitted.length})</div>` + submitted.map(card).join('');

@@ -864,10 +864,10 @@ function rHomework(){
               <thead><tr><th>학생</th><th>제출</th><th>제출 시간</th><th>사진</th><th>확인</th><th>오답</th></tr></thead>
               <tbody>${sts.map(st=>{const sub=subs.find(s=>s.studentId===st.id);return`<tr>
                 <td><strong>${st.name}</strong></td>
-                <td>${sub?(sub.offline?'<span class="badge b-orange">✋직접검사</span>':'<span class="badge b-green">📷제출</span>')+(sub.late?' <span class="badge b-red">지각</span>':''):'<span class="badge b-red">미제출</span>'}</td>
+                <td>${sub?(sub.rejected?'<span class="badge b-red">🔁반려됨</span>':(sub.offline?'<span class="badge b-orange">✋직접검사</span>':'<span class="badge b-green">📷제출</span>'))+(sub.late?' <span class="badge b-red">지각</span>':''):'<span class="badge b-red">미제출</span>'}</td>
                 <td style="color:var(--text-muted)">${sub?.submittedAt||'-'}</td>
                 <td>${sub?(sub.offline?'<span style="font-size:12px;color:var(--text-muted)">공책 확인</span>':`<button class="btn btn-outline btn-sm" onclick="openSubPhotos('${sub.id}')">📷 ${(sub.photos&&sub.photos.length)||0}</button>${sub.retryDone?` <button class="btn btn-outline btn-sm" onclick="showPhotoModal((getSubmissions().find(x=>x.id==='${sub.id}')||{}).retryPhotos)">🔁 오답사진</button>`:''}`):'-'}</td>
-                <td>${sub?`<button class="btn ${sub.checked?'btn-green':'btn-outline'} btn-sm" onclick="doCheck('${sub.id}')">${sub.checked?'✓확인됨':'확인하기'}</button>`:`<button class="btn btn-outline btn-sm" onclick="doCheckOffline('${a.id}','${st.id}')">✓ 직접 확인</button>`}</td>
+                <td>${sub?`<div style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn ${sub.checked?'btn-green':'btn-outline'} btn-sm" onclick="doCheck('${sub.id}')">${sub.checked?'✓확인됨':'확인'}</button><button class="btn btn-outline btn-sm" onclick="doReject('${sub.id}')">반려</button></div>`:`<button class="btn btn-outline btn-sm" onclick="doCheckOffline('${a.id}','${st.id}')">✓ 직접 확인</button>`}</td>
                 <td>${sub?`<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px"><input type="checkbox" ${sub.needsRetry?'checked':''} onchange="doRetry('${sub.id}',this.checked)"> 오답</label>${sub.needsRetry?(sub.retryDone?'<div style="font-size:11px;color:var(--green);margin-top:2px">🔁 재제출 완료</div>':'<div style="font-size:11px;color:var(--orange);margin-top:2px">재제출 대기</div>'):''}`:'-'}</td>
               </tr>`;}).join('')}</tbody>
             </table></div></div>`:``}
@@ -900,7 +900,14 @@ async function doDelAsgn(id,title){
   try{ await deleteAssignment(id); if(hwEditId===id)hwEditId=null; showToast('과제를 삭제했어요','warning'); rHomework(); }
   catch(e){ showToast('삭제 실패: '+e.message,'error'); }
 }
-async function doCheck(sid){ await updateSub(sid,{checked:true}); showToast('숙제 확인 완료!','success'); rHomework(); }
+async function doCheck(sid){ const s=getSubmissions().find(x=>x.id===sid); const nv=!(s&&s.checked); await updateSub(sid,{checked:nv, ...(nv?{rejected:false}:{})}); showToast(nv?'숙제 확인 완료!':'확인을 취소했어요','success'); rHomework(); }
+// 반려: 제대로 안 한 숙제를 되돌려보냄 → 학생이 다시 제출
+async function doReject(sid){
+  const reason=prompt('반려 사유를 적어주세요 (학생에게 보여요)\n예: 3·7번 풀이가 없어요. 다시 풀어서 올려주세요.');
+  if(reason===null) return;
+  try{ await updateSub(sid,{rejected:true, rejectReason:reason.trim(), checked:false}); showToast('숙제를 반려했어요. 학생이 다시 제출할 수 있어요 🔁','warning'); rHomework(); }
+  catch(e){ showToast('반려 실패: '+e.message,'error'); }
+}
 // 미제출 학생을 교실에서 직접 검사 → 확인됨 처리(사진 없는 제출 생성)
 async function doCheckOffline(assignmentId, studentId){
   const a=getAssignments().find(x=>x.id===assignmentId), st=getStudents().find(s=>s.id===studentId);
