@@ -221,6 +221,10 @@
       <div class="page-header"><div class="page-title">학생 관리</div></div>
       <div class="content-area" id="studentsContent"></div>
     </div>
+    <div class="section" id="sec-classroom">
+      <div class="page-header"><div class="page-title">반별 관리</div></div>
+      <div class="content-area" id="classroomContent"></div>
+    </div>
     <div class="section" id="sec-homework">
       <div class="page-header"><div class="page-title">숙제 관리</div></div>
       <div class="content-area" id="homeworkContent"></div>
@@ -452,6 +456,7 @@ const _svg=p=>`<svg viewBox="0 0 24 24" width="19" height="19" fill="none" strok
 const ICONS={
   dashboard:_svg('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>'),
   students:_svg('<path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>'),
+  classroom:_svg('<path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-5h6v5"/><path d="M9 11h.01M15 11h.01"/>'),
   homework:_svg('<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h4"/>'),
   attendance:_svg('<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M9 16l2 2 4-4"/>'),
   grades:_svg('<circle cx="12" cy="8" r="5"/><path d="M8.5 12.5L7 22l5-3 5 3-1.5-9.5"/>'),
@@ -466,6 +471,7 @@ const ICONS={
 };
 const NAV=[
   {id:'dashboard',label:'대시보드'},{id:'students',label:'학생 관리'},
+  {id:'classroom',label:'반별 관리'},
   {id:'homework',label:'숙제 관리'},{id:'attendance',label:'출석 관리'},
   {id:'grades',label:'성적 관리'},{id:'questions',label:'질문 관리'},
   {id:'videos',label:'수업 영상 관리'},{id:'materials',label:'자료실 관리'},
@@ -489,7 +495,7 @@ function navigate(s){
   curSec=s;renderSection(s);window.scrollTo(0,0);closeMob();
 }
 function renderSection(s){
-  ({dashboard:rDashboard,students:rStudents,homework:rHomework,attendance:rAttendance,grades:rGrades,questions:rQuestions,videos:rVideos,materials:rMaterials,schedule:rSchedule,consultation:rConsultation,report:rReport})[s]?.();
+  ({dashboard:rDashboard,students:rStudents,classroom:rClassroom,homework:rHomework,attendance:rAttendance,grades:rGrades,questions:rQuestions,videos:rVideos,materials:rMaterials,schedule:rSchedule,consultation:rConsultation,report:rReport})[s]?.();
 }
 function toggleMob(){document.getElementById('sidebar').classList.toggle('mob-open');document.getElementById('mobOverlay').classList.toggle('open');}
 function closeMob(){document.getElementById('sidebar').classList.remove('mob-open');document.getElementById('mobOverlay').classList.remove('open');}
@@ -800,6 +806,86 @@ async function doSaveStMemo(id){
   const memo=document.getElementById('st-memo-'+id)?.value.trim()||'';
   try{ await updateStudentFS(id,{memo}); showToast('메모가 저장되었어요 📝','success'); showStDetail(id); renderStudentRows(); }
   catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+
+// ================================================================
+// CLASSROOM — 반별 관리 (학생 성취도 + 숙제·시험 누적)
+// ================================================================
+let clRoomId='';
+function rClassroom(){
+  const el=document.getElementById('classroomContent'); if(!el) return;
+  if(!CLASSES.length){ el.innerHTML='<div class="card" style="text-align:center;padding:30px;color:var(--text-muted)">아직 반이 없어요. 시간표 관리에서 반을 추가하세요.</div>'; return; }
+  if(!clRoomId || !CLASSES.find(c=>c.id===clRoomId)) clRoomId=CLASSES[0].id;
+  const cls=CLASSES.find(c=>c.id===clRoomId);
+  const sts=getStudentsByClass(cls.id);
+  const asgns=getAssignments().filter(a=>a.classId===cls.id);
+  const exams=getExams().filter(e=>e.classId===cls.id);
+  const esubs=getExamSubs(), allSubs=getSubmissions();
+  const atts=getAttendance().filter(a=>a.classId===cls.id);
+  const rows=sts.map(st=>{
+    const mySubs=allSubs.filter(s=>s.studentId===st.id && asgns.some(a=>a.id===s.assignmentId));
+    const hwRate=asgns.length?Math.round(mySubs.length/asgns.length*100):null;
+    const myScores=esubs.filter(s=>s.studentId===st.id && exams.some(e=>e.id===s.examId) && s.score!=null);
+    const avg=myScores.length?Math.round(myScores.reduce((a,s)=>a+s.score,0)/myScores.length):null;
+    const myAtt=atts.filter(a=>(a.records||[]).some(r=>r.studentId===st.id));
+    const present=myAtt.filter(a=>(a.records||[]).some(r=>r.studentId===st.id&&r.status!=='absent')).length;
+    const attRate=myAtt.length?Math.round(present/myAtt.length*100):null;
+    return {st, hwRate, avg, attRate, n:myScores.length};
+  });
+  rows.sort((a,b)=>((b.avg==null?-1:b.avg)-(a.avg==null?-1:a.avg)));
+  const scored=rows.filter(r=>r.avg!=null);
+  const classAvg=scored.length?Math.round(scored.reduce((a,r)=>a+r.avg,0)/scored.length):null;
+  const totalSubs=allSubs.filter(s=>asgns.some(a=>a.id===s.assignmentId)).length;
+  const hwClassRate=asgns.length&&sts.length?Math.round(totalSubs/(asgns.length*sts.length)*100):null;
+  const medal=i=>['🥇','🥈','🥉'][i]||(i+1);
+  const pct=v=>v==null?'<span style="color:var(--text-muted)">-</span>':v+'%';
+  el.innerHTML=`
+    <div class="card">
+      <div class="card-title">반 선택</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${CLASSES.map(c=>`<button class="btn ${c.id===clRoomId?'btn-primary':'btn-outline'} btn-sm" onclick="clRoomId='${c.id}';rClassroom()">${c.name} <span style="opacity:.7">${(WD_LABEL[c.weekday]||'')+(c.slot||'')}</span></button>`).join('')}
+      </div>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-value" style="color:var(--primary)">${sts.length}</div><div class="stat-label">${cls.name} 학생</div></div>
+      <div class="stat-card"><div class="stat-icon">🏆</div><div class="stat-value" style="color:var(--green)">${classAvg!=null?classAvg+'점':'-'}</div><div class="stat-label">반 평균 성적</div></div>
+      <div class="stat-card"><div class="stat-icon">📝</div><div class="stat-value" style="color:var(--orange)">${hwClassRate!=null?hwClassRate+'%':'-'}</div><div class="stat-label">숙제 제출률</div></div>
+      <div class="stat-card"><div class="stat-icon">📚</div><div class="stat-value" style="color:var(--text-sub)">${exams.length}</div><div class="stat-label">시험 수</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">🏅 학생별 성취도 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(성적 높은 순)</span></div>
+      ${sts.length?`<div class="table-wrap"><table>
+        <thead><tr><th>순위</th><th>학생</th><th>평균 성적</th><th>숙제 제출률</th><th>출석률</th></tr></thead>
+        <tbody>${rows.map((r,i)=>`<tr>
+          <td style="font-size:15px">${r.avg!=null?medal(i):'-'}</td>
+          <td><strong>${r.st.name}</strong></td>
+          <td>${r.avg!=null?`<strong style="color:var(--primary)">${r.avg}점</strong> <span style="font-size:11px;color:var(--text-muted)">(${r.n}회)</span>`:'<span style="color:var(--text-muted)">-</span>'}</td>
+          <td>${pct(r.hwRate)}</td>
+          <td>${pct(r.attRate)}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>`:'<div style="color:var(--text-muted);padding:12px">이 반에 배정된 학생이 없어요</div>'}
+    </div>
+    <div class="card">
+      <div class="card-title">📝 이 반에 낸 숙제 (${asgns.length})</div>
+      ${asgns.length?`<div class="table-wrap"><table>
+        <thead><tr><th>제목</th><th>교재</th><th>기간</th><th>제출</th></tr></thead>
+        <tbody>${asgns.map(a=>{const subN=allSubs.filter(s=>s.assignmentId===a.id).length;return`<tr>
+          <td><strong>${a.title}</strong></td><td style="color:var(--text-muted)">${a.textbook||'-'}</td>
+          <td style="color:var(--text-muted)">${a.startDate||'?'}~${a.dueDate||'-'}</td>
+          <td>${subN}/${sts.length}</td>
+        </tr>`;}).join('')}</tbody>
+      </table></div>`:'<div style="color:var(--text-muted);padding:12px">아직 낸 숙제가 없어요</div>'}
+    </div>
+    <div class="card">
+      <div class="card-title">🏆 이 반 시험 (${exams.length})</div>
+      ${exams.length?`<div class="table-wrap"><table>
+        <thead><tr><th>시험명</th><th>날짜</th><th>응시</th><th>반 평균</th></tr></thead>
+        <tbody>${exams.map(e=>{const ss=esubs.filter(s=>s.examId===e.id&&s.score!=null);const eavg=ss.length?Math.round(ss.reduce((a,s)=>a+s.score,0)/ss.length):null;return`<tr>
+          <td><strong>${e.title}</strong></td><td style="color:var(--text-muted)">${e.date||'-'}</td>
+          <td>${ss.length}명</td><td>${eavg!=null?`<strong>${eavg}점</strong>`:'-'}</td>
+        </tr>`;}).join('')}</tbody>
+      </table></div>`:'<div style="color:var(--text-muted);padding:12px">아직 등록된 시험이 없어요</div>'}
+    </div>`;
 }
 
 // ================================================================
