@@ -1052,7 +1052,11 @@ function rHomework(){
                 <td>${sub?(sub.rejected?'<span class="badge b-red">🔁반려됨</span>':(sub.offline?'<span class="badge b-orange">✋직접검사</span>':'<span class="badge b-green">📷제출</span>'))+(sub.late?' <span class="badge b-red">지각</span>':''):'<span class="badge b-red">미제출</span>'}</td>
                 <td style="color:var(--text-muted)">${sub?.submittedAt||'-'}</td>
                 <td>${sub?(sub.offline?'<span style="font-size:12px;color:var(--text-muted)">공책 확인</span>':`<button class="btn btn-outline btn-sm" onclick="openSubPhotos('${sub.id}')">📷 ${(sub.photos&&sub.photos.length)||0}</button>${sub.retryDone?` <button class="btn btn-outline btn-sm" onclick="showPhotoModal((getSubmissions().find(x=>x.id==='${sub.id}')||{}).retryPhotos)">🔁 오답사진</button>`:''}`):'-'}</td>
-                <td>${sub?`<div style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn ${sub.checked?'btn-green':'btn-outline'} btn-sm" onclick="doCheck('${sub.id}')">${sub.checked?'✓확인됨':'확인'}</button><button class="btn btn-outline btn-sm" onclick="doReject('${sub.id}')">반려</button></div>`:`<button class="btn btn-outline btn-sm" onclick="doCheckOffline('${a.id}','${st.id}')">✓ 직접 확인</button>`}</td>
+                <td>${
+                  !sub ? `<button class="btn btn-outline btn-sm" onclick="doCheckOffline('${a.id}','${st.id}')">✓ 직접 확인</button>`
+                  : (sub.offline && sub.byTeacher) ? `<button class="btn btn-green btn-sm" onclick="doUncheckOffline('${sub.id}')" title="다시 누르면 해제">✓ 직접확인됨 (취소)</button>`
+                  : `<div style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn ${sub.checked?'btn-green':'btn-outline'} btn-sm" onclick="doCheck('${sub.id}')">${sub.checked?'✓확인됨':'확인'}</button><button class="btn btn-outline btn-sm" onclick="doReject('${sub.id}')">반려</button>${sub.offline?`<button class="btn btn-outline btn-sm" onclick="doUncheckOffline('${sub.id}')">취소</button>`:''}</div>`
+                }</td>
                 <td>${sub?`<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px"><input type="checkbox" ${sub.needsRetry?'checked':''} onchange="doRetry('${sub.id}',this.checked)"> 오답</label>${sub.needsRetry?(sub.retryDone?'<div style="font-size:11px;color:var(--green);margin-top:2px">🔁 재제출 완료</div>':'<div style="font-size:11px;color:var(--orange);margin-top:2px">재제출 대기</div>'):''}`:'-'}</td>
               </tr>`;}).join('')}</tbody>
             </table></div></div>`:``}
@@ -1100,12 +1104,17 @@ async function doCheckOffline(assignmentId, studentId){
   try{
     await db.collection('submissions').add({
       assignmentId, assignmentTitle:a.title||'', classId:a.classId||'', className:a.className||'',
-      studentId:st.id, studentName:st.name, photos:[], offline:true,
+      studentId:st.id, studentName:st.name, photos:[], offline:true, byTeacher:true,
       submittedAt:new Date().toLocaleString('ko-KR'), checked:true, needsRetry:false, ts:Date.now()
     });
     await loadSubmissions();
     showToast(`${st.name} 직접 검사 완료로 표시했어요 ✓`,'success'); rHomework();
   }catch(e){ showToast('처리 실패: '+e.message,'error'); }
+}
+// 직접 확인 취소 — 표시했던 제출을 지워 다시 '미제출'로 되돌림
+async function doUncheckOffline(subId){
+  try{ await db.collection('submissions').doc(subId).delete(); await loadSubmissions(); showToast('직접 확인을 해제했어요 (미제출로 되돌림)','warning'); rHomework(); }
+  catch(e){ showToast('해제 실패: '+e.message,'error'); }
 }
 async function doRetry(sid,v){ await updateSub(sid, v?{needsRetry:true}:{needsRetry:false,retryDone:false,checked:true}); showToast(v?'오답 재제출이 요청되었어요':'오답 해결로 확인 처리했어요',v?'warning':'success'); rHomework(); }
 // 제출 사진 보기 (간단 뷰어)
