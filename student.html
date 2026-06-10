@@ -516,6 +516,7 @@ const WD_LABEL={mon:'월',tue:'화',wed:'수',thu:'목',fri:'금',sat:'토',sun:
 // ===== Firebase에서 내 반·숙제·제출·출석·성적 불러오기 =====
 let S_CLASSES=[], ALL_CLASSES=[], S_ASSIGNMENTS=[], S_SUBMISSIONS=[], S_ATTENDANCE=[], S_EXAMS=[], S_EXAMSUBS=[], S_QUESTIONS=[], S_NOTICES=[];
 let S_SCHOOL='', S_SCHOOLEXAM=null;
+let S_MOCKEXAMS=[], S_MOCKSUBS=[];
 function myClassIds(){ try{ return JSON.parse(localStorage.getItem('bm_classIds')||'[]'); }catch(e){ return STUDENT.classId?[STUDENT.classId]:[]; } }
 async function loadStudentData(){
   const ids = myClassIds();
@@ -559,7 +560,12 @@ async function loadStudentData(){
       const up = se.docs.map(d=>d.data()).filter(e=>e.mathDate && e.mathDate>=today).sort((a,b)=>(a.mathDate||'').localeCompare(b.mathDate||''));
       S_SCHOOLEXAM = up[0] || null;
     } else { S_SCHOOLEXAM=null; }
-  } else { S_SUBMISSIONS=[]; S_EXAMSUBS=[]; S_QUESTIONS=[]; S_REPORT=null; S_SCHOOLEXAM=null; }
+    // 모의고사 (자가 등록) — 전체 목록 + 내 등록
+    const mk=await db.collection('mockExams').get();
+    S_MOCKEXAMS=mk.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    const mks=await db.collection('mockSubs').where('studentId','==',STUDENT.id).get();
+    S_MOCKSUBS=mks.docs.map(d=>({id:d.id,...d.data()}));
+  } else { S_SUBMISSIONS=[]; S_EXAMSUBS=[]; S_QUESTIONS=[]; S_REPORT=null; S_SCHOOLEXAM=null; S_MOCKEXAMS=[]; S_MOCKSUBS=[]; }
   // 공지사항 (전체 공통)
   try{ const nt = await db.collection('notices').get(); S_NOTICES = nt.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.ts||0)-(a.ts||0)); }
   catch(e){ S_NOTICES=[]; }
@@ -1113,7 +1119,73 @@ function renderGrades() {
         <div style="font-size:12px;color:var(--text-muted);text-align:center;margin-top:8px">꾸준히 성장하고 있어요! 다음 목표는 90점 이상 🎯</div>
       </div>`;
   }
+  html += renderMockSection();
   document.getElementById('gradesContent').innerHTML = html;
+}
+// 📝 모의고사 자가 등록 섹션
+function renderMockSection(){
+  if(!S_MOCKEXAMS.length) return '';
+  let h='<div class="sec-label" style="margin-top:8px">📝 모의고사 점수 등록</div>';
+  S_MOCKEXAMS.forEach(m=>{
+    const sub=S_MOCKSUBS.find(s=>s.mockId===m.id);
+    if(sub){
+      h+=`<div class="hw-card submitted">
+        <div class="hw-head"><div><strong>${m.title}</strong> <span style="font-size:12px;color:var(--text-muted)">${m.date||''}</span></div>
+          <span style="font-size:24px;font-weight:800;color:var(--primary)">${sub.score}<span style="font-size:13px;color:var(--text-muted)">/${m.maxScore||100}</span></span></div>
+        ${m.mode==='auto'&&sub.wrongNos&&sub.wrongNos.length?`<div style="margin-top:8px;font-size:13px;color:#7C2D12;background:#FFF7ED;border:1px solid #FED7AA;border-radius:var(--radius-sm);padding:8px 12px">✏️ 틀린 문항: <strong>${sub.wrongNos.join(', ')}</strong> (${sub.wrongNos.length}개) — 복습해요!</div>`:(m.mode==='auto'?'<div style="margin-top:8px;font-size:13px;color:var(--green)">전부 맞았어요! 🎉</div>':'')}
+        <button class="btn btn-outline btn-sm" style="margin-top:10px" onclick="mockReopen('${m.id}')">다시 등록</button>
+      </div>`;
+    } else {
+      h+=`<div class="hw-card pending" id="mockcard-${m.id}">
+        <div class="hw-head"><div><strong>${m.title}</strong> <span style="font-size:12px;color:var(--text-muted)">${m.date||''}</span></div>
+          <span class="badge ${m.mode==='auto'?'b-primary':'b-gray'}">${m.mode==='auto'?'답 입력 자동채점':'점수 입력'}</span></div>
+        ${mockRegForm(m)}
+      </div>`;
+    }
+  });
+  return h;
+}
+function mockRegForm(m){
+  if(m.mode==='auto'){
+    const n=(m.questions||[]).length;
+    let rows='';
+    for(let i=1;i<=n;i++){ rows+=`<div style="display:flex;gap:4px;align-items:center;width:96px"><span style="width:32px;font-size:12px;color:var(--text-muted);text-align:right">${i}</span><input class="form-input mockans-${m.id}" data-no="${i}" style="width:54px;padding:5px" inputmode="numeric"></div>`; }
+    return `<div style="font-size:12px;color:var(--text-muted);margin:8px 0">시험지에 쓴 답을 번호별로 입력하면 자동 채점돼요 (만점 ${m.maxScore})</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">${rows}</div>
+      <button class="btn btn-primary btn-sm" onclick="doSaveMockAnswers('${m.id}')">자동 채점하고 등록 ✓</button>`;
+  }
+  return `<div style="display:flex;gap:8px;align-items:flex-end;margin-top:8px">
+    <div><label class="form-label">내 점수 (만점 ${m.maxScore||100})</label><input class="form-input mockscore-${m.id}" type="number" style="width:120px" placeholder="예: 88"></div>
+    <button class="btn btn-primary btn-sm" onclick="doSaveMockScore('${m.id}')">점수 등록 ✓</button>
+  </div>`;
+}
+async function doSaveMockScore(mockId){
+  const m=S_MOCKEXAMS.find(x=>x.id===mockId);
+  const v=document.querySelector('.mockscore-'+mockId).value;
+  if(v===''){ showToast('점수를 입력해주세요','warning'); return; }
+  try{ await saveMockSub(mockId,{score:parseInt(v),maxScore:m.maxScore||100,mode:'score'}); launchConfetti(); showToast('모의고사 점수 등록 완료! 🎉','success'); renderGrades(); }
+  catch(e){ showToast('등록 실패: '+e.message,'error'); }
+}
+async function doSaveMockAnswers(mockId){
+  const m=S_MOCKEXAMS.find(x=>x.id===mockId);
+  const ans={}; document.querySelectorAll('.mockans-'+mockId).forEach(el=>{ ans[el.dataset.no]=el.value.trim(); });
+  let score=0; const wrongNos=[];
+  (m.questions||[]).forEach(q=>{ const my=(ans[q.no]||'').trim(); if(my!=='' && my===String(q.answer).trim()){ score+=(q.points||0); } else { wrongNos.push(q.no); } });
+  try{ await saveMockSub(mockId,{score,maxScore:m.maxScore||100,mode:'auto',answers:ans,wrongNos,correctCount:(m.questions||[]).length-wrongNos.length}); launchConfetti(); showToast(`자동 채점 완료! ${score}점 🎉`,'success'); renderGrades(); }
+  catch(e){ showToast('채점 실패: '+e.message,'error'); }
+}
+async function saveMockSub(mockId, data){
+  const m=S_MOCKEXAMS.find(x=>x.id===mockId);
+  const exist=S_MOCKSUBS.find(s=>s.mockId===mockId);
+  const payload={ mockId, mockTitle:m?m.title:'', studentId:STUDENT.id, studentName:STUDENT.name, className:STUDENT.className, ts:Date.now(), ...data };
+  if(exist){ await db.collection('mockSubs').doc(exist.id).update(payload); }
+  else{ await db.collection('mockSubs').add(payload); }
+  await loadStudentData();
+}
+async function mockReopen(mockId){
+  const exist=S_MOCKSUBS.find(s=>s.mockId===mockId);
+  if(exist){ await db.collection('mockSubs').doc(exist.id).delete(); await loadStudentData(); }
+  renderGrades();
 }
 
 // ================================================================

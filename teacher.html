@@ -379,6 +379,15 @@ function getSchoolExams(){ return SCHOOLEXAMS_CACHE; }
 async function addSchoolExam(d){ await db.collection('schoolExams').add({...d, ts:Date.now()}); await loadSchoolExams(); }
 async function updateSchoolExam(id,d){ await db.collection('schoolExams').doc(id).update(d); await loadSchoolExams(); }
 async function deleteSchoolExam(id){ await db.collection('schoolExams').doc(id).delete(); await loadSchoolExams(); }
+// 📝 모의고사 (학생 자가 등록)
+let MOCKEXAMS_CACHE=[], MOCKSUBS_CACHE=[];
+async function loadMockExams(){ const s=await db.collection('mockExams').get(); MOCKEXAMS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.date||'').localeCompare(a.date||'')); }
+async function loadMockSubs(){ const s=await db.collection('mockSubs').get(); MOCKSUBS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})); }
+function getMockExams(){ return MOCKEXAMS_CACHE; }
+function getMockSubs(){ return MOCKSUBS_CACHE; }
+async function addMockExam(d){ await db.collection('mockExams').add({...d, createdAt:new Date().toISOString().slice(0,10), ts:Date.now()}); await loadMockExams(); }
+async function updateMockExam(id,d){ await db.collection('mockExams').doc(id).update(d); await loadMockExams(); }
+async function deleteMockExam(id){ await db.collection('mockExams').doc(id).delete(); await loadMockExams(); }
 // 학생 명단에 있는 학교 목록(중복 제거) — 빠른 선택용
 function allSchools(){ const set=new Set(); getStudents().forEach(s=>{ if(s.school) set.add(s.school); }); getSchoolExams().forEach(e=>{ if(e.school) set.add(e.school); }); return [...set]; }
 function ddayBadge(mathDate){
@@ -436,6 +445,96 @@ async function doSaveSchoolExam(){
   }catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
 async function doDelSchoolExam(id,label){ if(!confirm(`"${label}" 내신 일정을 삭제할까요?`))return; try{ await deleteSchoolExam(id); if(seEditId===id)seEditId=null; showToast('삭제했어요','warning'); rGrades(); }catch(e){ showToast('삭제 실패: '+e.message,'error'); } }
+
+// 📝 모의고사 (학생 자가 등록) — 점수만 / 답 자동채점(문항별 배점) 선택
+let mockEditId=null;
+function mockKeyRowsHtml(n, keyArr){
+  const map={}; (keyArr||[]).forEach(q=>{ map[q.no]=q; });
+  let rows='';
+  for(let i=1;i<=n;i++){ const q=map[i]||{};
+    rows+=`<div style="display:flex;gap:5px;align-items:center;width:158px">
+      <span style="width:34px;font-size:12px;color:var(--text-muted);text-align:right">${i}번</span>
+      <input class="form-input mk-ans" data-no="${i}" style="width:62px;padding:5px 6px" placeholder="정답" value="${q.answer!=null?String(q.answer).replace(/"/g,'&quot;'):''}">
+      <input class="form-input mk-pt" data-no="${i}" type="number" style="width:52px;padding:5px 6px" placeholder="점" value="${q.points!=null?q.points:3}">
+    </div>`; }
+  return `<div style="display:flex;flex-wrap:wrap;gap:6px">${rows}</div>`;
+}
+function collectMockKey(){
+  const out=[]; document.querySelectorAll('.mk-ans').forEach(a=>{ const no=+a.dataset.no; const pt=document.querySelector('.mk-pt[data-no="'+no+'"]'); out.push({no, answer:a.value.trim(), points:parseInt(pt&&pt.value)||0}); });
+  return out;
+}
+function doMakeMockKey(){
+  const n=Math.max(1,Math.min(60,parseInt(document.getElementById('mock-qcount').value)||30));
+  document.getElementById('mock-key').innerHTML=mockKeyRowsHtml(n, collectMockKey());
+}
+function toggleMockMode(){
+  const m=document.getElementById('mock-mode').value;
+  document.getElementById('mock-score-block').style.display = m==='score'?'':'none';
+  document.getElementById('mock-auto-block').style.display = m==='auto'?'':'none';
+}
+function mockExamCardHtml(){
+  const list=getMockExams(), subs=getMockSubs(), editM=mockEditId?list.find(m=>m.id===mockEditId):null;
+  const mode=editM?editM.mode:'score';
+  const esc=s=>(s||'').replace(/"/g,'&quot;');
+  return `<div class="card" ${editM?'style="border-left:4px solid var(--orange)"':'style="border-left:4px solid var(--green)"'}>
+    <div class="card-title">${editM?'✏️ 모의고사 수정':'📝 모의고사 (학생 자가 등록)'} <span style="font-size:12px;color:var(--text-muted);font-weight:400">(학생이 직접 점수/답을 등록해요)</span></div>
+    <div class="form-row-3">
+      <div class="form-group"><label class="form-label">시험명 *</label><input class="form-input" id="mock-title" value="${editM?esc(editM.title):''}" placeholder="예: 6월 모의평가"></div>
+      <div class="form-group"><label class="form-label">날짜</label><input class="form-input" id="mock-date" type="date" value="${editM?(editM.date||''):''}"></div>
+      <div class="form-group"><label class="form-label">채점 방식</label><select class="form-select" id="mock-mode" onchange="toggleMockMode()"><option value="score" ${mode==='score'?'selected':''}>점수만 입력</option><option value="auto" ${mode==='auto'?'selected':''}>답 입력 → 자동채점</option></select></div>
+    </div>
+    <div id="mock-score-block" style="${mode==='score'?'':'display:none'}">
+      <div class="form-group" style="max-width:140px"><label class="form-label">만점</label><input class="form-input" id="mock-max" type="number" value="${editM&&editM.maxScore?editM.maxScore:100}"></div>
+    </div>
+    <div id="mock-auto-block" style="${mode==='auto'?'':'display:none'}">
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px">
+        <div class="form-group" style="margin:0"><label class="form-label">문항 수</label><input class="form-input" id="mock-qcount" type="number" value="${editM&&editM.questions?editM.questions.length:30}" style="width:100px"></div>
+        <button class="btn btn-outline" onclick="doMakeMockKey()">정답표 만들기</button>
+        <span style="font-size:12px;color:var(--text-muted)">번호별 정답 + 배점(2·3·4점)을 입력하세요. 만점은 배점 합으로 자동 계산돼요.</span>
+      </div>
+      <div id="mock-key">${editM&&editM.questions?mockKeyRowsHtml(editM.questions.length, editM.questions):''}</div>
+    </div>
+    <div class="btn-row" style="margin-top:10px">
+      <button class="btn btn-primary" onclick="doSaveMock()">${editM?'수정 저장 💾':'모의고사 등록'}</button>
+      ${editM?`<button class="btn btn-outline" onclick="mockEditId=null;rGrades()">취소</button>`:''}
+    </div>
+    ${list.length?`<div class="table-wrap" style="margin-top:14px"><table>
+      <thead><tr><th>모의고사</th><th>날짜</th><th>방식</th><th>만점</th><th>등록</th><th>평균</th><th>관리</th></tr></thead>
+      <tbody>${list.map(m=>{const ms=subs.filter(s=>s.mockId===m.id);const avg=ms.length?Math.round(ms.reduce((a,s)=>a+(s.score||0),0)/ms.length):null;return`<tr>
+        <td><strong>${m.title}</strong></td><td style="color:var(--text-muted)">${m.date||'-'}</td>
+        <td>${m.mode==='auto'?'<span class="badge b-primary">자동채점</span>':'<span class="badge b-gray">점수만</span>'}</td>
+        <td>${m.maxScore||'-'}</td><td>${ms.length}명</td><td>${avg!=null?`<strong>${avg}점</strong>`:'-'}</td>
+        <td style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="mockEditId='${m.id}';rGrades();window.scrollTo({top:0,behavior:'smooth'})">수정</button> <button class="btn btn-red btn-sm" onclick="doDelMock('${m.id}','${(m.title||'').replace(/'/g,'')}')">삭제</button></td>
+      </tr>`;}).join('')}</tbody>
+    </table></div>`:'<div style="margin-top:12px;font-size:13px;color:var(--text-muted)">아직 등록된 모의고사가 없어요. 만들면 학생이 ‘성적’ 탭에서 직접 점수를 등록해요.</div>'}
+  </div>`;
+}
+async function doSaveMock(){
+  const title=document.getElementById('mock-title').value.trim();
+  const date=document.getElementById('mock-date').value;
+  const mode=document.getElementById('mock-mode').value;
+  if(!title){ showToast('시험명을 입력해주세요','error'); return; }
+  let data={title,date,mode};
+  if(mode==='auto'){
+    const qs=collectMockKey();
+    if(!qs.length){ showToast('정답표 만들기를 눌러 정답을 입력해주세요','error'); return; }
+    if(qs.some(q=>!q.answer)){ showToast('모든 문항의 정답을 입력해주세요','error'); return; }
+    data.questions=qs; data.maxScore=qs.reduce((a,q)=>a+(q.points||0),0);
+  } else {
+    data.maxScore=parseInt(document.getElementById('mock-max').value)||100;
+    data.questions=[];
+  }
+  try{
+    if(mockEditId){ await updateMockExam(mockEditId,data); mockEditId=null; showToast('모의고사 수정 완료 ✏️','success'); }
+    else{ await addMockExam(data); showToast(`"${title}" 모의고사 등록 완료! 학생이 점수를 등록할 수 있어요 📝`,'success'); }
+    rGrades();
+  }catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+async function doDelMock(id,title){
+  if(!confirm(`"${title}" 모의고사를 삭제할까요?\n(학생들이 등록한 점수도 함께 사라져요)`)) return;
+  try{ await deleteMockExam(id); if(mockEditId===id)mockEditId=null; showToast('삭제했어요','warning'); rGrades(); }
+  catch(e){ showToast('삭제 실패: '+e.message,'error'); }
+}
 function getVideos(){ return VIDEOS_CACHE; }
 function getMaterials(){ return MATERIALS_CACHE; }
 function getConsultations(){ return CONSULTS_CACHE; }
@@ -1112,6 +1211,7 @@ function rGrades(){
   const editE=exEditId?exams.find(e=>e.id===exEditId):null;
   document.getElementById('gradesContent').innerHTML=`
     ${schoolExamCardHtml()}
+    ${mockExamCardHtml()}
     <div class="card" style="border-left:4px solid var(--primary)">
       <div class="card-title">🤖 AI 시험지 분석 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(문제별 단원·요구능력·난이도)</span></div>
       <div class="upload-area" onclick="this.querySelector('input').click()">
@@ -1726,6 +1826,8 @@ async function init(){
     await loadReports();         // 리포트
     await loadNotices();         // 공지사항
     await loadSchoolExams();     // 학교별 내신 시험 일정
+    await loadMockExams();       // 모의고사 (자가 등록)
+    await loadMockSubs();        // 모의고사 학생 제출
   }catch(e){ showToast('데이터를 불러오지 못했어요: '+e.message,'error'); }
   rDashboard();
   pruneOldFirebase();            // 3개월 지난 사진·기록 자동 정리 (백그라운드)
