@@ -515,7 +515,7 @@ const WD_LABEL={mon:'월',tue:'화',wed:'수',thu:'목',fri:'금',sat:'토',sun:
 
 // ===== Firebase에서 내 반·숙제·제출·출석·성적 불러오기 =====
 let S_CLASSES=[], ALL_CLASSES=[], S_ASSIGNMENTS=[], S_SUBMISSIONS=[], S_ATTENDANCE=[], S_EXAMS=[], S_EXAMSUBS=[], S_QUESTIONS=[], S_NOTICES=[];
-let S_SCHOOL='', S_SCHOOLEXAM=null, S_MATHEVENTS=[];
+let S_SCHOOL='', S_SCHOOLEXAM=null, S_MATHEVENTS=[], S_SCHOOL_EXAMS=[], S_MAKEUPS=[];
 let S_MOCKEXAMS=[], S_MOCKSUBS=[];
 function myClassIds(){ try{ return JSON.parse(localStorage.getItem('bm_classIds')||'[]'); }catch(e){ return STUDENT.classId?[STUDENT.classId]:[]; } }
 async function loadStudentData(){
@@ -563,7 +563,16 @@ async function loadStudentData(){
       events.sort((a,b)=>(a.date||'').localeCompare(b.date||''));
       S_MATHEVENTS = events;
       S_SCHOOLEXAM = events[0] || null;
-    } else { S_SCHOOLEXAM=null; S_MATHEVENTS=[]; }
+      S_SCHOOL_EXAMS = se.docs.map(d=>({id:d.id,...d.data()}));   // 캘린더 음영용 (내 학교 전체)
+    } else { S_SCHOOLEXAM=null; S_MATHEVENTS=[]; S_SCHOOL_EXAMS=[]; }
+    // 보강 일정 — 내 반/내 이름과 관련된 것만 (반 미지정 보강은 전체 공지로 간주)
+    try{
+      const mku = await db.collection('makeups').get();
+      const myNames = [STUDENT.name, ...(S_CLASSES.map(c=>c.name))];
+      S_MAKEUPS = mku.docs.map(d=>({id:d.id,...d.data()}))
+        .filter(m=>!m.className || myNames.some(n=>n && (m.className.includes(n) || n.includes(m.className))))
+        .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+    }catch(e){ S_MAKEUPS=[]; }
     // 모의고사 (자가 등록) — 전체 목록 + 내 등록
     const mk=await db.collection('mockExams').get();
     S_MOCKEXAMS=mk.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
@@ -1420,31 +1429,96 @@ function isClassActive(c){
   if(c.startDate && today<c.startDate) return false;
   return true;
 }
+// 이번 주(월요일 시작) 해당 요일의 날짜
+function weekDateOf(dayKey){
+  const idx={mon:0,tue:1,wed:2,thu:3,fri:4,sat:5,sun:6}[dayKey];
+  const now=new Date(); const dow=(now.getDay()+6)%7;
+  const d=new Date(now); d.setDate(now.getDate()-dow+idx);
+  const p=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+}
+// 📆 학생용 월간 캘린더 — 내 수업 + 보강 + 내 학교 시험
+let sCalY=null, sCalM=null;
+function sCalShift(delta){ const d=new Date(sCalY, sCalM+delta, 1); sCalY=d.getFullYear(); sCalM=d.getMonth(); renderSchedule(); }
+function studentCalendarHtml(){
+  const now=new Date(), p=n=>String(n).padStart(2,'0');
+  if(sCalY==null){ sCalY=now.getFullYear(); sCalM=now.getMonth(); }
+  const todayStr=`${now.getFullYear()}-${p(now.getMonth()+1)}-${p(now.getDate())}`;
+  const firstDow=new Date(sCalY,sCalM,1).getDay();
+  const dim=new Date(sCalY,sCalM+1,0).getDate();
+  const wdKeys=['sun','mon','tue','wed','thu','fri','sat'];
+  const mathOf=e=>(Array.isArray(e.mathDates)&&e.mathDates.length)?e.mathDates.filter(m=>m&&m.date):(e.mathDate?[{label:'수학',date:e.mathDate}]:[]);
+  const cells=[]; for(let i=0;i<firstDow;i++) cells.push(null); for(let d=1;d<=dim;d++) cells.push(d); while(cells.length%7) cells.push(null);
+  function dayCell(d){
+    const dow=new Date(sCalY,sCalM,d).getDay();
+    const dateStr=`${sCalY}-${p(sCalM+1)}-${p(d)}`;
+    const cls=S_CLASSES.filter(c=>c.weekday===wdKeys[dow]&&isClassActive(c));
+    const mks=(S_MAKEUPS||[]).filter(m=>m.date===dateStr);
+    const inExam=(S_SCHOOL_EXAMS||[]).some(e=>e.startDate&&e.endDate&&dateStr>=e.startDate&&dateStr<=e.endDate);
+    const mathToday=[]; (S_SCHOOL_EXAMS||[]).forEach(e=>mathOf(e).forEach(m=>{ if(m.date===dateStr) mathToday.push(m.label||'수학'); }));
+    const isToday=dateStr===todayStr;
+    let h=`<div style="min-height:72px;border:1px solid var(--border);border-radius:8px;padding:3px 4px;background:${inExam?'#FEF2F2':(isToday?'var(--primary-light)':'var(--surface)')};${isToday?'box-shadow:inset 0 0 0 2px var(--primary)':''}">`;
+    h+=`<div style="font-size:11px;font-weight:700;color:${dow===0?'#EF4444':(dow===6?'#2563EB':'var(--text-sub)')}">${d}${inExam?' <span style="font-size:9px;color:#DC2626">📕</span>':''}</div>`;
+    cls.forEach(c=>{ h+=`<div style="font-size:9px;color:var(--primary);background:var(--primary-light);border-radius:4px;padding:1px 3px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.name}</div>`; });
+    mathToday.forEach(t=>{ h+=`<div style="font-size:9px;color:#DC2626;font-weight:700;margin-top:2px">📐 ${t}</div>`; });
+    mks.forEach(m=>{ h+=`<div style="font-size:9px;color:#fff;background:var(--orange);border-radius:4px;padding:1px 3px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🔶 ${m.time||'보강'}</div>`; });
+    h+='</div>'; return h;
+  }
+  const dow=['일','월','화','수','목','금','토'];
+  let grid=`<div style="display:grid;grid-template-columns:repeat(7,minmax(54px,1fr));gap:3px;min-width:430px">`;
+  grid+=dow.map((l,i)=>`<div style="text-align:center;font-size:11px;font-weight:700;color:${i===0?'#EF4444':(i===6?'#2563EB':'var(--text-muted)')};padding:2px">${l}</div>`).join('');
+  grid+=cells.map(d=>d?dayCell(d):'<div></div>').join('')+'</div>';
+  return `<div class="card" style="margin-top:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+      <div class="card-title" style="margin:0">📆 월간 일정</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="btn btn-outline btn-sm" onclick="sCalShift(-1)">◀</button>
+        <strong style="font-size:14px;min-width:88px;text-align:center">${sCalY}년 ${sCalM+1}월</strong>
+        <button class="btn btn-outline btn-sm" onclick="sCalShift(1)">▶</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--text-muted);margin-bottom:8px">
+      <span><span style="display:inline-block;width:9px;height:9px;background:var(--primary-light);border-radius:2px"></span> 내 수업</span>
+      <span><span style="display:inline-block;width:9px;height:9px;background:var(--orange);border-radius:2px"></span> 보강</span>
+      <span>📕 시험기간 · 📐 수학시험일</span>
+    </div>
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">${grid}</div>
+  </div>`;
+}
 function renderSchedule() {
   const days=['mon','tue','wed','thu','fri','sat','sun'];
   const dayLabels={mon:'월요일',tue:'화요일',wed:'수요일',thu:'목요일',fri:'금요일',sat:'토요일',sun:'일요일'};
   const todayKey={0:'sun',1:'mon',2:'tue',3:'wed',4:'thu',5:'fri',6:'sat'}[new Date().getDay()];
 
   if(!S_CLASSES.length){
-    document.getElementById('scheduleContent').innerHTML = `<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">아직 배정된 수업이 없어요.<br>선생님이 반에 배정하면 시간표가 표시돼요.</div>`;
+    document.getElementById('scheduleContent').innerHTML = `<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">아직 배정된 수업이 없어요.<br>선생님이 반에 배정하면 시간표가 표시돼요.</div>` + studentCalendarHtml();
     return;
   }
   document.getElementById('scheduleContent').innerHTML = `
     <div class="sched-grid">
       ${days.map(d=>{
         const list=S_CLASSES.filter(c=>c.weekday===d && isClassActive(c));
+        const wkDate=weekDateOf(d);
+        const mks=(S_MAKEUPS||[]).filter(m=>m.date===wkDate);
         const isToday=d===todayKey;
-        return `<div class="day-card ${list.length?'has-class':''} ${isToday?'today':''}">
-          <div class="day-lbl">${dayLabels[d]}</div>
-          ${list.length?list.map(c=>`
+        return `<div class="day-card ${(list.length||mks.length)?'has-class':''} ${isToday?'today':''} ${mks.length?'is-makeup':''}">
+          <div class="day-lbl">${dayLabels[d]}<br><span style="font-weight:500;opacity:.7">${wkDate.slice(5).replace('-','/')}</span></div>
+          ${list.map(c=>`
             <div style="margin-bottom:8px">
               <div class="c-time">${c.startTime&&c.endTime?(c.startTime+'~'+c.endTime):(c.slot||'')}</div>
               <div class="c-name">${c.name}</div>
               <div class="c-subject">${c.subject||''}${c.type&&c.type!=='정규'?' · '+c.type:''}</div>
-            </div>`).join('')
-          :`<div class="no-class">수업 없음</div>`}
+            </div>`).join('')}
+          ${mks.map(m=>`
+            <div style="margin-bottom:8px;background:var(--orange);border-radius:8px;padding:5px 4px;color:#fff">
+              <div class="c-time" style="color:#fff">${m.time||'시간 미정'}</div>
+              <div class="c-name" style="color:#fff">🔶 보강</div>
+              ${m.note?`<div class="c-subject" style="color:rgba(255,255,255,.85)">${m.note}</div>`:''}
+            </div>`).join('')}
+          ${(!list.length&&!mks.length)?`<div class="no-class">수업 없음</div>`:''}
         </div>`;}).join('')}
     </div>
+    ${studentCalendarHtml()}
     <div style="margin-top:16px"><div class="card-title" style="margin-bottom:10px">📚 내 수강 반 (${S_CLASSES.length})</div>
       ${S_CLASSES.map(c=>`<div class="att-record"><div class="att-date">${WD_LABEL[c.weekday]||''}요일 ${c.slot||''}</div><div class="att-class">${c.name} · ${c.subject||''}</div></div>`).join('')}
     </div>`;
@@ -1523,6 +1597,20 @@ function renderTeacher() {
           </div>`;}).join('')}</div></div>`;
       })()}
     </div>
+    ${(function(){
+      const today=new Date().toISOString().slice(0,10);
+      const up=(S_MAKEUPS||[]).filter(m=>m.date>=today);
+      if(!up.length) return '';
+      return `<div class="card" style="margin-bottom:16px;border-left:4px solid var(--orange)">
+        <div class="card-title">🔶 다가오는 보강 일정</div>
+        ${up.map(m=>`<div class="att-record">
+          <div class="att-date">${m.date}</div>
+          <div class="att-class">${m.className||'보강'}${m.note?` · ${m.note}`:''}</div>
+          <div style="font-size:13px;font-weight:700;color:var(--orange)">${m.time||'시간 미정'}</div>
+        </div>`).join('')}
+        <div style="font-size:12px;color:var(--text-muted);margin-top:8px">💡 시험기간 보강: 그날 학교시험을 봤으면 <strong>2시</strong>, 학교시험이 없는 날이면 <strong>5시</strong>부터 진행돼요.</div>
+      </div>`;
+    })()}
     <div class="card-title" style="margin-bottom:12px">📋 혜빈쌤의 관리 방법</div>
     <div class="mgmt-grid">
       <div class="mgmt-item"><h4>📝 숙제 관리</h4><p>매 수업 후 숙제를 출제해요. 사진으로 제출하면 선생님이 확인하고, 틀린 문제가 있으면 오답 재제출을 요청해요. 숙제는 실력 향상의 핵심이에요!</p></div>

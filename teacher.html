@@ -1678,6 +1678,11 @@ function calendarCardHtml(){
         <div class="form-group" style="margin:0"><label class="form-label">메모</label><input class="form-input" id="mk-note" placeholder="결석 보강 등" style="width:160px"></div>
         <button class="btn btn-primary" onclick="doAddMakeup()">보강 추가</button>
       </div>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--text-muted)">빠른 시간:</span>
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('mk-time').value='14:00~'">🕑 2시 (그날 학교시험 본 경우)</button>
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('mk-time').value='17:00~'">🕔 5시 (학교시험 없는 날)</button>
+      </div>
       ${makeups.length?`<div class="table-wrap" style="margin-top:10px"><table>
         <thead><tr><th>날짜</th><th>반/대상</th><th>시간</th><th>메모</th><th></th></tr></thead>
         <tbody>${makeups.slice().sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(m=>`<tr>

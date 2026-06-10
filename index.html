@@ -132,6 +132,15 @@
 
   <script>
   // ================================================================
+  // 🔐 로그인 유지 — 이미 로그인돼 있으면 바로 포털로 입장
+  // ================================================================
+  (function autoLogin(){
+    const role = localStorage.getItem('bm_role');
+    if (role === 'student' && localStorage.getItem('bm_studentId')) { location.replace('student.html'); return; }
+    if (role === 'teacher') { location.replace('teacher.html'); return; }
+  })();
+
+  // ================================================================
   // 역할 선택
   // ================================================================
   let currentRole = 'student';
