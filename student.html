@@ -515,7 +515,7 @@ const WD_LABEL={mon:'월',tue:'화',wed:'수',thu:'목',fri:'금',sat:'토',sun:
 
 // ===== Firebase에서 내 반·숙제·제출·출석·성적 불러오기 =====
 let S_CLASSES=[], ALL_CLASSES=[], S_ASSIGNMENTS=[], S_SUBMISSIONS=[], S_ATTENDANCE=[], S_EXAMS=[], S_EXAMSUBS=[], S_QUESTIONS=[], S_NOTICES=[];
-let S_SCHOOL='', S_SCHOOLEXAM=null;
+let S_SCHOOL='', S_SCHOOLEXAM=null, S_MATHEVENTS=[];
 let S_MOCKEXAMS=[], S_MOCKSUBS=[];
 function myClassIds(){ try{ return JSON.parse(localStorage.getItem('bm_classIds')||'[]'); }catch(e){ return STUDENT.classId?[STUDENT.classId]:[]; } }
 async function loadStudentData(){
@@ -551,15 +551,19 @@ async function loadStudentData(){
     S_QUESTIONS = q.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
     const rep = await db.collection('reports').doc(STUDENT.id).get();
     S_REPORT = rep.exists ? rep.data() : null;
-    // 내 학교 내신 시험 일정 (가장 가까운 예정 1개)
+    // 내 학교 내신 시험 일정 (수학 과목별로 다가오는 시험일 모음)
     const meDoc = await db.collection('students').doc(STUDENT.id).get();
     S_SCHOOL = meDoc.exists ? (meDoc.data().school||'') : '';
     if(S_SCHOOL){
       const se = await db.collection('schoolExams').where('school','==',S_SCHOOL).get();
       const today=new Date().toISOString().slice(0,10);
-      const up = se.docs.map(d=>d.data()).filter(e=>e.mathDate && e.mathDate>=today).sort((a,b)=>(a.mathDate||'').localeCompare(b.mathDate||''));
-      S_SCHOOLEXAM = up[0] || null;
-    } else { S_SCHOOLEXAM=null; }
+      const mathOf=e=>(Array.isArray(e.mathDates)&&e.mathDates.length)?e.mathDates.filter(m=>m&&m.date):(e.mathDate?[{label:'수학',date:e.mathDate}]:[]);
+      const events=[];
+      se.docs.forEach(d=>{ const e=d.data(); mathOf(e).forEach(m=>{ if(m.date>=today) events.push({title:e.title,school:e.school,grade:e.grade,startDate:e.startDate,endDate:e.endDate,label:m.label||'수학',date:m.date}); }); });
+      events.sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+      S_MATHEVENTS = events;
+      S_SCHOOLEXAM = events[0] || null;
+    } else { S_SCHOOLEXAM=null; S_MATHEVENTS=[]; }
     // 모의고사 (자가 등록) — 전체 목록 + 내 등록
     const mk=await db.collection('mockExams').get();
     S_MOCKEXAMS=mk.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
@@ -817,14 +821,15 @@ function renderHome() {
       </div>`:''}
     ${S_SCHOOLEXAM?(function(){
       const e=S_SCHOOLEXAM, t=new Date(); t.setHours(0,0,0,0);
-      const diff=Math.round((new Date(e.mathDate+'T00:00:00')-t)/86400000);
+      const diff=Math.round((new Date(e.date+'T00:00:00')-t)/86400000);
       const dday=diff>0?('D-'+diff):(diff===0?'D-DAY🔥':'');
+      const more=(S_MATHEVENTS||[]).slice(1).filter(x=>x.title===e.title);
       return `<div style="background:linear-gradient(135deg,#EF4444 0%,#F97316 100%);border-radius:var(--radius);padding:16px 18px;margin-bottom:16px;color:#fff">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
           <div>
             <div style="font-size:12px;opacity:.92;font-weight:600">📅 ${e.school} ${e.title||''}${e.grade?(' · '+e.grade):''}</div>
-            <div style="font-size:16px;font-weight:800;margin-top:3px">수학 시험 ${fmtDateFull(e.mathDate)}</div>
-            <div style="font-size:12px;opacity:.88;margin-top:2px">시험기간 ${e.startDate||'?'} ~ ${e.endDate||'?'}</div>
+            <div style="font-size:16px;font-weight:800;margin-top:3px">${e.label||'수학'} 시험 ${fmtDateFull(e.date)}</div>
+            <div style="font-size:12px;opacity:.88;margin-top:2px">시험기간 ${e.startDate||'?'} ~ ${e.endDate||'?'}${more.length?' · '+more.map(m=>m.label+' '+(m.date||'').slice(5)).join(', '):''}</div>
           </div>
           <div style="font-size:30px;font-weight:900;letter-spacing:-1px">${dday}</div>
         </div>

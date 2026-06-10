@@ -388,6 +388,12 @@ function getMockSubs(){ return MOCKSUBS_CACHE; }
 async function addMockExam(d){ await db.collection('mockExams').add({...d, createdAt:new Date().toISOString().slice(0,10), ts:Date.now()}); await loadMockExams(); }
 async function updateMockExam(id,d){ await db.collection('mockExams').doc(id).update(d); await loadMockExams(); }
 async function deleteMockExam(id){ await db.collection('mockExams').doc(id).delete(); await loadMockExams(); }
+// 🔶 보강 일정 (특정 날짜 단발성)
+let MAKEUPS_CACHE=[];
+async function loadMakeups(){ const s=await db.collection('makeups').get(); MAKEUPS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.date||'').localeCompare(b.date||'')); }
+function getMakeups(){ return MAKEUPS_CACHE; }
+async function addMakeup(d){ await db.collection('makeups').add({...d, ts:Date.now()}); await loadMakeups(); }
+async function deleteMakeupFS(id){ await db.collection('makeups').doc(id).delete(); await loadMakeups(); }
 // 학생 명단에 있는 학교 목록(중복 제거) — 빠른 선택용
 function allSchools(){ const set=new Set(); getStudents().forEach(s=>{ if(s.school) set.add(s.school); }); getSchoolExams().forEach(e=>{ if(e.school) set.add(e.school); }); return [...set]; }
 function ddayBadge(mathDate){
@@ -395,9 +401,15 @@ function ddayBadge(mathDate){
   const t=new Date(); t.setHours(0,0,0,0);
   const d=new Date(mathDate+'T00:00:00');
   const diff=Math.round((d-t)/86400000);
-  if(diff>0) return `<span class="badge b-red">수학 D-${diff}</span>`;
-  if(diff===0) return `<span class="badge b-red">수학 D-DAY 🔥</span>`;
+  if(diff>0) return `<span class="badge b-red">D-${diff}</span>`;
+  if(diff===0) return `<span class="badge b-red">D-DAY 🔥</span>`;
   return `<span class="badge b-gray">종료</span>`;
+}
+// 수학 시험일(들) — 신규는 mathDates 배열, 기존 데이터는 mathDate 단일 호환
+function examMathDates(e){
+  if(Array.isArray(e.mathDates)&&e.mathDates.length) return e.mathDates.filter(m=>m&&m.date);
+  if(e.mathDate) return [{label:'수학', date:e.mathDate}];
+  return [];
 }
 let seEditId=null;
 function schoolExamCardHtml(){
@@ -409,24 +421,30 @@ function schoolExamCardHtml(){
       <div class="form-group"><label class="form-label">학교 *</label><input class="form-input" id="se-school" list="se-schools" value="${editS?esc(editS.school):''}" placeholder="예: 송도고등학교"><datalist id="se-schools">${schools.map(s=>`<option value="${esc(s)}">`).join('')}</datalist></div>
       <div class="form-group"><label class="form-label">시험명 *</label><input class="form-input" id="se-title" value="${editS?esc(editS.title):''}" placeholder="예: 1학기 중간고사"></div>
     </div>
-    <div class="form-row-4">
+    <div class="form-row-3">
       <div class="form-group"><label class="form-label">학년(선택)</label><input class="form-input" id="se-grade" value="${editS?esc(editS.grade):''}" placeholder="예: 고1"></div>
       <div class="form-group"><label class="form-label">시험기간 시작</label><input class="form-input" id="se-start" type="date" value="${editS?(editS.startDate||''):''}"></div>
       <div class="form-group"><label class="form-label">시험기간 끝</label><input class="form-input" id="se-end" type="date" value="${editS?(editS.endDate||''):''}"></div>
-      <div class="form-group"><label class="form-label">수학 시험일 *</label><input class="form-input" id="se-math" type="date" value="${editS?(editS.mathDate||''):''}"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">수학 시험일 <span style="font-size:11px;color:var(--text-muted)">(과목이 둘이면 둘 다 입력)</span></label>
+      ${(function(){const ms=editS?examMathDates(editS):[];const m1=ms[0]||{},m2=ms[1]||{};return `
+        <div style="display:flex;gap:14px;flex-wrap:wrap">
+          <div style="display:flex;gap:6px;align-items:center"><input class="form-input" id="se-m1-label" style="width:96px" placeholder="수학①" value="${esc(m1.label||'')}"><input class="form-input" id="se-m1-date" type="date" value="${m1.date||''}"></div>
+          <div style="display:flex;gap:6px;align-items:center"><input class="form-input" id="se-m2-label" style="width:96px" placeholder="수학②(선택)" value="${esc(m2.label||'')}"><input class="form-input" id="se-m2-date" type="date" value="${m2.date||''}"></div>
+        </div>`;})()}
     </div>
     <div class="btn-row">
       <button class="btn btn-primary" onclick="doSaveSchoolExam()">${editS?'수정 저장 💾':'일정 추가'}</button>
       ${editS?`<button class="btn btn-outline" onclick="seEditId=null;rGrades()">취소</button>`:''}
     </div>
     ${list.length?`<div class="table-wrap" style="margin-top:14px"><table>
-      <thead><tr><th>학교</th><th>시험</th><th>시험기간</th><th>수학</th><th>D-day</th><th>관리</th></tr></thead>
+      <thead><tr><th>학교</th><th>시험</th><th>시험기간</th><th>수학 시험일</th><th>관리</th></tr></thead>
       <tbody>${list.map(e=>`<tr>
         <td><span class="chip">${e.school}</span></td>
         <td><strong>${e.title||'-'}</strong>${e.grade?` <span style="font-size:11px;color:var(--text-muted)">${e.grade}</span>`:''}</td>
         <td style="color:var(--text-muted)">${e.startDate||'?'}~${e.endDate||'?'}</td>
-        <td><strong>${e.mathDate||'-'}</strong></td>
-        <td>${ddayBadge(e.mathDate)}</td>
+        <td>${examMathDates(e).map(m=>`<div style="margin:1px 0"><strong>${m.label||'수학'}</strong> ${m.date} ${ddayBadge(m.date)}</div>`).join('')||'-'}</td>
         <td style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="seEditId='${e.id}';rGrades();window.scrollTo({top:0,behavior:'smooth'})">수정</button> <button class="btn btn-red btn-sm" onclick="doDelSchoolExam('${e.id}','${(e.school||'')+' '+(e.title||'')}')">삭제</button></td>
       </tr>`).join('')}</tbody>
     </table></div>`:'<div style="margin-top:12px;font-size:13px;color:var(--text-muted)">아직 등록된 내신 일정이 없어요. 학교별로 추가하면 그 학교 학생 전원이 D-day를 봐요.</div>'}
@@ -435,9 +453,12 @@ function schoolExamCardHtml(){
 async function doSaveSchoolExam(){
   const school=document.getElementById('se-school').value.trim();
   const title=document.getElementById('se-title').value.trim();
-  const mathDate=document.getElementById('se-math').value;
-  if(!school||!title||!mathDate){ showToast('학교·시험명·수학 시험일은 필수예요','error'); return; }
-  const data={school,title,grade:document.getElementById('se-grade').value.trim(),startDate:document.getElementById('se-start').value,endDate:document.getElementById('se-end').value,mathDate};
+  const m1d=document.getElementById('se-m1-date').value, m2d=document.getElementById('se-m2-date').value;
+  if(!school||!title||!m1d){ showToast('학교·시험명·수학 시험일(①)은 필수예요','error'); return; }
+  const mathDates=[];
+  mathDates.push({label:document.getElementById('se-m1-label').value.trim()||'수학', date:m1d});
+  if(m2d) mathDates.push({label:document.getElementById('se-m2-label').value.trim()||'수학②', date:m2d});
+  const data={school,title,grade:document.getElementById('se-grade').value.trim(),startDate:document.getElementById('se-start').value,endDate:document.getElementById('se-end').value,mathDates,mathDate:m1d};
   try{
     if(seEditId){ await updateSchoolExam(seEditId,data); seEditId=null; showToast('내신 일정 수정 완료 ✏️','success'); }
     else{ await addSchoolExam(data); showToast(`${school} 내신 일정 추가 완료 🏫`,'success'); }
@@ -1594,9 +1615,85 @@ function classPeriodStatus(c, today){
   if(c.startDate && today<c.startDate) return '<span class="badge b-yellow">예정</span>';
   return '<span class="badge b-green">진행중</span>';
 }
+// 📆 월간 일정 캘린더 (정규수업=요일 / 보강=날짜 / 시험기간=음영)
+let calY=null, calM=null;
+function calShift(delta){ const d=new Date(calY, calM+delta, 1); calY=d.getFullYear(); calM=d.getMonth(); rSchedule(); }
+function calendarCardHtml(){
+  const now=new Date(), pad=n=>String(n).padStart(2,'0');
+  if(calY==null){ calY=now.getFullYear(); calM=now.getMonth(); }
+  const todayStr=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  const firstDow=new Date(calY,calM,1).getDay();
+  const dim=new Date(calY,calM+1,0).getDate();
+  const wdKeys=['sun','mon','tue','wed','thu','fri','sat'];
+  const exams=getSchoolExams(), makeups=getMakeups();
+  const cells=[]; for(let i=0;i<firstDow;i++) cells.push(null); for(let d=1;d<=dim;d++) cells.push(d); while(cells.length%7) cells.push(null);
+  function dayCell(d){
+    const dow=new Date(calY,calM,d).getDay();
+    const dateStr=`${calY}-${pad(calM+1)}-${pad(d)}`;
+    const cls=CLASSES.filter(c=>c.weekday===wdKeys[dow] && isClassActive(c,dateStr)).sort((a,b)=>(a.slot||'').localeCompare(b.slot||''));
+    const mks=makeups.filter(m=>m.date===dateStr);
+    const inExam=exams.filter(e=>e.startDate&&e.endDate&&dateStr>=e.startDate&&dateStr<=e.endDate);
+    const mathToday=[]; exams.forEach(e=>examMathDates(e).forEach(m=>{ if(m.date===dateStr) mathToday.push((e.school||'').slice(0,5)+' '+(m.label||'수학')); }));
+    const isToday=dateStr===todayStr;
+    const bg=inExam.length?'#FEF2F2':(isToday?'#EFF6FF':'var(--surface)');
+    let h=`<div style="min-height:86px;border:1px solid var(--border);border-radius:8px;padding:4px 5px;background:${bg};${isToday?'box-shadow:inset 0 0 0 2px var(--primary)':''}">`;
+    h+=`<div style="font-size:11px;font-weight:700;color:${dow===0?'#EF4444':(dow===6?'#2563EB':'var(--text-sub)')}">${d}${inExam.length?` <span style="font-size:9px;color:#DC2626">📕</span>`:''}</div>`;
+    cls.forEach(c=>{ h+=`<div style="font-size:9.5px;color:var(--primary);background:var(--primary-light);border-radius:4px;padding:1px 3px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.name}</div>`; });
+    mathToday.forEach(t=>{ h+=`<div style="font-size:9.5px;color:#DC2626;font-weight:700;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📐 ${t}</div>`; });
+    mks.forEach(m=>{ h+=`<div style="font-size:9.5px;color:#fff;background:var(--orange);border-radius:4px;padding:1px 3px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${(m.className||'보강')+' '+(m.time||'')+' '+(m.note||'')}">🔶 ${m.className||'보강'}${m.time?(' '+m.time):''}</div>`; });
+    h+='</div>'; return h;
+  }
+  const dow=['일','월','화','수','목','금','토'];
+  let grid=`<div style="display:grid;grid-template-columns:repeat(7,minmax(64px,1fr));gap:4px;min-width:520px">`;
+  grid+=dow.map((l,i)=>`<div style="text-align:center;font-size:11px;font-weight:700;color:${i===0?'#EF4444':(i===6?'#2563EB':'var(--text-muted)')};padding:2px">${l}</div>`).join('');
+  grid+=cells.map(d=>d?dayCell(d):'<div></div>').join('')+'</div>';
+  return `<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+      <div class="card-title" style="margin:0">📆 월간 일정 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(수업·보강·시험 한눈에)</span></div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="btn btn-outline btn-sm" onclick="calShift(-1)">◀</button>
+        <strong style="font-size:15px;min-width:96px;text-align:center">${calY}년 ${calM+1}월</strong>
+        <button class="btn btn-outline btn-sm" onclick="calShift(1)">▶</button>
+        <button class="btn btn-outline btn-sm" onclick="calY=null;rSchedule()">오늘</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--text-muted);margin-bottom:8px">
+      <span><span style="display:inline-block;width:10px;height:10px;background:var(--primary-light);border-radius:2px;vertical-align:middle"></span> 정규수업</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:var(--orange);border-radius:2px;vertical-align:middle"></span> 보강</span>
+      <span>📕 시험기간 · 📐 수학시험일</span>
+    </div>
+    <div style="overflow-x:auto">${grid}</div>
+    <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:8px">🔶 보강 추가</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+        <div class="form-group" style="margin:0"><label class="form-label">날짜 *</label><input class="form-input" id="mk-date" type="date" style="width:160px"></div>
+        <div class="form-group" style="margin:0"><label class="form-label">반/대상</label><input class="form-input" id="mk-class" list="mk-classes" placeholder="예: 고2 세마 / 김민수" style="width:170px"><datalist id="mk-classes">${CLASSES.map(c=>`<option value="${c.name}">`).join('')}</datalist></div>
+        <div class="form-group" style="margin:0"><label class="form-label">시간</label><input class="form-input" id="mk-time" placeholder="예: 14:00~16:00" style="width:150px"></div>
+        <div class="form-group" style="margin:0"><label class="form-label">메모</label><input class="form-input" id="mk-note" placeholder="결석 보강 등" style="width:160px"></div>
+        <button class="btn btn-primary" onclick="doAddMakeup()">보강 추가</button>
+      </div>
+      ${makeups.length?`<div class="table-wrap" style="margin-top:10px"><table>
+        <thead><tr><th>날짜</th><th>반/대상</th><th>시간</th><th>메모</th><th></th></tr></thead>
+        <tbody>${makeups.slice().sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(m=>`<tr>
+          <td><strong>${m.date}</strong></td><td>${m.className||'-'}</td><td style="color:var(--text-muted)">${m.time||'-'}</td><td style="color:var(--text-muted)">${m.note||'-'}</td>
+          <td><button class="btn btn-red btn-sm" onclick="doDelMakeup('${m.id}')">삭제</button></td>
+        </tr>`).join('')}</tbody>
+      </table></div>`:''}
+    </div>
+  </div>`;
+}
+async function doAddMakeup(){
+  const date=document.getElementById('mk-date').value;
+  if(!date){ showToast('보강 날짜를 선택해주세요','error'); return; }
+  const data={date, className:document.getElementById('mk-class').value.trim(), time:document.getElementById('mk-time').value.trim(), note:document.getElementById('mk-note').value.trim()};
+  try{ await addMakeup(data); showToast('보강 일정이 추가됐어요 🔶','success'); rSchedule(); }
+  catch(e){ showToast('추가 실패: '+e.message,'error'); }
+}
+async function doDelMakeup(id){ if(!confirm('이 보강을 삭제할까요?'))return; try{ await deleteMakeupFS(id); showToast('보강을 삭제했어요','warning'); rSchedule(); }catch(e){ showToast('삭제 실패: '+e.message,'error'); } }
 function rSchedule(){
   const days=['mon','tue','wed','thu','fri','sat','sun'];
   document.getElementById('scheduleContent').innerHTML=`
+    ${calendarCardHtml()}
     <div class="card">
       <div class="card-title">➕ 반(수업) 추가</div>
       <div class="form-row-2">
@@ -1837,6 +1934,7 @@ async function init(){
     await loadSchoolExams();     // 학교별 내신 시험 일정
     await loadMockExams();       // 모의고사 (자가 등록)
     await loadMockSubs();        // 모의고사 학생 제출
+    await loadMakeups();         // 보강 일정
   }catch(e){ showToast('데이터를 불러오지 못했어요: '+e.message,'error'); }
   rDashboard();
   pruneOldFirebase();            // 3개월 지난 사진·기록 자동 정리 (백그라운드)
