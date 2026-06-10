@@ -427,7 +427,7 @@ function schoolExamCardHtml(){
       <div class="form-group"><label class="form-label">시험기간 끝</label><input class="form-input" id="se-end" type="date" value="${editS?(editS.endDate||''):''}"></div>
     </div>
     <div class="form-group">
-      <label class="form-label">수학 시험일 <span style="font-size:11px;color:var(--text-muted)">(과목이 둘이면 둘 다 입력)</span></label>
+      <label class="form-label">수학 시험일 <span style="font-size:11px;color:var(--text-muted)">(과목이 둘이면 둘 다 입력 · 아직 미정이면 비워두고 나중에 ‘수정’으로 확정)</span></label>
       ${(function(){const ms=editS?examMathDates(editS):[];const m1=ms[0]||{},m2=ms[1]||{};return `
         <div style="display:flex;gap:14px;flex-wrap:wrap">
           <div style="display:flex;gap:6px;align-items:center"><input class="form-input" id="se-m1-label" style="width:96px" placeholder="수학①" value="${esc(m1.label||'')}"><input class="form-input" id="se-m1-date" type="date" value="${m1.date||''}"></div>
@@ -444,7 +444,7 @@ function schoolExamCardHtml(){
         <td><span class="chip">${e.school}</span></td>
         <td><strong>${e.title||'-'}</strong>${e.grade?` <span style="font-size:11px;color:var(--text-muted)">${e.grade}</span>`:''}</td>
         <td style="color:var(--text-muted)">${e.startDate||'?'}~${e.endDate||'?'}</td>
-        <td>${examMathDates(e).map(m=>`<div style="margin:1px 0"><strong>${m.label||'수학'}</strong> ${m.date} ${ddayBadge(m.date)}</div>`).join('')||'-'}</td>
+        <td>${examMathDates(e).map(m=>`<div style="margin:1px 0"><strong>${m.label||'수학'}</strong> ${m.date} ${ddayBadge(m.date)}</div>`).join('')||'<span class="badge b-yellow">📌 수학일 미정</span>'}</td>
         <td style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="seEditId='${e.id}';rGrades();window.scrollTo({top:0,behavior:'smooth'})">수정</button> <button class="btn btn-red btn-sm" onclick="doDelSchoolExam('${e.id}','${(e.school||'')+' '+(e.title||'')}')">삭제</button></td>
       </tr>`).join('')}</tbody>
     </table></div>`:'<div style="margin-top:12px;font-size:13px;color:var(--text-muted)">아직 등록된 내신 일정이 없어요. 학교별로 추가하면 그 학교 학생 전원이 D-day를 봐요.</div>'}
@@ -454,11 +454,12 @@ async function doSaveSchoolExam(){
   const school=document.getElementById('se-school').value.trim();
   const title=document.getElementById('se-title').value.trim();
   const m1d=document.getElementById('se-m1-date').value, m2d=document.getElementById('se-m2-date').value;
-  if(!school||!title||!m1d){ showToast('학교·시험명·수학 시험일(①)은 필수예요','error'); return; }
+  if(!school||!title){ showToast('학교·시험명을 입력해주세요','error'); return; }
+  // 수학 날짜는 아직 미정이어도 등록 가능 — 나중에 수정으로 확정
   const mathDates=[];
-  mathDates.push({label:document.getElementById('se-m1-label').value.trim()||'수학', date:m1d});
+  if(m1d) mathDates.push({label:document.getElementById('se-m1-label').value.trim()||'수학', date:m1d});
   if(m2d) mathDates.push({label:document.getElementById('se-m2-label').value.trim()||'수학②', date:m2d});
-  const data={school,title,grade:document.getElementById('se-grade').value.trim(),startDate:document.getElementById('se-start').value,endDate:document.getElementById('se-end').value,mathDates,mathDate:m1d};
+  const data={school,title,grade:document.getElementById('se-grade').value.trim(),startDate:document.getElementById('se-start').value,endDate:document.getElementById('se-end').value,mathDates,mathDate:m1d||''};
   try{
     if(seEditId){ await updateSchoolExam(seEditId,data); seEditId=null; showToast('내신 일정 수정 완료 ✏️','success'); }
     else{ await addSchoolExam(data); showToast(`${school} 내신 일정 추가 완료 🏫`,'success'); }
@@ -697,12 +698,15 @@ async function doRegisterAnalyzedExam(){
 // DASHBOARD
 // ================================================================
 function rDashboard(){
-  const sts=getStudents(),subs=getSubmissions(),qs=getQuestions();
+  const sts=getStudents(),qs=getQuestions();
+  // 삭제된 숙제의 옛 제출(고아 데이터)은 제외하고 집계
+  const asgnIds=new Set(getAssignments().map(a=>a.id));
+  const subs=getSubmissions().filter(s=>asgnIds.has(s.assignmentId));
   const today=new Date();
   document.getElementById('todayDate').textContent=today.toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
   const dayKey=['sun','mon','tue','wed','thu','fri','sat'][today.getDay()];
   const todayCls=CLASSES.filter(c=>c.weekday===dayKey && isClassActive(c));
-  const unchecked=subs.filter(s=>!s.checked).length;
+  const unchecked=subs.filter(s=>!s.checked && !s.rejected).length;
   const pending=qs.filter(q=>q.status==='pending').length;
 
   // 최근 결석/지각 모으기 (챙길 것)
@@ -1642,16 +1646,16 @@ function calendarCardHtml(){
     const mathToday=[]; exams.forEach(e=>examMathDates(e).forEach(m=>{ if(m.date===dateStr) mathToday.push((e.school||'').slice(0,5)+' '+(m.label||'수학')); }));
     const isToday=dateStr===todayStr;
     const bg=inExam.length?'#FEF2F2':(isToday?'#EFF6FF':'var(--surface)');
-    let h=`<div style="min-height:86px;border:1px solid var(--border);border-radius:8px;padding:4px 5px;background:${bg};${isToday?'box-shadow:inset 0 0 0 2px var(--primary)':''}">`;
-    h+=`<div style="font-size:11px;font-weight:700;color:${dow===0?'#EF4444':(dow===6?'#2563EB':'var(--text-sub)')}">${d}${inExam.length?` <span style="font-size:9px;color:#DC2626">📕</span>`:''}</div>`;
-    cls.forEach(c=>{ h+=`<div style="font-size:9.5px;color:var(--primary);background:var(--primary-light);border-radius:4px;padding:1px 3px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.name}</div>`; });
-    mathToday.forEach(t=>{ h+=`<div style="font-size:9.5px;color:#DC2626;font-weight:700;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📐 ${t}</div>`; });
-    mks.forEach(m=>{ h+=`<div style="font-size:9.5px;color:#fff;background:var(--orange);border-radius:4px;padding:1px 3px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${(m.className||'보강')+' '+(m.time||'')+' '+(m.note||'')}">🔶 ${m.className||'보강'}${m.time?(' '+m.time):''}</div>`; });
+    let h=`<div style="min-height:104px;border:1px solid var(--border);border-radius:8px;padding:5px 6px;background:${bg};${isToday?'box-shadow:inset 0 0 0 2px var(--primary)':''}">`;
+    h+=`<div style="font-size:15px;font-weight:800;color:${dow===0?'#EF4444':(dow===6?'#2563EB':'var(--text-sub)')}">${d}${inExam.length?` <span style="font-size:12px;color:#DC2626">📕</span>`:''}</div>`;
+    cls.forEach(c=>{ h+=`<div style="font-size:12px;font-weight:600;color:var(--primary);background:var(--primary-light);border-radius:4px;padding:2px 4px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.name}</div>`; });
+    mathToday.forEach(t=>{ h+=`<div style="font-size:12px;color:#DC2626;font-weight:800;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📐 ${t}</div>`; });
+    mks.forEach(m=>{ h+=`<div style="font-size:12px;font-weight:600;color:#fff;background:var(--orange);border-radius:4px;padding:2px 4px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${(m.className||'보강')+' '+(m.time||'')+' '+(m.note||'')}">🔶 ${m.className||'보강'}${m.time?(' '+m.time):''}</div>`; });
     h+='</div>'; return h;
   }
   const dow=['일','월','화','수','목','금','토'];
-  let grid=`<div style="display:grid;grid-template-columns:repeat(7,minmax(64px,1fr));gap:4px;min-width:520px">`;
-  grid+=dow.map((l,i)=>`<div style="text-align:center;font-size:11px;font-weight:700;color:${i===0?'#EF4444':(i===6?'#2563EB':'var(--text-muted)')};padding:2px">${l}</div>`).join('');
+  let grid=`<div style="display:grid;grid-template-columns:repeat(7,minmax(86px,1fr));gap:4px;min-width:640px">`;
+  grid+=dow.map((l,i)=>`<div style="text-align:center;font-size:13px;font-weight:800;color:${i===0?'#EF4444':(i===6?'#2563EB':'var(--text-muted)')};padding:3px">${l}</div>`).join('');
   grid+=cells.map(d=>d?dayCell(d):'<div></div>').join('')+'</div>';
   return `<div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">

@@ -559,7 +559,12 @@ async function loadStudentData(){
       const today=new Date().toISOString().slice(0,10);
       const mathOf=e=>(Array.isArray(e.mathDates)&&e.mathDates.length)?e.mathDates.filter(m=>m&&m.date):(e.mathDate?[{label:'수학',date:e.mathDate}]:[]);
       const events=[];
-      se.docs.forEach(d=>{ const e=d.data(); mathOf(e).forEach(m=>{ if(m.date>=today) events.push({title:e.title,school:e.school,grade:e.grade,startDate:e.startDate,endDate:e.endDate,label:m.label||'수학',date:m.date}); }); });
+      se.docs.forEach(d=>{ const e=d.data();
+        const ms=mathOf(e);
+        ms.forEach(m=>{ if(m.date>=today) events.push({title:e.title,school:e.school,grade:e.grade,startDate:e.startDate,endDate:e.endDate,label:m.label||'수학',date:m.date}); });
+        // 수학일 미정이어도 시험기간이 다가오면 기간 기준으로 안내
+        if(!ms.length && e.startDate && e.startDate>=today) events.push({title:e.title,school:e.school,grade:e.grade,startDate:e.startDate,endDate:e.endDate,label:'시험기간',date:e.startDate,period:true});
+      });
       events.sort((a,b)=>(a.date||'').localeCompare(b.date||''));
       S_MATHEVENTS = events;
       S_SCHOOLEXAM = events[0] || null;
@@ -837,8 +842,8 @@ function renderHome() {
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
           <div>
             <div style="font-size:12px;opacity:.92;font-weight:600">📅 ${e.school} ${e.title||''}${e.grade?(' · '+e.grade):''}</div>
-            <div style="font-size:16px;font-weight:800;margin-top:3px">${e.label||'수학'} 시험 ${fmtDateFull(e.date)}</div>
-            <div style="font-size:12px;opacity:.88;margin-top:2px">시험기간 ${e.startDate||'?'} ~ ${e.endDate||'?'}${more.length?' · '+more.map(m=>m.label+' '+(m.date||'').slice(5)).join(', '):''}</div>
+            <div style="font-size:16px;font-weight:800;margin-top:3px">${e.period?`시험기간 시작 ${fmtDateFull(e.date)}`:`${e.label||'수학'} 시험 ${fmtDateFull(e.date)}`}</div>
+            <div style="font-size:12px;opacity:.88;margin-top:2px">시험기간 ${e.startDate||'?'} ~ ${e.endDate||'?'}${e.period?' · 수학 날짜는 확정되면 표시돼요':''}${more.length?' · '+more.map(m=>m.label+' '+(m.date||'').slice(5)).join(', '):''}</div>
           </div>
           <div style="font-size:30px;font-weight:900;letter-spacing:-1px">${dday}</div>
         </div>
@@ -1457,16 +1462,16 @@ function studentCalendarHtml(){
     const inExam=(S_SCHOOL_EXAMS||[]).some(e=>e.startDate&&e.endDate&&dateStr>=e.startDate&&dateStr<=e.endDate);
     const mathToday=[]; (S_SCHOOL_EXAMS||[]).forEach(e=>mathOf(e).forEach(m=>{ if(m.date===dateStr) mathToday.push(m.label||'수학'); }));
     const isToday=dateStr===todayStr;
-    let h=`<div style="min-height:72px;border:1px solid var(--border);border-radius:8px;padding:3px 4px;background:${inExam?'#FEF2F2':(isToday?'var(--primary-light)':'var(--surface)')};${isToday?'box-shadow:inset 0 0 0 2px var(--primary)':''}">`;
-    h+=`<div style="font-size:11px;font-weight:700;color:${dow===0?'#EF4444':(dow===6?'#2563EB':'var(--text-sub)')}">${d}${inExam?' <span style="font-size:9px;color:#DC2626">📕</span>':''}</div>`;
-    cls.forEach(c=>{ h+=`<div style="font-size:9px;color:var(--primary);background:var(--primary-light);border-radius:4px;padding:1px 3px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.name}</div>`; });
-    mathToday.forEach(t=>{ h+=`<div style="font-size:9px;color:#DC2626;font-weight:700;margin-top:2px">📐 ${t}</div>`; });
-    mks.forEach(m=>{ h+=`<div style="font-size:9px;color:#fff;background:var(--orange);border-radius:4px;padding:1px 3px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🔶 ${m.time||'보강'}</div>`; });
+    let h=`<div style="min-height:92px;border:1px solid var(--border);border-radius:8px;padding:4px 5px;background:${inExam?'#FEF2F2':(isToday?'var(--primary-light)':'var(--surface)')};${isToday?'box-shadow:inset 0 0 0 2px var(--primary)':''}">`;
+    h+=`<div style="font-size:14px;font-weight:800;color:${dow===0?'#EF4444':(dow===6?'#2563EB':'var(--text-sub)')}">${d}${inExam?' <span style="font-size:11px;color:#DC2626">📕</span>':''}</div>`;
+    cls.forEach(c=>{ h+=`<div style="font-size:11.5px;font-weight:600;color:var(--primary);background:var(--primary-light);border-radius:4px;padding:2px 4px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.name}</div>`; });
+    mathToday.forEach(t=>{ h+=`<div style="font-size:11.5px;color:#DC2626;font-weight:800;margin-top:3px">📐 ${t}</div>`; });
+    mks.forEach(m=>{ h+=`<div style="font-size:11.5px;font-weight:600;color:#fff;background:var(--orange);border-radius:4px;padding:2px 4px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🔶 ${m.time||'보강'}</div>`; });
     h+='</div>'; return h;
   }
   const dow=['일','월','화','수','목','금','토'];
-  let grid=`<div style="display:grid;grid-template-columns:repeat(7,minmax(54px,1fr));gap:3px;min-width:430px">`;
-  grid+=dow.map((l,i)=>`<div style="text-align:center;font-size:11px;font-weight:700;color:${i===0?'#EF4444':(i===6?'#2563EB':'var(--text-muted)')};padding:2px">${l}</div>`).join('');
+  let grid=`<div style="display:grid;grid-template-columns:repeat(7,minmax(74px,1fr));gap:3px;min-width:540px">`;
+  grid+=dow.map((l,i)=>`<div style="text-align:center;font-size:13px;font-weight:800;color:${i===0?'#EF4444':(i===6?'#2563EB':'var(--text-muted)')};padding:3px">${l}</div>`).join('');
   grid+=cells.map(d=>d?dayCell(d):'<div></div>').join('')+'</div>';
   return `<div class="card" style="margin-top:16px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
