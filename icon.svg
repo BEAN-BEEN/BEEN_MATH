@@ -1,12 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 384" role="img" aria-label="BEEN MATH">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#114C56"/>
-      <stop offset="1" stop-color="#17A6A6"/>
-    </linearGradient>
-  </defs>
-  <rect width="384" height="384" rx="92" fill="url(#bg)"/>
-  <rect x="104" y="120" width="176" height="34" rx="17" fill="#ffffff"/>
-  <rect x="104" y="175" width="176" height="34" rx="17" fill="#36D399"/>
-  <rect x="104" y="230" width="176" height="34" rx="17" fill="#ffffff"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="BEEN MATH">
+  <rect width="512" height="512" fill="#ffffff"/>
+  <g font-family="'Arial Black','Arial',sans-serif" font-weight="900" text-anchor="middle">
+    <text x="256" y="228" font-size="130" letter-spacing="4" fill="#114C56">BEEN</text>
+    <text x="256" y="372" font-size="130" letter-spacing="4" fill="#19B3C2">MATH</text>
+  </g>
+  <rect x="215" y="392" width="82" height="15" rx="4" fill="#3FD178"/>
 </svg>

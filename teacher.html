@@ -1111,7 +1111,9 @@ function rHomework(){
                     <option value="inclass" ${sub.evalTag==='inclass'?'selected':''}>🏫 수업 내 완료</option>
                     <option value="promise" ${sub.evalTag==='promise'?'selected':''}>🤙 다음시간까지 약속</option>
                   </select>`:'-'}</td>
-                <td>${sub?`<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px"><input type="checkbox" ${sub.needsRetry?'checked':''} onchange="doRetry('${sub.id}',this.checked)"> 오답</label>${sub.needsRetry?(sub.retryDone?'<div style="font-size:11px;color:var(--green);margin-top:2px">🔁 재제출 완료</div>':'<div style="font-size:11px;color:var(--orange);margin-top:2px">재제출 대기</div>'):''}`:'-'}</td>
+                <td>${sub?(sub.needsRetry
+                    ? `<div style="font-size:11px;color:var(--orange);margin-bottom:3px">✏️ 오답 고치는 중</div><button class="btn btn-green btn-sm" onclick="doRetry('${sub.id}',false)">오답 완료 ✓</button>`
+                    : `<button class="btn btn-outline btn-sm" onclick="doRetry('${sub.id}',true)">오답 표시</button>`):'-'}</td>
               </tr>`;}).join('')}</tbody>
             </table></div></div>`:``}
         </div>`;}).join('')}`;
@@ -1187,7 +1189,7 @@ async function doUncheckOffline(subId){
   try{ await db.collection('submissions').doc(subId).delete(); await loadSubmissions(); showToast('직접 확인을 해제했어요 (미제출로 되돌림)','warning'); rHomework(); }
   catch(e){ showToast('해제 실패: '+e.message,'error'); }
 }
-async function doRetry(sid,v){ await updateSub(sid, v?{needsRetry:true}:{needsRetry:false,retryDone:false,checked:true}); showToast(v?'오답 재제출이 요청되었어요':'오답 해결로 확인 처리했어요',v?'warning':'success'); rHomework(); }
+async function doRetry(sid,v){ await updateSub(sid, v?{needsRetry:true}:{needsRetry:false,retryDone:false,checked:true}); showToast(v?'오답으로 표시했어요. 학생 숙제 카드에 보여요 ✏️':'오답 완료로 확인 처리했어요 👍',v?'warning':'success'); rHomework(); }
 // 제출 사진 보기 (간단 뷰어)
 function showPhotoModal(urls){
   if(!urls||!urls.length){ showToast('등록된 사진이 없어요'); return; }

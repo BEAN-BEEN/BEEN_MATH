@@ -1005,13 +1005,8 @@ function renderHomework() {
           </div>`:''}
           ${a.needsRetry?`
             <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:var(--radius-sm);padding:12px;margin-top:10px">
-              <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:8px">⚠️ 오답이 있어요 — 고쳐서 다시 제출해요!</div>
-              ${a.retryDone?`<div style="font-size:13px;color:var(--green);font-weight:600">🔁 오답 재제출 완료! 선생님 확인을 기다려요 👍</div>`:`
-                <div class="upload-area" onclick="this.querySelector('input').click()" style="padding:16px;margin-bottom:8px">
-                  <div class="u-icon">📷</div><p>오답 고친 사진을 업로드하세요</p>
-                  <input type="file" accept="image/*" multiple id="retryfile-${a.id}">
-                </div>
-                <button class="btn btn-orange btn-sm" onclick="doSubmitRetry('${a.subId}','${a.id}')">오답 재제출하기 ✓</button>`}
+              <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:4px">✏️ 틀린 문제가 있어요</div>
+              <div style="font-size:13px;color:#7F1D1D">오답을 고쳐서 수업 때 선생님께 확인받으세요. 선생님이 확인하면 완료 처리돼요!</div>
             </div>`:''}`}
       </div>`;
   }
@@ -1695,7 +1690,7 @@ function renderTeacher() {
     })()}
     <div class="card-title" style="margin-bottom:12px">📋 혜빈쌤의 관리 방법</div>
     <div class="mgmt-grid">
-      <div class="mgmt-item"><h4>📝 숙제 관리</h4><p>매 수업 후 숙제를 출제해요. 사진으로 제출하면 선생님이 확인하고, 틀린 문제가 있으면 오답 재제출을 요청해요. 숙제는 실력 향상의 핵심이에요!</p></div>
+      <div class="mgmt-item"><h4>📝 숙제 관리</h4><p>매 수업 후 숙제를 출제해요. 사진으로 제출하면 선생님이 확인하고, 틀린 문제가 있으면 고쳐서 수업 때 직접 확인받아요. 숙제는 실력 향상의 핵심이에요!</p></div>
       <div class="mgmt-item"><h4>🗓️ 출석 관리</h4><p>결석이 발생하면 보강 일정을 잡아드려요. 지각이 잦으면 개인 상담을 진행해요. 출석률은 성적과 직결되니 빠지지 않도록 노력해주세요!</p></div>
       <div class="mgmt-item"><h4>🏆 성적 관리</h4><p>매달 단원평가를 진행해요. 시험 후 답안지를 제출하면 채점 + 코멘트를 드려요. 성적 추이를 보며 부족한 부분을 집중 보완해요.</p></div>
       <div class="mgmt-item"><h4>💬 질문 관리</h4><p>모르는 문제는 언제든지 질문실에 올려주세요! AI 힌트로 먼저 생각해보고, 선생님의 상세 답변을 받을 수 있어요. 질문을 많이 할수록 실력이 빠르게 늘어요.</p></div>
