@@ -698,6 +698,16 @@ async function submitHomeworkOffline(assignmentId) {
   else{ await db.collection('submissions').add({ assignmentId, assignmentTitle:a?a.title:'', classId:a?a.classId:'', className:a?a.className:'', studentId:STUDENT.id, studentName:STUDENT.name, ...base, ts:Date.now() }); }
   await loadStudentData();
 }
+// 🗑 제출 취소 — 선생님이 확인하기 전이면 학생이 스스로 무를 수 있어요 (사진도 함께 정리)
+async function submitHomeworkCancel(subId){
+  try{
+    const snap=await db.collection('submissions').doc(subId).get();
+    const d=snap.exists?snap.data():null;
+    if(d && Array.isArray(d.photos)){ for(const u of d.photos){ try{ await firebase.storage().refFromURL(u).delete(); }catch(e){} } }
+  }catch(e){}
+  await db.collection('submissions').doc(subId).delete();
+  await loadStudentData();
+}
 // ✏️ 오답 고쳐서 다시 제출
 async function submitHomeworkRetry(subId, assignmentId){
   const fi=document.getElementById('retryfile-'+assignmentId);
@@ -923,6 +933,8 @@ function renderHomework() {
 
   function card(a) {
     const isPending = ['pending','late','rejected'].includes(a.status);
+    // 선생님이 아직 확인(평가)하기 전이면 학생이 스스로 다시 올리거나 취소할 수 있어요
+    const canEdit = a.status==='submitted' && !a.teacherChecked && !a.needsRetry && !a.evalPct && !a.evalTag;
     return `
       <div class="hw-card ${a.status}" id="hwcard-${a.id}">
         <div class="hw-head">
@@ -956,6 +968,22 @@ function renderHomework() {
               ${a.offline?'✋ 직접 검사 요청':'✅ 사진 제출'}: ${a.submittedAt||''}${a.late?' · <span style="color:var(--red);font-weight:700">⏰지각 제출</span>':''} &nbsp;·&nbsp; ${a.teacherChecked?'👁 선생님 확인 완료':'⏳ 선생님 확인 중'}
             </div>
           </div>
+          ${canEdit?`
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
+              <span style="font-size:12px;color:var(--text-muted)">잘못 올렸나요?</span>
+              <button class="btn btn-outline btn-sm" onclick="toggleRedo('${a.id}')">✏️ 다시 올리기</button>
+              <button class="btn btn-outline btn-sm" onclick="doCancelSubmit('${a.subId}','${a.id}')">🗑 제출 취소</button>
+            </div>
+            <div id="redo-${a.id}" style="display:none;margin-top:10px">
+              <div class="upload-area" onclick="this.querySelector('input').click()">
+                <div class="u-icon">📷</div>
+                <p>새 사진을 선택하세요 (최대 ${a.maxPhotos}장)</p>
+                <input type="file" accept="image/*" multiple id="hwfile-${a.id}" onchange="handlePreview(this,'${a.id}')">
+              </div>
+              <div id="prev-${a.id}" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"></div>
+              <button class="btn btn-primary btn-sm" onclick="doSubmit('${a.id}')">📷 이 사진으로 다시 제출 ✓</button>
+            </div>
+          `:''}
           ${(a.evalPct||a.evalTag)?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
             ${a.evalPct?`<span class="badge ${a.evalPct==='100'?'b-green':(a.evalPct==='80'?'b-primary':(a.evalPct==='50'?'b-yellow':'b-red'))}">${a.evalPct==='100'?'💯 완벽히 다 했어요!':(a.evalPct==='80'?'👍 80% 완성':(a.evalPct==='50'?'🤏 절반 완성 — 더 풀어요':'⚠️ 조금만 함 — 분발!'))}</span>`:''}
             ${a.evalTag==='inclass'?'<span class="badge b-primary">🏫 수업 시간 내 완료</span>':''}
@@ -1002,6 +1030,21 @@ async function doSubmit(id) {
     showToast('숙제 제출 완료! 잘했어요 🎉','success');
     renderHomework();
   }catch(e){ showToast('제출 실패: '+e.message,'error'); }
+}
+// ✏️ '다시 올리기' 영역 펼치기/접기
+function toggleRedo(id){
+  const el=document.getElementById('redo-'+id);
+  if(el) el.style.display = (el.style.display==='none' ? 'block' : 'none');
+}
+// 🗑 제출 취소 → 다시 '제출할 숙제'로 되돌아가요
+async function doCancelSubmit(subId, id){
+  if(!subId){ showToast('취소할 제출을 찾지 못했어요. 새로고침 후 다시 시도해주세요','error'); return; }
+  if(!confirm('제출을 취소할까요?\n취소하면 ‘제출할 숙제’로 돌아가고, 새로 제출할 수 있어요.')) return;
+  try{
+    await submitHomeworkCancel(subId);
+    showToast('제출을 취소했어요. 새로 제출할 수 있어요 ✏️','warning');
+    renderHomework();
+  }catch(e){ showToast('취소 실패: '+e.message,'error'); }
 }
 async function doSubmitOffline(id) {
   if(!confirm('사진 없이 ‘직접 검사받기’로 신청할까요?\n수업 때 선생님께 공책을 보여주면 돼요.')) return;
