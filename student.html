@@ -575,7 +575,7 @@ async function loadStudentData(){
       const mku = await db.collection('makeups').get();
       const myNames = [STUDENT.name, ...(S_CLASSES.map(c=>c.name))];
       S_MAKEUPS = mku.docs.map(d=>({id:d.id,...d.data()}))
-        .filter(m=>!m.className || myNames.some(n=>n && (m.className.includes(n) || n.includes(m.className))))
+        .filter(m=>!m.className || (m.school && m.school===S_SCHOOL) || myNames.some(n=>n && (m.className.includes(n) || n.includes(m.className))))
         .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
     }catch(e){ S_MAKEUPS=[]; }
     // 모의고사 (자가 등록) — 전체 목록 + 내 등록
@@ -620,7 +620,7 @@ function getAssignments(){
     if(sub && sub.rejected) status='rejected';
     else if(sub) status='submitted';
     else status=(a.dueDate && a.dueDate < today) ? 'late' : 'pending';
-    return { ...a, status, submittedAt:sub?sub.submittedAt:null, teacherChecked:sub?!!sub.checked:false, needsRetry:sub?!!sub.needsRetry:false, offline:sub?!!sub.offline:false, late:sub?!!sub.late:false, retryDone:sub?!!sub.retryDone:false, rejected:sub?!!sub.rejected:false, rejectReason:sub?(sub.rejectReason||''):'', subId:sub?sub.id:null };
+    return { ...a, status, submittedAt:sub?sub.submittedAt:null, teacherChecked:sub?!!sub.checked:false, needsRetry:sub?!!sub.needsRetry:false, offline:sub?!!sub.offline:false, late:sub?!!sub.late:false, retryDone:sub?!!sub.retryDone:false, rejected:sub?!!sub.rejected:false, rejectReason:sub?(sub.rejectReason||''):'', evalPct:sub?(sub.evalPct||''):'', evalTag:sub?(sub.evalTag||''):'', subId:sub?sub.id:null };
   });
 }
 function getAttendance()  { return S_ATTENDANCE; }
@@ -951,6 +951,11 @@ function renderHomework() {
               ${a.offline?'✋ 직접 검사 요청':'✅ 사진 제출'}: ${a.submittedAt||''}${a.late?' · <span style="color:var(--red);font-weight:700">⏰지각 제출</span>':''} &nbsp;·&nbsp; ${a.teacherChecked?'👁 선생님 확인 완료':'⏳ 선생님 확인 중'}
             </div>
           </div>
+          ${(a.evalPct||a.evalTag)?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+            ${a.evalPct?`<span class="badge ${a.evalPct==='100'?'b-green':(a.evalPct==='80'?'b-primary':(a.evalPct==='50'?'b-yellow':'b-red'))}">${a.evalPct==='100'?'💯 완벽히 다 했어요!':(a.evalPct==='80'?'👍 80% 완성':(a.evalPct==='50'?'🤏 절반 완성 — 더 풀어요':'⚠️ 조금만 함 — 분발!'))}</span>`:''}
+            ${a.evalTag==='inclass'?'<span class="badge b-primary">🏫 수업 시간 내 완료</span>':''}
+            ${a.evalTag==='promise'?'<span class="badge b-orange">🤙 다음 시간까지 해오기로 약속!</span>':''}
+          </div>`:''}
           ${a.needsRetry?`
             <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:var(--radius-sm);padding:12px;margin-top:10px">
               <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:8px">⚠️ 오답이 있어요 — 고쳐서 다시 제출해요!</div>

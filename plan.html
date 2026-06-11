@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>혜빈쌤 플래너</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <meta name="theme-color" content="#114C56">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary:#5B6CF5; --primary-dark:#4F46E5; --primary-light:#EEF2FF; --primary-2:#818CF8;
+      --orange:#F97316; --orange-light:#FFF7ED;
+      --green:#10B981; --green-light:#ECFDF5;
+      --red:#F43F5E; --red-light:#FFF1F2;
+      --yellow:#F59E0B; --yellow-light:#FFFBEB;
+      --purple:#8B5CF6; --purple-light:#F5F3FF;
+      --bg:#F4F6FB; --surface:#FFFFFF;
+      --text:#0F172A; --text-sub:#334155; --text-muted:#64748B;
+      --border:#E8EDF4;
+      --radius:16px; --radius-sm:11px;
+      --shadow:0 1px 2px rgba(16,24,40,.04),0 4px 12px rgba(16,24,40,.05);
+    }
+    [data-theme="spring"]{ --primary:#E96A9E; --primary-dark:#D5588C; --primary-light:#FDF1F7; --primary-2:#F6A6C6; }
+    [data-theme="summer"]{ --primary:#0EA5B7; --primary-dark:#0C8A99; --primary-light:#EBFDFF; --primary-2:#4FD1DE; }
+    [data-theme="autumn"]{ --primary:#DD7A2E; --primary-dark:#C2641C; --primary-light:#FFF6EC; --primary-2:#F0A862; }
+    [data-theme="winter"]{ --primary:#3F6FD1; --primary-dark:#3257AE; --primary-light:#EEF3FF; --primary-2:#7BA0E8; }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Noto Sans KR',-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;overflow-x:hidden;-webkit-text-size-adjust:100%}
+    .wrap{max-width:980px;margin:0 auto;padding:18px 16px 60px}
+    .topbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+    .topbar h1{font-size:22px;font-weight:800;color:var(--primary);letter-spacing:-.5px}
+    .topbar .date{font-size:13px;color:var(--text-muted)}
+    .card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px 20px;margin-bottom:16px}
+    .card-title{font-size:15px;font-weight:700;margin-bottom:12px}
+    .btn{display:inline-flex;align-items:center;gap:5px;padding:9px 14px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;border:none;font-family:inherit;transition:all .15s}
+    .btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{background:var(--primary-dark)}
+    .btn-outline{background:var(--surface);color:var(--text-sub);border:1.5px solid var(--border)}.btn-outline:hover{border-color:var(--primary);color:var(--primary)}
+    .btn-red{background:var(--red-light);color:var(--red)}
+    .btn-sm{padding:5px 10px;font-size:12px;border-radius:7px}
+    .form-input,.form-select,.form-textarea{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14px;font-family:inherit;color:var(--text)}
+    .form-input:focus,.form-select:focus,.form-textarea:focus{outline:none;border-color:var(--primary)}
+    .form-label{display:block;font-size:12px;font-weight:600;color:var(--text-sub);margin-bottom:5px}
+    .chip{display:inline-block;padding:3px 9px;border-radius:7px;font-size:12px;font-weight:600}
+    .layer-btn{padding:7px 13px;border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;border:2px solid var(--border);background:var(--surface);color:var(--text-muted);transition:all .15s;font-family:inherit}
+    .layer-btn.on-teach{border-color:var(--primary);background:var(--primary-light);color:var(--primary)}
+    .layer-btn.on-academy{border-color:var(--purple);background:var(--purple-light);color:var(--purple)}
+    .layer-btn.on-personal{border-color:var(--green);background:var(--green-light);color:var(--green)}
+    .todo-row{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--border)}
+    .todo-row input[type=checkbox]{width:19px;height:19px;accent-color:var(--primary);cursor:pointer;flex:0 0 auto}
+    .todo-text{flex:1;font-size:14px}
+    .todo-done .todo-text{text-decoration:line-through;color:var(--text-muted)}
+    .toast-container{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:2000;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none}
+    .toast{background:#1E293B;color:#fff;padding:10px 20px;border-radius:24px;font-size:13px;font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,.2);animation:tIn .3s ease,tOut .3s ease 2.2s forwards;display:flex;align-items:center;gap:8px}
+    .toast.success{background:var(--green)}.toast.error{background:var(--red)}.toast.warning{background:var(--orange)}
+    @keyframes tIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes tOut{to{opacity:0;transform:translateY(8px)}}
+    @media(max-width:640px){ .wrap{padding:14px 10px 50px} .card{padding:14px} }
+  </style>
+</head>
+<body>
+<div class="toast-container" id="toastContainer"></div>
+<div class="wrap">
+  <div class="topbar">
+    <div>
+      <h1>📒 혜빈쌤 플래너</h1>
+      <div class="date" id="todayDate"></div>
+    </div>
+    <a href="teacher.html" class="btn btn-outline">🏫 BEEN MATH 관리자 →</a>
+  </div>
+
+  <div id="briefing"></div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+      <div class="card-title" style="margin:0">📆 캘린더</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="btn btn-outline btn-sm" onclick="pShift(-1)">◀</button>
+        <strong style="font-size:16px;min-width:100px;text-align:center" id="calMonthLabel"></strong>
+        <button class="btn btn-outline btn-sm" onclick="pShift(1)">▶</button>
+        <button class="btn btn-outline btn-sm" onclick="pY=null;rCal()">오늘</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px" id="layerBtns"></div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--text-muted);margin-bottom:10px">
+      <span><span style="display:inline-block;width:10px;height:10px;background:var(--primary-light);border:1px solid var(--primary);border-radius:2px;vertical-align:middle"></span> 수업</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:var(--orange);border-radius:2px;vertical-align:middle"></span> 보강</span>
+      <span>📕 시험기간 · 📐 수학시험일</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:var(--purple-light);border:1px solid var(--purple);border-radius:2px;vertical-align:middle"></span> 학원</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:var(--green-light);border:1px solid var(--green);border-radius:2px;vertical-align:middle"></span> 개인</span>
+    </div>
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><div id="calGrid"></div></div>
+  </div>
+
+  <div id="dayDetail"></div>
+
+  <div class="card">
+    <div class="card-title">➕ 일정 추가</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px">
+      <div><label class="form-label">제목 *</label><input class="form-input" id="ev-title" placeholder="예: 학부모 상담 / 미용실"></div>
+      <div><label class="form-label">분류</label><select class="form-select" id="ev-cat"><option value="academy">🟪 학원</option><option value="personal">🟩 개인</option></select></div>
+      <div><label class="form-label">날짜 *</label><input class="form-input" id="ev-date" type="date"></div>
+      <div><label class="form-label">시간(선택)</label><input class="form-input" id="ev-time" placeholder="예: 15:00"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px">
+      <div><label class="form-label">반복</label><select class="form-select" id="ev-repeat" onchange="document.getElementById('ev-rend-wrap').style.display=this.value?'':'none'"><option value="">반복 없음</option><option value="daily">매일</option><option value="weekly">매주</option><option value="monthly">매월</option></select></div>
+      <div id="ev-rend-wrap" style="display:none"><label class="form-label">반복 종료일(선택)</label><input class="form-input" id="ev-rend" type="date"></div>
+      <div style="grid-column:span 2"><label class="form-label">메모(선택)</label><input class="form-input" id="ev-note" placeholder="메모"></div>
+    </div>
+    <button class="btn btn-primary" onclick="doAddEvent()">일정 추가</button>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🗓️ 다가오는 일정 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(2주)</span></div>
+    <div id="upcomingList"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">✅ 투두리스트</div>
+    <div style="display:flex;gap:8px;margin-bottom:6px">
+      <input class="form-input" id="todo-text" placeholder="할 일을 입력하고 Enter" onkeydown="if(event.key==='Enter')doAddTodo()">
+      <input class="form-input" id="todo-due" type="date" style="max-width:160px" title="마감일(선택)">
+      <button class="btn btn-primary" onclick="doAddTodo()">추가</button>
+    </div>
+    <div id="todoList"></div>
+  </div>
+</div>
+
+<!-- Firebase SDK (compat) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="firebase-init.js?v=2026060902"></script>
+
+<script>
+// ================================================================
+// 혜빈쌤 플래너 — 강사(자동) + 학원 + 개인 3단 캘린더 / 투두 / 반복일정
+// ================================================================
+requireRole('teacher');   // 선생님만 접근
+
+function showToast(msg,type=''){ const el=document.createElement('div'); el.className='toast '+type; el.textContent=msg; document.getElementById('toastContainer').appendChild(el); setTimeout(()=>el.remove(),2700); }
+const pad=n=>String(n).padStart(2,'0');
+const todayStr=()=>{ const n=new Date(); return `${n.getFullYear()}-${pad(n.getMonth()+1)}-${pad(n.getDate())}`; };
+const fmtMD=s=>s?s.slice(5).replace('-','/'):'';
+
+// ----- 데이터 -----
+let P_CLASSES=[], P_MAKEUPS=[], P_EXAMS=[], P_EVENTS=[], P_TODOS=[];
+async function loadAll(){
+  const [c,m,e,ev,td]=await Promise.all([
+    db.collection('classes').get(), db.collection('makeups').get(),
+    db.collection('schoolExams').get(), db.collection('planEvents').get(), db.collection('planTodos').get()
+  ]);
+  P_CLASSES=c.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.order||0)-(b.order||0));
+  P_MAKEUPS=m.docs.map(d=>({id:d.id,...d.data()}));
+  P_EXAMS=e.docs.map(d=>({id:d.id,...d.data()}));
+  P_EVENTS=ev.docs.map(d=>({id:d.id,...d.data()}));
+  P_TODOS=td.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.done?1:0)-(b.done?1:0)||(a.ts||0)-(b.ts||0));
+}
+function isClassActive(c, dateStr){
+  if(c.endDate && dateStr>c.endDate) return false;
+  if(c.startDate && dateStr<c.startDate) return false;
+  return true;
+}
+function examMathDates(e){
+  if(Array.isArray(e.mathDates)&&e.mathDates.length) return e.mathDates.filter(m=>m&&m.date);
+  if(e.mathDate) return [{label:'수학', date:e.mathDate}];
+  return [];
+}
+// 반복 일정이 해당 날짜에 발생하는지
+function occursOn(ev, dateStr){
+  if(!ev.repeat) return ev.date===dateStr;
+  if(dateStr<ev.date) return false;
+  if(ev.repeatEnd && dateStr>ev.repeatEnd) return false;
+  const d=new Date(dateStr+'T00:00:00'), s=new Date(ev.date+'T00:00:00');
+  if(ev.repeat==='daily') return true;
+  if(ev.repeat==='weekly') return d.getDay()===s.getDay();
+  if(ev.repeat==='monthly') return d.getDate()===s.getDate();
+  return false;
+}
+
+// ----- 레이어 토글 -----
+let layers; try{ layers=JSON.parse(localStorage.getItem('bm_plan_layers'))||{teach:true,academy:true,personal:true}; }catch(e){ layers={teach:true,academy:true,personal:true}; }
+function toggleLayer(k){ layers[k]=!layers[k]; localStorage.setItem('bm_plan_layers',JSON.stringify(layers)); rLayerBtns(); rCal(); rDayDetail(); }
+function rLayerBtns(){
+  document.getElementById('layerBtns').innerHTML=[
+    ['teach','🏫 강사 (수업·보강·시험)','on-teach'],
+    ['academy','🟪 학원','on-academy'],
+    ['personal','🟩 개인','on-personal']
+  ].map(([k,l,cls])=>`<button class="layer-btn ${layers[k]?cls:''}" onclick="toggleLayer('${k}')">${layers[k]?'✓ ':''}${l}</button>`).join('');
+}
+
+// ----- 캘린더 -----
+let pY=null, pM=null, selDate=todayStr();
+function pShift(d){ const x=new Date(pY,pM+d,1); pY=x.getFullYear(); pM=x.getMonth(); rCal(); }
+function dayItems(dateStr){
+  const wd=['sun','mon','tue','wed','thu','fri','sat'][new Date(dateStr+'T00:00:00').getDay()];
+  const items=[];
+  if(layers.teach){
+    P_CLASSES.filter(c=>c.weekday===wd&&isClassActive(c,dateStr)).sort((a,b)=>(a.slot||'').localeCompare(b.slot||'')).forEach(c=>items.push({type:'class',text:c.name,sub:(c.startTime&&c.endTime?c.startTime+'~'+c.endTime:(c.slot||''))+(c.type&&c.type!=='정규'?' · '+c.type:'')}));
+    P_MAKEUPS.filter(m=>m.date===dateStr).forEach(m=>items.push({type:'makeup',text:'🔶 '+(m.className||'보강'),sub:(m.time||'')+(m.note?' · '+m.note:'')}));
+    P_EXAMS.forEach(e=>examMathDates(e).forEach(m=>{ if(m.date===dateStr) items.push({type:'math',text:'📐 '+(e.school||'')+' '+(m.label||'수학'),sub:e.title||''}); }));
+  }
+  if(layers.academy) P_EVENTS.filter(e=>e.category==='academy'&&occursOn(e,dateStr)).forEach(e=>items.push({type:'academy',text:e.title,sub:(e.time||'')+(e.note?' · '+e.note:''),id:e.id,repeat:e.repeat}));
+  if(layers.personal) P_EVENTS.filter(e=>e.category==='personal'&&occursOn(e,dateStr)).forEach(e=>items.push({type:'personal',text:e.title,sub:(e.time||'')+(e.note?' · '+e.note:''),id:e.id,repeat:e.repeat}));
+  return items;
+}
+function examShade(dateStr){ return layers.teach && P_EXAMS.some(e=>e.startDate&&e.endDate&&dateStr>=e.startDate&&dateStr<=e.endDate); }
+const ITEM_STYLE={
+  class:'color:var(--primary);background:var(--primary-light)',
+  makeup:'color:#fff;background:var(--orange)',
+  math:'color:#DC2626;background:transparent;font-weight:800;padding-left:0',
+  academy:'color:var(--purple);background:var(--purple-light)',
+  personal:'color:var(--green);background:var(--green-light)'
+};
+function rCal(){
+  const now=new Date();
+  if(pY==null){ pY=now.getFullYear(); pM=now.getMonth(); }
+  document.getElementById('calMonthLabel').textContent=`${pY}년 ${pM+1}월`;
+  const firstDow=new Date(pY,pM,1).getDay(), dim=new Date(pY,pM+1,0).getDate();
+  const cells=[]; for(let i=0;i<firstDow;i++) cells.push(null); for(let d=1;d<=dim;d++) cells.push(d); while(cells.length%7) cells.push(null);
+  const tStr=todayStr();
+  const dowL=['일','월','화','수','목','금','토'];
+  let h=`<div style="display:grid;grid-template-columns:repeat(7,minmax(88px,1fr));gap:4px;min-width:650px">`;
+  h+=dowL.map((l,i)=>`<div style="text-align:center;font-size:13px;font-weight:800;color:${i===0?'#EF4444':(i===6?'#2563EB':'var(--text-muted)')};padding:3px">${l}</div>`).join('');
+  h+=cells.map(d=>{
+    if(!d) return '<div></div>';
+    const dateStr=`${pY}-${pad(pM+1)}-${pad(d)}`;
+    const dow=new Date(pY,pM,d).getDay();
+    const items=dayItems(dateStr);
+    const shade=examShade(dateStr);
+    const isToday=dateStr===tStr, isSel=dateStr===selDate;
+    let cell=`<div onclick="selDate='${dateStr}';rDayDetail();rCal()" style="cursor:pointer;min-height:104px;border:1px solid var(--border);border-radius:8px;padding:5px 6px;background:${shade?'#FEF2F2':(isToday?'var(--primary-light)':'var(--surface)')};${isSel?'box-shadow:inset 0 0 0 2px var(--primary)':''}">`;
+    cell+=`<div style="font-size:15px;font-weight:800;color:${dow===0?'#EF4444':(dow===6?'#2563EB':'var(--text-sub)')}">${d}${shade?' <span style="font-size:12px;color:#DC2626">📕</span>':''}</div>`;
+    items.slice(0,5).forEach(it=>{ cell+=`<div style="font-size:12px;font-weight:600;border-radius:4px;padding:2px 4px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${ITEM_STYLE[it.type]}">${it.text}</div>`; });
+    if(items.length>5) cell+=`<div style="font-size:11px;color:var(--text-muted);margin-top:2px">+${items.length-5}개 더</div>`;
+    cell+='</div>'; return cell;
+  }).join('');
+  h+='</div>';
+  document.getElementById('calGrid').innerHTML=h;
+}
+
+// ----- 선택 날짜 상세 -----
+function rDayDetail(){
+  const el=document.getElementById('dayDetail');
+  const items=dayItems(selDate);
+  const d=new Date(selDate+'T00:00:00');
+  const label=`${d.getMonth()+1}월 ${d.getDate()}일 (${['일','월','화','수','목','금','토'][d.getDay()]})`;
+  el.innerHTML=`<div class="card" style="border-left:4px solid var(--primary)">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+      <div class="card-title" style="margin:0">📌 ${label}</div>
+      <button class="btn btn-outline btn-sm" onclick="document.getElementById('ev-date').value='${selDate}';document.getElementById('ev-title').focus();showToast('아래 일정 추가 폼에 날짜를 채웠어요 ✍️')">이 날짜에 일정 추가</button>
+    </div>
+    ${items.length?items.map(it=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 6px;border-bottom:1px solid var(--border)">
+        <div><span class="chip" style="${ITEM_STYLE[it.type]}">${it.text}</span> <span style="font-size:12px;color:var(--text-muted)">${it.sub||''}${it.repeat?' · 🔁'+({daily:'매일',weekly:'매주',monthly:'매월'}[it.repeat]||''):''}</span></div>
+        ${it.id?`<button class="btn btn-red btn-sm" onclick="doDelEvent('${it.id}')">삭제</button>`:''}
+      </div>`).join(''):'<div style="color:var(--text-muted);padding:10px;font-size:13px">이 날은 일정이 없어요 🍃</div>'}
+  </div>`;
+}
+
+// ----- 오늘 브리핑 -----
+function rBriefing(){
+  const t=todayStr();
+  const items=dayItems(t).filter(it=>['class','makeup','math'].includes(it.type)||true);
+  const cls=items.filter(i=>i.type==='class'), mks=items.filter(i=>i.type==='makeup');
+  const evs=items.filter(i=>i.type==='academy'||i.type==='personal');
+  const examsNow=P_EXAMS.filter(e=>e.startDate&&e.endDate&&t>=e.startDate&&t<=e.endDate);
+  const dueTodos=P_TODOS.filter(x=>!x.done&&x.due&&x.due<=t);
+  const within7=[]; P_EXAMS.forEach(e=>examMathDates(e).forEach(m=>{ const diff=Math.round((new Date(m.date+'T00:00:00')-new Date(t+'T00:00:00'))/86400000); if(diff>=0&&diff<=7) within7.push(`${e.school} ${m.label} D-${diff===0?'DAY':diff}`); }));
+  document.getElementById('briefing').innerHTML=`<div class="card" style="background:linear-gradient(135deg,var(--primary) 0%,var(--primary-2) 100%);color:#fff">
+    <div style="font-size:16px;font-weight:800;margin-bottom:10px">☀️ 오늘 브리핑</div>
+    <div style="display:flex;flex-direction:column;gap:6px;font-size:14px">
+      <div>📚 수업 ${cls.length?cls.map(c=>`<strong>${c.text}</strong>`).join(', '):'없음'}</div>
+      ${mks.length?`<div>🔶 보강 ${mks.map(m=>`<strong>${m.text.replace('🔶 ','')}</strong> ${m.sub||''}`).join(', ')}</div>`:''}
+      ${examsNow.length?`<div>📕 시험기간 진행중: ${examsNow.map(e=>e.school).join(', ')}</div>`:''}
+      ${within7.length?`<div>📐 다가오는 수학시험: ${within7.join(' · ')}</div>`:''}
+      ${evs.length?`<div>🗓️ 오늘 일정: ${evs.map(e=>e.text).join(', ')}</div>`:''}
+      <div>${dueTodos.length?`⚠️ 마감 할 일 <strong>${dueTodos.length}개</strong>: ${dueTodos.slice(0,3).map(x=>x.text).join(', ')}${dueTodos.length>3?'…':''}`:'✅ 마감 임박 할 일 없음'}</div>
+    </div>
+  </div>`;
+}
+
+// ----- 일정 CRUD -----
+async function doAddEvent(){
+  const title=document.getElementById('ev-title').value.trim();
+  const date=document.getElementById('ev-date').value;
+  if(!title||!date){ showToast('제목과 날짜를 입력해주세요','error'); return; }
+  const data={ title, category:document.getElementById('ev-cat').value, date,
+    time:document.getElementById('ev-time').value.trim(), note:document.getElementById('ev-note').value.trim(),
+    repeat:document.getElementById('ev-repeat').value, repeatEnd:document.getElementById('ev-rend').value, ts:Date.now() };
+  try{
+    await db.collection('planEvents').add(data);
+    document.getElementById('ev-title').value=''; document.getElementById('ev-time').value=''; document.getElementById('ev-note').value='';
+    await loadAll(); rCal(); rDayDetail(); rUpcoming(); rBriefing();
+    showToast('일정이 추가됐어요 📌','success');
+  }catch(e){ showToast('추가 실패: '+e.message,'error'); }
+}
+async function doDelEvent(id){
+  const ev=P_EVENTS.find(e=>e.id===id);
+  if(!confirm(`"${ev?ev.title:''}" 일정을 삭제할까요?${ev&&ev.repeat?'\n(반복 일정 전체가 삭제돼요)':''}`)) return;
+  try{ await db.collection('planEvents').doc(id).delete(); await loadAll(); rCal(); rDayDetail(); rUpcoming(); rBriefing(); showToast('삭제했어요','warning'); }
+  catch(e){ showToast('삭제 실패: '+e.message,'error'); }
+}
+function rUpcoming(){
+  const t=todayStr(); const out=[];
+  for(let i=0;i<14;i++){
+    const d=new Date(); d.setDate(d.getDate()+i);
+    const ds=`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+    P_EVENTS.filter(e=>occursOn(e,ds)).forEach(e=>out.push({...e, on:ds}));
+    if(layers.teach) P_MAKEUPS.filter(m=>m.date===ds).forEach(m=>out.push({title:'🔶 보강 '+(m.className||''), category:'teach', time:m.time, on:ds}));
+  }
+  document.getElementById('upcomingList').innerHTML = out.length? out.map(e=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid var(--border)">
+      <div>
+        <span style="font-size:12px;font-weight:700;color:var(--text-muted);margin-right:8px">${fmtMD(e.on)}</span>
+        <span class="chip" style="${e.category==='academy'?ITEM_STYLE.academy:(e.category==='personal'?ITEM_STYLE.personal:ITEM_STYLE.makeup)}">${e.title}</span>
+        <span style="font-size:12px;color:var(--text-muted)">${e.time||''}${e.repeat?' · 🔁':''}</span>
+      </div>
+      ${e.id?`<button class="btn btn-red btn-sm" onclick="doDelEvent('${e.id}')">삭제</button>`:''}
+    </div>`).join('') : '<div style="color:var(--text-muted);padding:10px;font-size:13px">2주 안에 등록된 일정이 없어요</div>';
+}
+
+// ----- 투두 -----
+async function doAddTodo(){
+  const text=document.getElementById('todo-text').value.trim();
+  if(!text){ showToast('할 일을 입력해주세요','error'); return; }
+  try{
+    await db.collection('planTodos').add({text, due:document.getElementById('todo-due').value||'', done:false, ts:Date.now()});
+    document.getElementById('todo-text').value='';
+    await loadAll(); rTodos(); rBriefing();
+  }catch(e){ showToast('추가 실패: '+e.message,'error'); }
+}
+async function doToggleTodo(id,done){
+  try{ await db.collection('planTodos').doc(id).update({done, doneAt:done?Date.now():null}); await loadAll(); rTodos(); rBriefing(); if(done) showToast('완료! 잘하셨어요 🎉','success'); }
+  catch(e){ showToast('실패: '+e.message,'error'); }
+}
+async function doDelTodo(id){
+  try{ await db.collection('planTodos').doc(id).delete(); await loadAll(); rTodos(); rBriefing(); }
+  catch(e){ showToast('삭제 실패: '+e.message,'error'); }
+}
+function rTodos(){
+  const t=todayStr();
+  const open=P_TODOS.filter(x=>!x.done), done=P_TODOS.filter(x=>x.done);
+  const row=x=>`<div class="todo-row ${x.done?'todo-done':''}">
+    <input type="checkbox" ${x.done?'checked':''} onchange="doToggleTodo('${x.id}',this.checked)">
+    <span class="todo-text">${x.text}${x.due?` <span style="font-size:11px;font-weight:700;color:${(!x.done&&x.due<=t)?'var(--red)':'var(--text-muted)'}">📅 ${fmtMD(x.due)}${(!x.done&&x.due<t)?' 지남!':''}</span>`:''}</span>
+    <button class="btn btn-red btn-sm" onclick="doDelTodo('${x.id}')">삭제</button>
+  </div>`;
+  document.getElementById('todoList').innerHTML=
+    (open.length?open.map(row).join(''):'<div style="color:var(--text-muted);padding:10px;font-size:13px">할 일이 없어요! 여유를 즐기세요 ☕</div>')
+    +(done.length?`<div style="font-size:12px;color:var(--text-muted);margin-top:10px;font-weight:700">완료 (${done.length})</div>`+done.slice(0,8).map(row).join(''):'');
+}
+
+// ----- 시작 -----
+async function init(){
+  document.getElementById('todayDate').textContent=new Date().toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
+  document.getElementById('ev-date').value=todayStr();
+  loadThemeCloud();
+  try{ await loadAll(); }catch(e){ showToast('데이터를 불러오지 못했어요: '+e.message,'error'); }
+  rLayerBtns(); rCal(); rDayDetail(); rUpcoming(); rTodos(); rBriefing();
+}
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

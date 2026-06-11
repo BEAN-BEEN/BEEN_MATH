@@ -205,6 +205,7 @@
     </div>
     <div class="sidebar-nav" id="sidebarNav"></div>
     <div class="sidebar-footer">
+      <a href="plan.html" style="display:block;text-align:center;padding:9px;margin-bottom:12px;background:rgba(255,255,255,.12);color:#fff;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none">📒 나의 플래너 →</a>
       <div style="font-size:11px;color:rgba(255,255,255,.5);font-weight:600;margin-bottom:7px">🎨 테마 색상</div>
       <div id="themeDots" style="margin-bottom:12px"></div>
       <p style="margin-bottom:8px">👩‍🏫 혜빈쌤 로그인 중</p>
@@ -1071,7 +1072,7 @@ function rHomework(){
           </div>
           ${isOpen?`
             <div style="margin-top:14px"><div class="table-wrap"><table>
-              <thead><tr><th>학생</th><th>제출</th><th>제출 시간</th><th>사진</th><th>확인</th><th>오답</th></tr></thead>
+              <thead><tr><th>학생</th><th>제출</th><th>제출 시간</th><th>사진</th><th>확인</th><th>평가</th><th>오답</th></tr></thead>
               <tbody>${sts.map(st=>{const sub=subs.find(s=>s.studentId===st.id);return`<tr>
                 <td><strong>${st.name}</strong></td>
                 <td>${sub?(sub.rejected?'<span class="badge b-red">🔁반려됨</span>':(sub.offline?'<span class="badge b-orange">✋직접검사</span>':'<span class="badge b-green">📷제출</span>'))+(sub.late?' <span class="badge b-red">지각</span>':''):'<span class="badge b-red">미제출</span>'}</td>
@@ -1082,6 +1083,18 @@ function rHomework(){
                   : (sub.offline && sub.byTeacher) ? `<button class="btn btn-green btn-sm" onclick="doUncheckOffline('${sub.id}')" title="다시 누르면 해제">✓ 직접확인됨 (취소)</button>`
                   : `<div style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn ${sub.checked?'btn-green':'btn-outline'} btn-sm" onclick="doCheck('${sub.id}')">${sub.checked?'✓확인됨':'확인'}</button><button class="btn btn-outline btn-sm" onclick="doReject('${sub.id}')">반려</button>${sub.offline?`<button class="btn btn-outline btn-sm" onclick="doUncheckOffline('${sub.id}')">취소</button>`:''}</div>`
                 }</td>
+                <td>${sub?`<select class="form-select" style="padding:4px 6px;font-size:12px;width:110px" onchange="doEvalSub('${sub.id}',{evalPct:this.value})">
+                    <option value="">완성도 선택</option>
+                    <option value="100" ${sub.evalPct==='100'?'selected':''}>💯 완벽히 다 함</option>
+                    <option value="80" ${sub.evalPct==='80'?'selected':''}>👍 80% 정도</option>
+                    <option value="50" ${sub.evalPct==='50'?'selected':''}>🤏 절반 정도</option>
+                    <option value="30" ${sub.evalPct==='30'?'selected':''}>⚠️ 조금만 함</option>
+                  </select>
+                  <select class="form-select" style="padding:4px 6px;font-size:12px;width:110px;margin-top:3px" onchange="doEvalSub('${sub.id}',{evalTag:this.value})">
+                    <option value="">비고 없음</option>
+                    <option value="inclass" ${sub.evalTag==='inclass'?'selected':''}>🏫 수업 내 완료</option>
+                    <option value="promise" ${sub.evalTag==='promise'?'selected':''}>🤙 다음시간까지 약속</option>
+                  </select>`:'-'}</td>
                 <td>${sub?`<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px"><input type="checkbox" ${sub.needsRetry?'checked':''} onchange="doRetry('${sub.id}',this.checked)"> 오답</label>${sub.needsRetry?(sub.retryDone?'<div style="font-size:11px;color:var(--green);margin-top:2px">🔁 재제출 완료</div>':'<div style="font-size:11px;color:var(--orange);margin-top:2px">재제출 대기</div>'):''}`:'-'}</td>
               </tr>`;}).join('')}</tbody>
             </table></div></div>`:``}
@@ -1121,6 +1134,11 @@ async function doDelAsgn(id,title){
   catch(e){ showToast('삭제 실패: '+e.message,'error'); }
 }
 async function doCheck(sid){ const s=getSubmissions().find(x=>x.id===sid); const nv=!(s&&s.checked); await updateSub(sid,{checked:nv, ...(nv?{rejected:false}:{})}); showToast(nv?'숙제 확인 완료!':'확인을 취소했어요','success'); rHomework(); }
+// 숙제 평가(완성도·비고) 저장 — 학생 숙제 카드에 표시됨
+async function doEvalSub(sid,u){
+  try{ await updateSub(sid,u); showToast('평가 저장 ✓ 학생에게 표시돼요','success'); }
+  catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
 // 반려: 제대로 안 한 숙제를 되돌려보냄 → 학생이 다시 제출
 async function doReject(sid){
   const reason=prompt('반려 사유를 적어주세요 (학생에게 보여요)\n예: 3·7번 풀이가 없어요. 다시 풀어서 올려주세요.');
@@ -1626,7 +1644,7 @@ function classPeriodStatus(c, today){
   return '<span class="badge b-green">진행중</span>';
 }
 // 📆 월간 일정 캘린더 (정규수업=요일 / 보강=날짜 / 시험기간=음영)
-let calY=null, calM=null;
+let calY=null, calM=null, scAddOpen=false;
 function calShift(delta){ const d=new Date(calY, calM+delta, 1); calY=d.getFullYear(); calM=d.getMonth(); rSchedule(); }
 function calendarCardHtml(){
   const now=new Date(), pad=n=>String(n).padStart(2,'0');
@@ -1686,7 +1704,9 @@ function calendarCardHtml(){
         <span style="font-size:12px;color:var(--text-muted)">빠른 시간:</span>
         <button class="btn btn-outline btn-sm" onclick="document.getElementById('mk-time').value='14:00~'">🕑 2시 (그날 학교시험 본 경우)</button>
         <button class="btn btn-outline btn-sm" onclick="document.getElementById('mk-time').value='17:00~'">🕔 5시 (학교시험 없는 날)</button>
+        <button class="btn btn-primary btn-sm" onclick="doAutoMakeups()">🪄 시험 전날 직보 자동 생성</button>
       </div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:6px">🪄 자동 생성: 등록된 내신 일정의 <strong>수학시험 전날</strong>에 직보를 만들어요 — 그날 학교시험이 있으면 <strong>2시</strong>, 없으면 <strong>5시</strong>. (이미 있는 날짜는 건너뜀)</div>
       ${makeups.length?`<div class="table-wrap" style="margin-top:10px"><table>
         <thead><tr><th>날짜</th><th>반/대상</th><th>시간</th><th>메모</th><th></th></tr></thead>
         <tbody>${makeups.slice().sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(m=>`<tr>
@@ -1705,12 +1725,47 @@ async function doAddMakeup(){
   catch(e){ showToast('추가 실패: '+e.message,'error'); }
 }
 async function doDelMakeup(id){ if(!confirm('이 보강을 삭제할까요?'))return; try{ await deleteMakeupFS(id); showToast('보강을 삭제했어요','warning'); rSchedule(); }catch(e){ showToast('삭제 실패: '+e.message,'error'); } }
+// 🪄 시험 전날 직보 자동 생성 — 수학시험 전날: 그날 학교시험 있으면 2시, 없으면 5시
+async function doAutoMakeups(){
+  const today=new Date().toISOString().slice(0,10);
+  const pad=n=>String(n).padStart(2,'0');
+  const plans=[];
+  getSchoolExams().forEach(e=>{
+    examMathDates(e).forEach(m=>{
+      if(!m.date || m.date<today) return;
+      const d=new Date(m.date+'T00:00:00'); d.setDate(d.getDate()-1);
+      const mkDate=`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+      if(mkDate<today) return;
+      const hadExam=!!(e.startDate&&e.endDate&&mkDate>=e.startDate&&mkDate<=e.endDate);
+      plans.push({date:mkDate, school:e.school, grade:e.grade||'', label:m.label||'수학', time:hadExam?'14:00~':'17:00~', hadExam});
+    });
+  });
+  if(!plans.length){ showToast('자동 생성할 다가오는 수학 시험이 없어요','warning'); return; }
+  if(!confirm(`다가오는 수학시험 ${plans.length}건의 전날 직보를 자동 생성할까요?\n· 그날 학교시험 O → 2시\n· 그날 학교시험 X → 5시\n(같은 학교·같은 날짜가 이미 있으면 건너뜀)`)) return;
+  let created=0, skipped=0;
+  for(const p of plans){
+    const dup=getMakeups().some(x=>x.date===p.date && (x.school===p.school || (x.className||'').includes(p.school)));
+    if(dup){ skipped++; continue; }
+    await db.collection('makeups').add({
+      date:p.date, className:`${p.school}${p.grade?' '+p.grade:''} 직보`, school:p.school,
+      time:p.time, note:`${p.label} 시험 전날 직보 ${p.hadExam?'(그날 시험O→2시)':'(그날 시험X→5시)'}`,
+      auto:true, ts:Date.now()
+    });
+    created++;
+  }
+  await loadMakeups();
+  showToast(`🪄 직보 ${created}건 자동 생성!${skipped?` (중복 ${skipped}건 건너뜀)`:''}`,'success'); rSchedule();
+}
 function rSchedule(){
   const days=['mon','tue','wed','thu','fri','sat','sun'];
   document.getElementById('scheduleContent').innerHTML=`
     ${calendarCardHtml()}
     <div class="card">
-      <div class="card-title">➕ 반(수업) 추가</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="scAddOpen=!scAddOpen;rSchedule()">
+        <div class="card-title" style="margin:0">➕ 반(수업) 추가 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(새 반·특강 만들 때만)</span></div>
+        <span style="font-size:13px;color:var(--text-muted)">${scAddOpen?'▲ 접기':'▼ 펼치기'}</span>
+      </div>
+      ${scAddOpen?`<div style="margin-top:14px">
       <div class="form-row-2">
         <div class="form-group"><label class="form-label">반 이름 *</label><input class="form-input" id="sc-name" placeholder="예: 고1T Z2"></div>
         <div class="form-group"><label class="form-label">커리큘럼/과목</label><input class="form-input" id="sc-subject" placeholder="예: 공통수학1 유형편"></div>
@@ -1728,6 +1783,7 @@ function rSchedule(){
       </div>
       <button class="btn btn-primary" onclick="doAddClass()">반 추가</button>
       <div style="margin-top:8px;font-size:12px;color:var(--text-muted)">💡 특강처럼 단발성 수업은 운영기간을 정하면 그 기간에만 시간표에 떴다가 자동으로 사라져요.</div>
+      </div>`:''}
     </div>
     <div class="card">
       <div class="card-title">📋 주간 시간표 (요일별)</div>
