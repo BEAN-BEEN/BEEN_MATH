@@ -334,6 +334,13 @@ async function loadSubmissions(){ const s=await db.collection('submissions').get
 function getAssignments(){return ASSIGNMENTS_CACHE;}
 function getSubmissions(){return SUBMISSIONS_CACHE;}
 function getSubsByAssignment(aid){return SUBMISSIONS_CACHE.filter(s=>s.assignmentId===aid);}
+// 한 제출의 숙제 완성도(%) — 평가했으면 그 값(0~100), 제출만 했으면 100, 미제출/반려는 0
+//  → 숙제 제출률을 '얼마나 했는지'로 가중 계산할 때 사용 (직접확인 포함)
+function subCompletion(sub){
+  if(!sub || sub.rejected) return 0;
+  if(sub.evalPct===''||sub.evalPct==null) return 100;
+  return parseInt(sub.evalPct,10)||0;
+}
 async function saveAssignment(d){ d.createdAt=new Date().toISOString().slice(0,10); await db.collection('assignments').add(d); await loadAssignments(); }
 async function updateSub(sid,u){ await db.collection('submissions').doc(sid).update(u); await loadSubmissions(); }
 
@@ -920,7 +927,7 @@ function showStDetail(id){
   const myAsgn=getAssignments().filter(a=>ids.includes(a.classId));
   const mySubs=getSubmissions().filter(x=>x.studentId===s.id);
   const submitted=myAsgn.filter(a=>mySubs.some(x=>x.assignmentId===a.id)).length;
-  const hwRate=myAsgn.length?Math.round(submitted/myAsgn.length*100)+'%':'-';
+  const hwRate=myAsgn.length?Math.round(myAsgn.reduce((sum,a)=>sum+subCompletion(mySubs.find(x=>x.assignmentId===a.id)),0)/myAsgn.length)+'%':'-';
   document.getElementById('stDetailArea').innerHTML=`
     <div class="card" style="border-top:3px solid var(--primary)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
@@ -965,7 +972,7 @@ function rClassroom(){
   const atts=getAttendance().filter(a=>a.classId===cls.id);
   const rows=sts.map(st=>{
     const mySubs=allSubs.filter(s=>s.studentId===st.id && asgns.some(a=>a.id===s.assignmentId));
-    const hwRate=asgns.length?Math.round(mySubs.length/asgns.length*100):null;
+    const hwRate=asgns.length?Math.round(asgns.reduce((sum,a)=>sum+subCompletion(mySubs.find(s=>s.assignmentId===a.id)),0)/asgns.length):null;
     const myScores=esubs.filter(s=>s.studentId===st.id && exams.some(e=>e.id===s.examId) && s.score!=null);
     const avg=myScores.length?Math.round(myScores.reduce((a,s)=>a+s.score,0)/myScores.length):null;
     const myAtt=atts.filter(a=>(a.records||[]).some(r=>r.studentId===st.id));
@@ -977,7 +984,8 @@ function rClassroom(){
   const scored=rows.filter(r=>r.avg!=null);
   const classAvg=scored.length?Math.round(scored.reduce((a,r)=>a+r.avg,0)/scored.length):null;
   const totalSubs=allSubs.filter(s=>asgns.some(a=>a.id===s.assignmentId)).length;
-  const hwClassRate=asgns.length&&sts.length?Math.round(totalSubs/(asgns.length*sts.length)*100):null;
+  let compTotal=0; sts.forEach(st=>asgns.forEach(a=>{compTotal+=subCompletion(allSubs.find(s=>s.studentId===st.id&&s.assignmentId===a.id));}));
+  const hwClassRate=asgns.length&&sts.length?Math.round(compTotal/(asgns.length*sts.length)):null;
   const medal=i=>['🥇','🥈','🥉'][i]||(i+1);
   const pct=v=>v==null?'<span style="color:var(--text-muted)">-</span>':v+'%';
   el.innerHTML=`
@@ -1099,17 +1107,21 @@ function rHomework(){
                   : (sub.offline && sub.byTeacher) ? `<button class="btn btn-green btn-sm" onclick="doUncheckOffline('${sub.id}')" title="다시 누르면 해제">✓ 직접확인됨 (취소)</button>`
                   : `<div style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn ${sub.checked?'btn-green':'btn-outline'} btn-sm" onclick="doCheck('${sub.id}')">${sub.checked?'✓확인됨':'확인'}</button><button class="btn btn-outline btn-sm" onclick="doReject('${sub.id}')">반려</button>${sub.offline?`<button class="btn btn-outline btn-sm" onclick="doUncheckOffline('${sub.id}')">취소</button>`:''}</div>`
                 }</td>
-                <td>${sub?`<select class="form-select" style="padding:4px 6px;font-size:12px;width:110px" onchange="doEvalSub('${sub.id}',{evalPct:this.value})">
+                <td>${sub?`<select class="form-select" style="padding:4px 6px;font-size:12px;width:120px" onchange="doEvalSub('${sub.id}',{evalPct:this.value})">
                     <option value="">완성도 선택</option>
-                    <option value="100" ${sub.evalPct==='100'?'selected':''}>💯 완벽히 다 함</option>
-                    <option value="80" ${sub.evalPct==='80'?'selected':''}>👍 80% 정도</option>
-                    <option value="50" ${sub.evalPct==='50'?'selected':''}>🤏 절반 정도</option>
-                    <option value="30" ${sub.evalPct==='30'?'selected':''}>⚠️ 조금만 함</option>
+                    <option value="100" ${sub.evalPct==='100'?'selected':''}>💯 다 함 (100%)</option>
+                    <option value="80" ${sub.evalPct==='80'?'selected':''}>👍 80%</option>
+                    <option value="60" ${sub.evalPct==='60'?'selected':''}>🙂 60%</option>
+                    <option value="40" ${sub.evalPct==='40'?'selected':''}>🤏 40%</option>
+                    <option value="20" ${sub.evalPct==='20'?'selected':''}>⚠️ 20% (조금만)</option>
+                    <option value="0" ${sub.evalPct==='0'?'selected':''}>❌ 아예 안 함 (0%)</option>
                   </select>
-                  <select class="form-select" style="padding:4px 6px;font-size:12px;width:110px;margin-top:3px" onchange="doEvalSub('${sub.id}',{evalTag:this.value})">
+                  <select class="form-select" style="padding:4px 6px;font-size:12px;width:120px;margin-top:3px" onchange="doEvalSub('${sub.id}',{evalTag:this.value})">
                     <option value="">비고 없음</option>
-                    <option value="inclass" ${sub.evalTag==='inclass'?'selected':''}>🏫 수업 내 완료</option>
-                    <option value="promise" ${sub.evalTag==='promise'?'selected':''}>🤙 다음시간까지 약속</option>
+                    <option value="stayed" ${sub.evalTag==='stayed'?'selected':''}>🪑 남아서 풀고 감</option>
+                    <option value="inclass" ${sub.evalTag==='inclass'?'selected':''}>🏫 수업 시간 내 완료</option>
+                    <option value="makeup" ${sub.evalTag==='makeup'?'selected':''}>📅 보충 따로 잡기</option>
+                    <option value="promise" ${sub.evalTag==='promise'?'selected':''}>🤙 다음 시간까지</option>
                   </select>`:'-'}</td>
                 <td>${sub?(sub.needsRetry
                     ? `<div style="font-size:11px;color:var(--orange);margin-bottom:3px">✏️ 오답 고치는 중</div><button class="btn btn-green btn-sm" onclick="doRetry('${sub.id}',false)">오답 완료 ✓</button>`
@@ -1932,7 +1944,7 @@ function studentStats(st){
   const mySubs=getSubmissions().filter(s=>s.studentId===st.id);
   const subAids=new Set(mySubs.map(s=>s.assignmentId));
   const submitted=myAsgn.filter(a=>subAids.has(a.id)).length;
-  const hwRate=myAsgn.length?Math.round(submitted/myAsgn.length*100)+'%':'-';
+  const hwRate=myAsgn.length?Math.round(myAsgn.reduce((sum,a)=>sum+subCompletion(mySubs.find(s=>s.assignmentId===a.id)),0)/myAsgn.length)+'%':'-';
   const retrySubs=mySubs.filter(s=>s.needsRetry).length;
   const retryRate=mySubs.length&&retrySubs?Math.round((1-retrySubs/mySubs.length)*100)+'%':(mySubs.length?'100%':'-');
   const myAtt=getAttendance().filter(a=>(a.records||[]).some(r=>r.studentId===st.id));

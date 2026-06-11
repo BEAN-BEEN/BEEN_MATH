@@ -630,13 +630,20 @@ function getAssignments(){
 }
 function getAttendance()  { return S_ATTENDANCE; }
 function getQuestions()   { return S_QUESTIONS; }
+// 한 과제의 완성도(%) — 제출+평가됨이면 그 값, 제출만 했으면 100, 미제출/반려는 0
+function asnCompletion(a){
+  if(a.status!=='submitted') return 0;
+  if(a.evalPct===''||a.evalPct==null) return 100;
+  return parseInt(a.evalPct,10)||0;
+}
 function getReport(){
   const asn=getAssignments(); const hwTotal=asn.length, hwSub=asn.filter(a=>a.status==='submitted').length;
+  const hwPct=hwTotal?Math.round(asn.reduce((s,a)=>s+asnCompletion(a),0)/hwTotal):0;
   const att=getAttendance(); const attTotal=att.length;
   const scored=getExams().filter(e=>e.status==='scored');
   const recent=scored.slice(0,4).reverse();
   return {
-    homeworkRate: hwTotal?Math.round(hwSub/hwTotal*100):0,
+    homeworkRate: hwPct,
     retryRate: 0,
     attendanceRate: attTotal?Math.round(att.filter(a=>a.status!=='absent').length/attTotal*100):0,
     avgScore: scored.length?Math.round(scored.reduce((s,e)=>s+e.score,0)/scored.length):0,
@@ -820,6 +827,16 @@ function fmtDate(str) {
   const d = new Date(str);
   return `${d.getMonth()+1}월 ${d.getDate()}일`;
 }
+// 완성도(%) 배지 — 0/20/40/60/80/100 (선생님이 설정)
+function evalPctBadge(p){
+  const m={'100':['b-green','💯 완벽히 다 했어요!'],'80':['b-primary','👍 80% 완성'],'60':['b-primary','🙂 60% 완성'],'40':['b-yellow','🤏 40% 완성 — 더 풀어요'],'20':['b-orange','⚠️ 20% — 분발!'],'0':['b-red','❌ 아직 못 했어요']};
+  const v=m[String(p)]; return v?`<span class="badge ${v[0]}">${v[1]}</span>`:'';
+}
+// 비고 배지 — 남아서 풀고 감 / 수업 시간 내 완료 / 보충 따로 잡기 / 다음 시간까지
+function evalTagBadge(t){
+  const m={stayed:['b-primary','🪑 남아서 풀고 갔어요'],inclass:['b-primary','🏫 수업 시간 내 완료'],makeup:['b-orange','📅 보충 따로 예정'],promise:['b-orange','🤙 다음 시간까지 해오기로!']};
+  const v=m[t]; return v?`<span class="badge ${v[0]}">${v[1]}</span>`:'';
+}
 function statusBadge(s) {
   return ({ pending:'<span class="badge b-primary">제출 대기</span>', late:'<span class="badge b-red">미제출 (지각)</span>', submitted:'<span class="badge b-green">제출 완료</span>', rejected:'<span class="badge b-red">🔁 반려됨</span>', answered:'<span class="badge b-green">답변 완료</span>', ai_draft:'<span class="badge b-primary">AI 초안</span>', present:'<span class="badge b-green">출석</span>', absent:'<span class="badge b-red">결석</span>', grading:'<span class="badge b-yellow">채점 중</span>', scored:'<span class="badge b-green">점수 확인</span>', pending_submission:'<span class="badge b-orange">답안지 제출 대기</span>' }[s] || `<span class="badge b-gray">${s}</span>`);
 }
@@ -998,10 +1015,9 @@ function renderHomework() {
               <button class="btn btn-primary btn-sm" onclick="doSubmit('${a.id}')">📷 이 사진으로 다시 제출 ✓</button>
             </div>
           `:''}
-          ${(a.evalPct||a.evalTag)?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
-            ${a.evalPct?`<span class="badge ${a.evalPct==='100'?'b-green':(a.evalPct==='80'?'b-primary':(a.evalPct==='50'?'b-yellow':'b-red'))}">${a.evalPct==='100'?'💯 완벽히 다 했어요!':(a.evalPct==='80'?'👍 80% 완성':(a.evalPct==='50'?'🤏 절반 완성 — 더 풀어요':'⚠️ 조금만 함 — 분발!'))}</span>`:''}
-            ${a.evalTag==='inclass'?'<span class="badge b-primary">🏫 수업 시간 내 완료</span>':''}
-            ${a.evalTag==='promise'?'<span class="badge b-orange">🤙 다음 시간까지 해오기로 약속!</span>':''}
+          ${((a.evalPct!==''&&a.evalPct!=null)||a.evalTag)?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+            ${(a.evalPct!==''&&a.evalPct!=null)?evalPctBadge(a.evalPct):''}
+            ${evalTagBadge(a.evalTag)}
           </div>`:''}
           ${a.needsRetry?`
             <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:var(--radius-sm);padding:12px;margin-top:10px">
@@ -1290,9 +1306,9 @@ function renderReport() {
         </div>
         <div style="flex:2;min-width:160px;display:flex;flex-direction:column;justify-content:center">
           <div style="height:10px;background:var(--bg);border-radius:4px;overflow:hidden">
-            <div style="height:100%;width:${(r.homeworkReport.total?Math.round(r.homeworkReport.submitted/r.homeworkReport.total*100):0)}%;background:var(--primary);border-radius:4px"></div>
+            <div style="height:100%;width:${r.homeworkRate}%;background:var(--primary);border-radius:4px"></div>
           </div>
-          <div style="font-size:12px;color:var(--text-muted);margin-top:6px">제출률 ${(r.homeworkReport.total?Math.round(r.homeworkReport.submitted/r.homeworkReport.total*100):0)}%</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:6px">제출률 ${r.homeworkRate}%</div>
         </div>
       </div>
     </div>
