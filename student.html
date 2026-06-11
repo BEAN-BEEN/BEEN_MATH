@@ -1471,7 +1471,7 @@ function renderMaterials() {
       <div class="mat-card">
         <div class="mat-icon">${m.icon}</div>
         <div><div class="mat-name">${m.title}</div><div class="mat-meta">${m.className} · ${m.uploadDate} · ${MAT_TYPES[m.type]||m.type}</div></div>
-        <div class="mat-dl"><button class="btn btn-outline btn-sm" onclick="showToast('Firebase Storage 연결 후 다운로드 가능해요 📥')">⬇️ 다운로드</button></div>
+        <div class="mat-dl">${m.fileUrl?`<a class="btn btn-outline btn-sm" href="${m.fileUrl}" target="_blank" rel="noopener" download="${m.fileName||m.title}">⬇️ 다운로드</a>`:`<button class="btn btn-outline btn-sm" onclick="showToast('아직 파일이 등록되지 않았어요')">⬇️ 다운로드</button>`}</div>
       </div>`).join('')}
     ${!filtered.length?'<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">해당하는 자료가 없어요</div>':''}`;
 }

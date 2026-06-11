@@ -268,6 +268,7 @@
 <!-- Firebase SDK (compat) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
 <script src="firebase-init.js?v=2026060902"></script>
 
 <script>
@@ -565,7 +566,17 @@ function getReports(){ return REPORTS_CACHE; }
 async function saveVideo(d){ d.createdAt=new Date().toISOString().slice(0,10); await db.collection('videos').add(d); await loadVideos(); }
 async function deleteVideo(id){ await db.collection('videos').doc(id).delete(); await loadVideos(); }
 async function saveMaterial(d){ d.uploadDate=new Date().toISOString().slice(0,10); await db.collection('materials').add(d); await loadMaterials(); }
-async function deleteMaterial(id){ await db.collection('materials').doc(id).delete(); await loadMaterials(); }
+async function deleteMaterial(id){
+  try{ const snap=await db.collection('materials').doc(id).get(); const d=snap.exists?snap.data():null; if(d&&d.fileUrl){ try{ await firebase.storage().refFromURL(d.fileUrl).delete(); }catch(e){} } }catch(e){}
+  await db.collection('materials').doc(id).delete(); await loadMaterials();
+}
+// 📎 파일(PDF·문서·이미지 등) 원본 그대로 Storage 업로드 → 다운로드 URL 반환
+async function uploadFile(file, folder){
+  const safe=(file.name||'file').replace(/[^\w.\-]/g,'_');
+  const ref=firebase.storage().ref(folder+'/'+Date.now()+'_'+Math.random().toString(36).slice(2,7)+'_'+safe);
+  await ref.put(file);
+  return { url:await ref.getDownloadURL(), name:file.name, size:file.size };
+}
 async function updateConsult(id,u){ await db.collection('consultations').doc(id).update(u); await loadConsults(); }
 async function saveReport(d){ await db.collection('reports').doc(d.studentId).set(d,{merge:true}); await loadReports(); }
 function getSchedule(){ return loadData('schedule',[]); } // (시간표는 반(class) 정보로 대체됨)
@@ -770,11 +781,16 @@ function rDashboard(){
       ${flagged.length>8?`<button class="btn btn-outline btn-sm" style="margin-top:10px;width:100%;justify-content:center" onclick="navigate('attendance')">출석 관리에서 전체 보기 →</button>`:''}
     </div>
     <div class="card" style="margin-top:16px">
-      <div class="card-title">📬 최근 제출 숙제</div>
+      <div class="card-title">📬 최근 제출 숙제 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(사진 보고 바로 확인하세요)</span></div>
       <div class="table-wrap"><table>
-        <thead><tr><th>학생</th><th>반</th><th>숙제명</th><th>제출시간</th><th>확인</th></tr></thead>
-        <tbody>${subs.slice().sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,5).map(s=>{const at=typeof s.submittedAt==='string'?s.submittedAt:(s.submittedAt&&s.submittedAt.seconds?new Date(s.submittedAt.seconds*1000).toLocaleString('ko-KR'):'-');return `<tr><td><strong>${s.studentName||'-'}</strong></td><td>${s.className?`<span class="chip">${s.className}</span>`:'-'}</td><td>${s.assignmentTitle||'-'}</td><td style="color:var(--text-muted)">${at}</td><td>${s.checked?'<span class="badge b-green">확인 완료</span>':'<span class="badge b-orange">미확인</span>'}</td></tr>`;}).join('')}</tbody>
+        <thead><tr><th>학생</th><th>반</th><th>숙제명</th><th>제출시간</th><th>사진</th><th>확인</th></tr></thead>
+        <tbody>${subs.slice().sort((a,b)=>{const ac=(a.checked||a.byTeacher)?1:0,bc=(b.checked||b.byTeacher)?1:0;return ac!==bc?ac-bc:(b.ts||0)-(a.ts||0);}).slice(0,6).map(s=>{
+          const at=typeof s.submittedAt==='string'?s.submittedAt:(s.submittedAt&&s.submittedAt.seconds?new Date(s.submittedAt.seconds*1000).toLocaleString('ko-KR'):'-');
+          const photoCell=s.offline?'<span style="font-size:12px;color:var(--text-muted)">✋공책</span>':`<button class="btn btn-outline btn-sm" onclick="openSubPhotos('${s.id}')">📷 ${(s.photos&&s.photos.length)||0}</button>`;
+          const checkCell=s.rejected?'<span class="badge b-red">🔁반려됨</span>':(s.byTeacher?'<span class="badge b-green">✓직접확인</span>':`<button class="btn ${s.checked?'btn-green':'btn-outline'} btn-sm" onclick="dashCheck('${s.id}')">${s.checked?'✓확인됨':'확인'}</button>`);
+          return `<tr><td><strong>${s.studentName||'-'}</strong></td><td>${s.className?`<span class="chip">${s.className}</span>`:'-'}</td><td>${s.assignmentTitle||'-'}</td><td style="color:var(--text-muted)">${at}</td><td>${photoCell}</td><td>${checkCell}</td></tr>`;}).join('')||'<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted)">아직 제출된 숙제가 없어요</td></tr>'}</tbody>
       </table></div>
+      <button class="btn btn-outline btn-sm" style="margin-top:10px;width:100%;justify-content:center" onclick="navigate('homework')">숙제 관리에서 전체 보기·평가 →</button>
     </div>`;
 }
 
@@ -1134,6 +1150,12 @@ async function doDelAsgn(id,title){
   catch(e){ showToast('삭제 실패: '+e.message,'error'); }
 }
 async function doCheck(sid){ const s=getSubmissions().find(x=>x.id===sid); const nv=!(s&&s.checked); await updateSub(sid,{checked:nv, ...(nv?{rejected:false}:{})}); showToast(nv?'숙제 확인 완료!':'확인을 취소했어요','success'); rHomework(); }
+// 대시보드에서 바로 확인 처리 (확인 후 대시보드만 새로고침)
+async function dashCheck(sid){
+  const s=getSubmissions().find(x=>x.id===sid); const nv=!(s&&s.checked);
+  try{ await updateSub(sid,{checked:nv, ...(nv?{rejected:false}:{})}); showToast(nv?'숙제 확인 완료!':'확인을 취소했어요','success'); rDashboard(); }
+  catch(e){ showToast('처리 실패: '+e.message,'error'); }
+}
 // 숙제 평가(완성도·비고) 저장 — 학생 숙제 카드에 표시됨
 async function doEvalSub(sid,u){
   try{ await updateSub(sid,u); showToast('평가 저장 ✓ 학생에게 표시돼요','success'); }
@@ -1601,8 +1623,8 @@ function rMaterials(){
         <div class="form-group"><label class="form-label">제목 *</label><input class="form-input" id="mat-title" placeholder="자료 이름"></div>
       </div>
       <div class="upload-area" onclick="this.querySelector('input').click()">
-        <div class="u-icon">📎</div><p>파일을 선택하세요 (Firebase Storage 연결 시 실제 업로드)</p>
-        <input type="file">
+        <div class="u-icon">📎</div><p id="mat-file-label">파일을 선택하세요 (PDF·이미지·문서 등)</p>
+        <input type="file" id="mat-file" onchange="document.getElementById('mat-file-label').textContent=this.files[0]?('📎 '+this.files[0].name):'파일을 선택하세요 (PDF·이미지·문서 등)'">
       </div>
       <button class="btn btn-primary" onclick="doAddMat()">자료 등록</button>
     </div>
@@ -1611,7 +1633,8 @@ function rMaterials(){
       <div class="card" style="margin-bottom:10px">
         <div style="display:flex;align-items:center;gap:14px">
           <div style="font-size:28px">${MI[m.type]||'📄'}</div>
-          <div style="flex:1"><div style="font-size:14px;font-weight:600">${m.title}</div><div style="font-size:12px;color:var(--text-muted);margin-top:2px">${cls} · ${MT[m.type]||m.type} · ${m.uploadDate}</div></div>
+          <div style="flex:1"><div style="font-size:14px;font-weight:600">${m.title}</div><div style="font-size:12px;color:var(--text-muted);margin-top:2px">${cls} · ${MT[m.type]||m.type} · ${m.uploadDate}${m.fileName?' · 📎 '+m.fileName:''}</div></div>
+          ${m.fileUrl?`<a class="btn btn-outline btn-sm" href="${m.fileUrl}" target="_blank" rel="noopener">보기</a>`:''}
           <button class="btn btn-red btn-sm" onclick="doDelMat('${m.id}')">삭제</button>
         </div>
       </div>`;}).join('')}`;
@@ -1619,8 +1642,15 @@ function rMaterials(){
 async function doAddMat(){
   const title=document.getElementById('mat-title').value.trim();
   if(!title){showToast('자료 이름을 입력해주세요','error');return;}
+  const fi=document.getElementById('mat-file');
+  if(!fi||!fi.files||!fi.files.length){ showToast('업로드할 파일을 선택해주세요','error'); return; }
   const classId=document.getElementById('mat-cls').value,cls=classId==='all'?'전체':(CLASSES.find(c=>c.id===classId)?.name||'');
-  try{ await saveMaterial({classId,className:cls,type:document.getElementById('mat-type').value,title}); showToast('자료 등록 완료! 학생이 바로 볼 수 있어요 📁','success'); rMaterials(); }
+  try{
+    showToast('업로드 중이에요... 잠시만요 ⏳');
+    const up=await uploadFile(fi.files[0],'materials');
+    await saveMaterial({classId,className:cls,type:document.getElementById('mat-type').value,title,fileUrl:up.url,fileName:up.name,fileSize:up.size});
+    showToast('자료 등록 완료! 학생이 바로 다운로드할 수 있어요 📁','success'); rMaterials();
+  }
   catch(e){ showToast('등록 실패: '+e.message,'error'); }
 }
 async function doDelMat(id){if(!confirm('이 자료를 삭제할까요?'))return; try{ await deleteMaterial(id); showToast('삭제되었어요','warning'); rMaterials(); }catch(e){ showToast('삭제 실패: '+e.message,'error'); }}
