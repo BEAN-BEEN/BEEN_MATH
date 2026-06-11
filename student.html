@@ -515,7 +515,8 @@ const WD_LABEL={mon:'월',tue:'화',wed:'수',thu:'목',fri:'금',sat:'토',sun:
 
 // ===== Firebase에서 내 반·숙제·제출·출석·성적 불러오기 =====
 let S_CLASSES=[], ALL_CLASSES=[], S_ASSIGNMENTS=[], S_SUBMISSIONS=[], S_ATTENDANCE=[], S_EXAMS=[], S_EXAMSUBS=[], S_QUESTIONS=[], S_NOTICES=[];
-let S_SCHOOL='', S_SCHOOLEXAM=null, S_MATHEVENTS=[], S_SCHOOL_EXAMS=[], S_MAKEUPS=[];
+let S_SCHOOL='', S_SCHOOLEXAM=null, S_MATHEVENTS=[], S_SCHOOL_EXAMS=[], S_MAKEUPS=[], ALL_MAKEUPS=[], ALL_SCHOOL_EXAMS=[];
+let calScope='mine'; // 'mine' = 내 일정만, 'all' = 전체 학교
 let S_MOCKEXAMS=[], S_MOCKSUBS=[];
 function myClassIds(){ try{ return JSON.parse(localStorage.getItem('bm_classIds')||'[]'); }catch(e){ return STUDENT.classId?[STUDENT.classId]:[]; } }
 async function loadStudentData(){
@@ -570,14 +571,18 @@ async function loadStudentData(){
       S_SCHOOLEXAM = events[0] || null;
       S_SCHOOL_EXAMS = se.docs.map(d=>({id:d.id,...d.data()}));   // 캘린더 음영용 (내 학교 전체)
     } else { S_SCHOOLEXAM=null; S_MATHEVENTS=[]; S_SCHOOL_EXAMS=[]; }
-    // 보강 일정 — 내 반/내 이름과 관련된 것만 (반 미지정 보강은 전체 공지로 간주)
+    // 보강 일정 — 전체(ALL) + 내 것(S_MAKEUPS) 구분해서 보관
     try{
       const mku = await db.collection('makeups').get();
       const myNames = [STUDENT.name, ...(S_CLASSES.map(c=>c.name))];
-      S_MAKEUPS = mku.docs.map(d=>({id:d.id,...d.data()}))
-        .filter(m=>!m.className || (m.school && m.school===S_SCHOOL) || myNames.some(n=>n && (m.className.includes(n) || n.includes(m.className))))
-        .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
-    }catch(e){ S_MAKEUPS=[]; }
+      const mine=m=>!m.className || (m.school && m.school===S_SCHOOL) || myNames.some(n=>n && (m.className.includes(n) || n.includes(m.className)));
+      ALL_MAKEUPS = mku.docs.map(d=>({id:d.id,...d.data(), _mine:false})).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+      ALL_MAKEUPS.forEach(m=>m._mine=mine(m));
+      S_MAKEUPS = ALL_MAKEUPS.filter(m=>m._mine);
+    }catch(e){ S_MAKEUPS=[]; ALL_MAKEUPS=[]; }
+    // 전체 학교 시험(캘린더 전체보기용)
+    try{ const allSe=await db.collection('schoolExams').get(); ALL_SCHOOL_EXAMS=allSe.docs.map(d=>({id:d.id,...d.data()})); }
+    catch(e){ ALL_SCHOOL_EXAMS=[]; }
     // 모의고사 (자가 등록) — 전체 목록 + 내 등록
     const mk=await db.collection('mockExams').get();
     S_MOCKEXAMS=mk.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
@@ -1447,9 +1452,10 @@ function weekDateOf(dayKey){
   const p=n=>String(n).padStart(2,'0');
   return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
 }
-// 📆 학생용 월간 캘린더 — 내 수업 + 보강 + 내 학교 시험
+// 📆 학생용 월간 캘린더 — 내 일정 / 전체 학교(직보·시험) 토글
 let sCalY=null, sCalM=null;
 function sCalShift(delta){ const d=new Date(sCalY, sCalM+delta, 1); sCalY=d.getFullYear(); sCalM=d.getMonth(); renderSchedule(); }
+function setCalScope(s){ calScope=s; renderSchedule(); }
 function studentCalendarHtml(){
   const now=new Date(), p=n=>String(n).padStart(2,'0');
   if(sCalY==null){ sCalY=now.getFullYear(); sCalM=now.getMonth(); }
@@ -1458,20 +1464,24 @@ function studentCalendarHtml(){
   const dim=new Date(sCalY,sCalM+1,0).getDate();
   const wdKeys=['sun','mon','tue','wed','thu','fri','sat'];
   const mathOf=e=>(Array.isArray(e.mathDates)&&e.mathDates.length)?e.mathDates.filter(m=>m&&m.date):(e.mathDate?[{label:'수학',date:e.mathDate}]:[]);
+  const all=calScope==='all';
+  const exData = all ? (ALL_SCHOOL_EXAMS||[]) : (S_SCHOOL_EXAMS||[]);
+  const mkData = all ? (ALL_MAKEUPS||[]) : (S_MAKEUPS||[]);
   const cells=[]; for(let i=0;i<firstDow;i++) cells.push(null); for(let d=1;d<=dim;d++) cells.push(d); while(cells.length%7) cells.push(null);
   function dayCell(d){
     const dow=new Date(sCalY,sCalM,d).getDay();
     const dateStr=`${sCalY}-${p(sCalM+1)}-${p(d)}`;
-    const cls=S_CLASSES.filter(c=>c.weekday===wdKeys[dow]&&isClassActive(c));
-    const mks=(S_MAKEUPS||[]).filter(m=>m.date===dateStr);
-    const inExam=(S_SCHOOL_EXAMS||[]).some(e=>e.startDate&&e.endDate&&dateStr>=e.startDate&&dateStr<=e.endDate);
-    const mathToday=[]; (S_SCHOOL_EXAMS||[]).forEach(e=>mathOf(e).forEach(m=>{ if(m.date===dateStr) mathToday.push(m.label||'수학'); }));
+    const cls=all?[]:S_CLASSES.filter(c=>c.weekday===wdKeys[dow]&&isClassActive(c));
+    const mks=mkData.filter(m=>m.date===dateStr);
+    const inExam=exData.some(e=>e.startDate&&e.endDate&&dateStr>=e.startDate&&dateStr<=e.endDate);
+    const mathToday=[]; exData.forEach(e=>mathOf(e).forEach(m=>{ if(m.date===dateStr) mathToday.push(all?((e.school||'').slice(0,4)+' '+(m.label||'수학')):(m.label||'수학')); }));
     const isToday=dateStr===todayStr;
     let h=`<div style="min-height:92px;border:1px solid var(--border);border-radius:8px;padding:4px 5px;background:${inExam?'#FEF2F2':(isToday?'var(--primary-light)':'var(--surface)')};${isToday?'box-shadow:inset 0 0 0 2px var(--primary)':''}">`;
     h+=`<div style="font-size:14px;font-weight:800;color:${dow===0?'#EF4444':(dow===6?'#2563EB':'var(--text-sub)')}">${d}${inExam?' <span style="font-size:11px;color:#DC2626">📕</span>':''}</div>`;
     cls.forEach(c=>{ h+=`<div style="font-size:11.5px;font-weight:600;color:var(--primary);background:var(--primary-light);border-radius:4px;padding:2px 4px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.name}</div>`; });
-    mathToday.forEach(t=>{ h+=`<div style="font-size:11.5px;color:#DC2626;font-weight:800;margin-top:3px">📐 ${t}</div>`; });
-    mks.forEach(m=>{ h+=`<div style="font-size:11.5px;font-weight:600;color:#fff;background:var(--orange);border-radius:4px;padding:2px 4px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🔶 ${m.time||'보강'}</div>`; });
+    mathToday.forEach(t=>{ h+=`<div style="font-size:11.5px;color:#DC2626;font-weight:800;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📐 ${t}</div>`; });
+    mks.forEach(m=>{ const lbl=all?((m.school||m.className||'보강').replace(' 직보','')):(m.time||'보강'); const faded=all&&!m._mine;
+      h+=`<div style="font-size:11.5px;font-weight:600;color:#fff;background:var(--orange);${faded?'opacity:.55':''};border-radius:4px;padding:2px 4px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${(m.className||m.school||'보강')+' '+(m.time||'')+' '+(m.note||'')}">🔶 ${lbl}${all&&m.time?(' '+m.time):''}${(all&&m._mine)?' ⭐':''}</div>`; });
     h+='</div>'; return h;
   }
   const dow=['일','월','화','수','목','금','토'];
@@ -1479,7 +1489,7 @@ function studentCalendarHtml(){
   grid+=dow.map((l,i)=>`<div style="text-align:center;font-size:13px;font-weight:800;color:${i===0?'#EF4444':(i===6?'#2563EB':'var(--text-muted)')};padding:3px">${l}</div>`).join('');
   grid+=cells.map(d=>d?dayCell(d):'<div></div>').join('')+'</div>';
   return `<div class="card" style="margin-top:16px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
       <div class="card-title" style="margin:0">📆 월간 일정</div>
       <div style="display:flex;align-items:center;gap:8px">
         <button class="btn btn-outline btn-sm" onclick="sCalShift(-1)">◀</button>
@@ -1487,12 +1497,17 @@ function studentCalendarHtml(){
         <button class="btn btn-outline btn-sm" onclick="sCalShift(1)">▶</button>
       </div>
     </div>
+    <div style="display:inline-flex;background:var(--bg);border-radius:9px;padding:3px;margin-bottom:10px">
+      <button class="btn btn-sm" style="${calScope==='mine'?'background:var(--primary);color:#fff':'background:transparent;color:var(--text-muted)'}" onclick="setCalScope('mine')">🙋 내 일정</button>
+      <button class="btn btn-sm" style="${calScope==='all'?'background:var(--primary);color:#fff':'background:transparent;color:var(--text-muted)'}" onclick="setCalScope('all')">🏫 전체 학교 직보·시험</button>
+    </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--text-muted);margin-bottom:8px">
-      <span><span style="display:inline-block;width:9px;height:9px;background:var(--primary-light);border-radius:2px"></span> 내 수업</span>
-      <span><span style="display:inline-block;width:9px;height:9px;background:var(--orange);border-radius:2px"></span> 보강</span>
+      ${all?'':'<span><span style="display:inline-block;width:9px;height:9px;background:var(--primary-light);border-radius:2px"></span> 내 수업</span>'}
+      <span><span style="display:inline-block;width:9px;height:9px;background:var(--orange);border-radius:2px"></span> ${all?'직보(학교별) · ⭐=내 학교':'내 보강'}</span>
       <span>📕 시험기간 · 📐 수학시험일</span>
     </div>
     <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">${grid}</div>
+    ${all?'<div style="font-size:12px;color:var(--text-muted);margin-top:8px">💡 다른 학교 친구들의 직보·시험 일정도 한눈에! 내 학교는 ⭐로 표시돼요.</div>':''}
   </div>`;
 }
 function renderSchedule() {
