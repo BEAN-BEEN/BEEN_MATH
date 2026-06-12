@@ -133,55 +133,55 @@ function requireRole(role){
 (function(){
   function isStandalone(){ return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone===true; }
   function dismissed(){ return localStorage.getItem('bm_install_dismiss')==='1'; }
-  if (isStandalone()) return;
+  function isIOS(){ return /iphone|ipad|ipod/i.test(navigator.userAgent||''); }
+  window.bmCanInstallUI = function(){ return !isStandalone(); };  // 버튼 노출 여부(이미 설치면 숨김)
 
   var deferredPrompt = null;
 
-  function makeBanner(innerHtml){
-    if (!document.body || document.getElementById('bmInstallBanner')) return;
+  function removeBanner(){ var b=document.getElementById('bmInstallBanner'); if(b) b.remove(); }
+  function banner(innerHtml){
+    if(!document.body) return;
+    removeBanner();
     var b=document.createElement('div');
     b.id='bmInstallBanner';
     b.style.cssText='position:fixed;right:16px;bottom:84px;z-index:4000;max-width:300px;background:var(--card,#fff);color:var(--text,#1E293B);border:1px solid var(--border,#e5e7eb);border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:14px';
     b.innerHTML=innerHtml;
     document.body.appendChild(b);
   }
-  window.bmInstallClose=function(){ var b=document.getElementById('bmInstallBanner'); if(b) b.remove(); localStorage.setItem('bm_install_dismiss','1'); };
+  var closeBtn='<button onclick="bmInstallClose()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-muted,#94a3b8);line-height:1">&times;</button>';
+  function installHtml(){
+    return '<div style="display:flex;align-items:flex-start;gap:10px"><div style="font-size:22px">📲</div>'+
+      '<div style="flex:1;font-size:13px"><div style="font-weight:800;margin-bottom:2px">앱처럼 설치</div>'+
+      '<div style="color:var(--text-muted,#64748b);line-height:1.4">홈 화면이나 PC 앱 목록에 추가해 빠르게 접속할 수 있어요.</div></div>'+closeBtn+'</div>'+
+      '<button onclick="bmInstallNow()" style="margin-top:10px;width:100%;background:var(--primary,#5B6CF5);color:#fff;border:none;border-radius:9px;padding:9px;font-size:13px;font-weight:700;cursor:pointer">⬇️ 설치하기</button>';
+  }
+  function iosHtml(){
+    return '<div style="display:flex;align-items:flex-start;gap:10px"><div style="font-size:22px">📲</div>'+
+      '<div style="flex:1;font-size:13px"><div style="font-weight:800;margin-bottom:2px">홈 화면에 추가</div>'+
+      '<div style="color:var(--text-muted,#64748b);line-height:1.4">하단 <b>공유</b> 버튼 → <b>홈 화면에 추가</b>를 누르면 앱처럼 쓸 수 있어요.</div></div>'+closeBtn+'</div>';
+  }
+
+  window.bmInstallClose=function(){ removeBanner(); localStorage.setItem('bm_install_dismiss','1'); };
   window.bmInstallNow=async function(){
-    if(!deferredPrompt){ return; }
+    if(!deferredPrompt){ banner(iosHtml()); return; }
     deferredPrompt.prompt();
     try{ await deferredPrompt.userChoice; }catch(e){}
-    deferredPrompt=null;
-    var b=document.getElementById('bmInstallBanner'); if(b) b.remove();
+    deferredPrompt=null; removeBanner();
+  };
+  // 버튼에서 직접 호출 — 기기에 맞게 설치창(안드로이드/PC) 또는 안내(아이폰)
+  window.bmInstallClick=function(){
+    if(isStandalone()){ if(window.showToast) showToast('이미 앱으로 설치돼 있어요 👍'); return; }
+    if(deferredPrompt){ window.bmInstallNow(); return; }
+    banner(iosHtml());
   };
 
-  // 안드로이드/데스크톱: 설치 가능 시점
+  // 안드로이드/데스크톱: 설치 가능 시점 → 자동 배너
   window.addEventListener('beforeinstallprompt', function(e){
     e.preventDefault(); deferredPrompt=e;
-    if(dismissed()) return;
-    makeBanner(
-      '<div style="display:flex;align-items:flex-start;gap:10px">'+
-        '<div style="font-size:22px">📲</div>'+
-        '<div style="flex:1;font-size:13px"><div style="font-weight:800;margin-bottom:2px">앱처럼 설치</div>'+
-        '<div style="color:var(--text-muted,#64748b);line-height:1.4">홈 화면이나 PC 앱 목록에 추가해 빠르게 접속할 수 있어요.</div></div>'+
-        '<button onclick="bmInstallClose()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-muted,#94a3b8);line-height:1">&times;</button>'+
-      '</div>'+
-      '<button onclick="bmInstallNow()" style="margin-top:10px;width:100%;background:var(--primary,#5B6CF5);color:#fff;border:none;border-radius:9px;padding:9px;font-size:13px;font-weight:700;cursor:pointer">⬇️ 설치하기</button>'
-    );
+    if(!isStandalone() && !dismissed()) banner(installHtml());
   });
-
-  // 아이폰 사파리: 수동 안내
+  // 아이폰 사파리: 자동 안내
   window.addEventListener('load', function(){
-    var ua=navigator.userAgent||'';
-    var isIOS=/iphone|ipad|ipod/i.test(ua);
-    if(isIOS && !isStandalone() && !dismissed()){
-      makeBanner(
-        '<div style="display:flex;align-items:flex-start;gap:10px">'+
-          '<div style="font-size:22px">📲</div>'+
-          '<div style="flex:1;font-size:13px"><div style="font-weight:800;margin-bottom:2px">홈 화면에 추가</div>'+
-          '<div style="color:var(--text-muted,#64748b);line-height:1.4">하단 <b>공유</b> 버튼 → <b>홈 화면에 추가</b>를 누르면 앱처럼 쓸 수 있어요.</div></div>'+
-          '<button onclick="bmInstallClose()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-muted,#94a3b8);line-height:1">&times;</button>'+
-        '</div>'
-      );
-    }
+    if(isIOS() && !isStandalone() && !dismissed()) banner(iosHtml());
   });
 })();

@@ -479,7 +479,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
-<script src="firebase-init.js?v=2026061101"></script>
+<script src="firebase-init.js?v=2026061102"></script>
 
 <script>
 // ================================================================
@@ -890,6 +890,12 @@ function renderHome() {
         <div class="a-icon">🔔</div>
         <div style="flex:1"><h4 style="color:var(--primary)">알림을 켜면 새 숙제·공지를 바로 받아요</h4><p>휴대폰 알림으로 알려드려요</p></div>
         <button class="btn btn-primary btn-sm" onclick="enablePush()">알림 켜기</button>
+      </div>` : ''}
+    ${(typeof bmCanInstallUI==='function' && bmCanInstallUI()) ? `
+      <div class="alert-card">
+        <div class="a-icon">📲</div>
+        <div style="flex:1"><h4>홈 화면에 앱으로 추가</h4><p>바탕화면/홈 화면에서 한 번에 들어올 수 있어요</p></div>
+        <button class="btn btn-outline btn-sm" onclick="bmInstallClick()">홈 화면에 추가</button>
       </div>` : ''}
     ${MAKEUP_SCHEDULES.map(m=>`
       <div class="alert-card">
