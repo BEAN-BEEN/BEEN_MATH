@@ -1080,12 +1080,14 @@ function rHomework(){
       const subs=getSubsByAssignment(a.id),sts=getStudentsByClass(a.classId),isOpen=hwOpenId===a.id;
       const missing=Math.max(0, sts.length-subs.length);
       const overdue=a.dueDate && a.dueDate < _today;
+      const retryPending=subs.filter(s=>s.needsRetry).length;
+      const retryDone=subs.filter(s=>s.retryResolved && !s.needsRetry).length;
       const badge = missing===0 ? '<span class="badge b-green">전원 제출 ✓</span>'
                   : (overdue ? `<span class="badge b-red">마감 지남 · 미제출 ${missing}명</span>` : `<span class="badge b-orange">미제출 ${missing}명</span>`);
       return `
         <div class="card" style="border-left:4px solid ${overdue&&missing>0?'var(--red)':'var(--primary)'};margin-bottom:12px">
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-            <div><span class="chip">${a.className}</span><strong style="margin-left:8px">${a.title}</strong> ${badge}${a.textbook?`<span style="margin-left:8px;font-size:12px;color:var(--text-muted)">📘 ${a.textbook}</span>`:''}</div>
+            <div><span class="chip">${a.className}</span><strong style="margin-left:8px">${a.title}</strong> ${badge}${retryPending?` <span class="badge b-orange">✏️ 오답 미완료 ${retryPending}</span>`:''}${retryDone?` <span class="badge b-green">✅ 오답 완료 ${retryDone}</span>`:''}${a.textbook?`<span style="margin-left:8px;font-size:12px;color:var(--text-muted)">📘 ${a.textbook}</span>`:''}</div>
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
               <span style="font-size:12px;color:var(--text-muted)">제출 ${subs.length}/${sts.length} · 기간 ${a.startDate||'?'}~${a.dueDate||'-'}</span>
               ${missing>0?`<button class="btn btn-orange btn-sm" onclick="doRemind('${a.classId}','${(a.title||'').replace(/'/g,'')}')">🔔 독촉 알림</button>`:''}
@@ -1125,7 +1127,9 @@ function rHomework(){
                   </select>`:'-'}</td>
                 <td>${sub?(sub.needsRetry
                     ? `<div style="font-size:11px;color:var(--orange);margin-bottom:3px">✏️ 오답 고치는 중</div><button class="btn btn-green btn-sm" onclick="doRetry('${sub.id}',false)">오답 완료 ✓</button>`
-                    : `<button class="btn btn-outline btn-sm" onclick="doRetry('${sub.id}',true)">오답 표시</button>`):'-'}</td>
+                    : (sub.retryResolved
+                      ? `<div style="font-size:11px;color:var(--green);margin-bottom:3px">✅ 오답 완료</div><button class="btn btn-outline btn-sm" onclick="doRetry('${sub.id}',true)">다시 표시</button>`
+                      : `<button class="btn btn-outline btn-sm" onclick="doRetry('${sub.id}',true)">오답 표시</button>`)):'-'}</td>
               </tr>`;}).join('')}</tbody>
             </table></div></div>`:``}
         </div>`;}).join('')}`;
@@ -1201,7 +1205,7 @@ async function doUncheckOffline(subId){
   try{ await db.collection('submissions').doc(subId).delete(); await loadSubmissions(); showToast('직접 확인을 해제했어요 (미제출로 되돌림)','warning'); rHomework(); }
   catch(e){ showToast('해제 실패: '+e.message,'error'); }
 }
-async function doRetry(sid,v){ await updateSub(sid, v?{needsRetry:true}:{needsRetry:false,retryDone:false,checked:true}); showToast(v?'오답으로 표시했어요. 학생 숙제 카드에 보여요 ✏️':'오답 완료로 확인 처리했어요 👍',v?'warning':'success'); rHomework(); }
+async function doRetry(sid,v){ await updateSub(sid, v?{needsRetry:true,retryResolved:false}:{needsRetry:false,retryDone:false,retryResolved:true,checked:true}); showToast(v?'오답으로 표시했어요. 학생 숙제 카드에 보여요 ✏️':'오답 완료로 확인 처리했어요 👍',v?'warning':'success'); rHomework(); }
 // 제출 사진 보기 (간단 뷰어)
 function showPhotoModal(urls){
   if(!urls||!urls.length){ showToast('등록된 사진이 없어요'); return; }
