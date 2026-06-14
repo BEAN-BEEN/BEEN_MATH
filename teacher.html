@@ -1047,7 +1047,26 @@ function rClassroom(){
 // ================================================================
 // HOMEWORK
 // ================================================================
-let hwOpenId=null, hwEditId=null;
+let hwOpenId=null, hwEditId=null, hwGroupBy='class';
+// 숙제 목록 정렬: 그룹(반/요일) 기준 + 그룹 안에서 최신순
+function hwOrder(asgn){
+  const M={mon:0,tue:1,wed:2,thu:3,fri:4,sat:5,sun:6};
+  const wIdx=c=>(M[c]!=null?M[c]:9);
+  const arr=[...asgn];
+  arr.sort((a,b)=>{
+    const ca=CLASSES.find(c=>c.id===a.classId)||{}, cb=CLASSES.find(c=>c.id===b.classId)||{};
+    if(hwGroupBy==='day'){ const d=wIdx(ca.weekday)-wIdx(cb.weekday); if(d) return d; }
+    else if(a.classId!==b.classId){ const o=(ca.order||0)-(cb.order||0); if(o) return o; return (a.classId>b.classId?1:-1); }
+    return (b.createdAt||b.startDate||'').localeCompare(a.createdAt||a.startDate||'') || (b.id>a.id?1:-1);
+  });
+  return arr;
+}
+function hwGroupKey(a){ const c=CLASSES.find(x=>x.id===a.classId)||{}; return hwGroupBy==='day' ? (c.weekday||'기타') : a.classId; }
+function hwGroupHeader(key){
+  if(hwGroupBy==='day'){ return `📅 ${WD_LABEL[key]?WD_LABEL[key]+'요일반':'요일 미지정'}`; }
+  const c=CLASSES.find(x=>x.id===key)||{};
+  return `📚 ${c.name||'반 미지정'} <span style="color:var(--text-muted);font-weight:400">${(WD_LABEL[c.weekday]||'')}${c.slot||''}</span>`;
+}
 // 그동안 쓴 교재 모음 (반 기본교재 + 과거 숙제 교재) — 칩으로 빠른선택
 function allTextbooks(){
   const set=new Set();
@@ -1081,9 +1100,16 @@ function rHomework(){
         ${editA?`<button class="btn btn-outline" onclick="hwEditId=null;rHomework()">취소</button>`:''}
       </div>
     </div>
-    <div class="sec-label">📋 제출 현황</div>
+    <div class="card" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;margin-bottom:10px">
+      <span style="font-size:14px;font-weight:700;color:var(--text-sub)">📋 제출 현황</span>
+      <div style="display:inline-flex;background:var(--bg);border-radius:9px;padding:3px">
+        <button class="btn btn-sm" style="${hwGroupBy==='class'?'background:var(--primary);color:#fff':'background:transparent;color:var(--text-muted)'}" onclick="hwGroupBy='class';rHomework()">📚 반별</button>
+        <button class="btn btn-sm" style="${hwGroupBy==='day'?'background:var(--primary);color:#fff':'background:transparent;color:var(--text-muted)'}" onclick="hwGroupBy='day';rHomework()">📅 요일별</button>
+      </div>
+      <span style="font-size:12px;color:var(--text-muted)">묶음 안에서 최신순 정렬</span>
+    </div>
     ${asgn.length===0?'<div class="card" style="text-align:center;padding:30px;color:var(--text-muted)">아직 만든 과제가 없어요. 위에서 첫 과제를 만들어보세요!</div>':''}
-    ${asgn.map(a=>{
+    ${(function(){let _o='',_lk=null;hwOrder(asgn).forEach(function(a){const _k=hwGroupKey(a);if(_k!==_lk){_o+='<div class="sec-label">'+hwGroupHeader(_k)+'</div>';_lk=_k;}_o+=(function(a){
       const subs=getSubsByAssignment(a.id),sts=getStudentsByClass(a.classId),isOpen=hwOpenId===a.id;
       const missing=Math.max(0, sts.length-subs.length);
       const overdue=a.dueDate && a.dueDate < _today;
@@ -1139,7 +1165,7 @@ function rHomework(){
                       : `<button class="btn btn-outline btn-sm" onclick="doRetry('${sub.id}',true)">오답 표시</button>`)):'-'}</td>
               </tr>`;}).join('')}</tbody>
             </table></div></div>`:``}
-        </div>`;}).join('')}`;
+        </div>`;})(a);});return _o;})()}`;
   // 수정 모드면 대상 반 셀렉트를 해당 반으로 맞춤
   if(hwEditId){ const a=asgn.find(x=>x.id===hwEditId); const cs=document.getElementById('hw-cls'); if(a&&cs) cs.value=a.classId; }
 }
