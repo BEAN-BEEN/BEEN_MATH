@@ -197,6 +197,14 @@
 </header>
 <div class="mob-overlay" id="mobOverlay" onclick="toggleMob()"></div>
 
+<!-- ➕ 빠른 숙제 입력 (어느 화면에서나) -->
+<button id="quickHwFab" onclick="openQuickHw()" style="position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:1500;background:var(--primary);color:#fff;border:none;border-radius:30px;padding:14px 20px;font-size:15px;font-weight:800;box-shadow:0 6px 20px rgba(91,108,245,.45);cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px">➕ 숙제</button>
+<div id="quickHwModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1600;align-items:flex-end;justify-content:center" onclick="if(event.target===this)closeQuickHw()">
+  <div style="background:var(--surface);width:100%;max-width:520px;border-radius:18px 18px 0 0;max-height:88vh;overflow:auto;padding:18px 18px calc(20px + env(safe-area-inset-bottom))">
+    <div id="quickHwBody"></div>
+  </div>
+</div>
+
 <div class="app-layout">
   <nav class="sidebar" id="sidebar">
     <div class="sidebar-logo">
@@ -1232,6 +1240,58 @@ async function doDelAsgn(id,title){
   try{ await deleteAssignment(id); if(hwEditId===id)hwEditId=null; showToast('과제를 삭제했어요','warning'); rHomework(); }
   catch(e){ showToast('삭제 실패: '+e.message,'error'); }
 }
+// ➕ 빠른 숙제 입력 (수업 끝나고 폰으로 바로)
+let qhwClassId=null;
+function openQuickHw(){
+  const tb=allTextbooks(), esc=s=>(s||'').replace(/"/g,'&quot;');
+  document.getElementById('quickHwBody').innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <strong style="font-size:18px">➕ 빠른 숙제 입력</strong>
+      <button class="btn btn-outline btn-sm" onclick="closeQuickHw()">닫기 ✕</button>
+    </div>
+    <label class="form-label">반 *</label>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px" id="qhw-cls-chips">
+      ${CLASSES.map(c=>`<button type="button" class="btn btn-outline btn-sm" data-cid="${c.id}" onclick="qhwPickClass('${c.id}')">${c.name} <span style="opacity:.6">${(WD_LABEL[c.weekday]||'')+(c.slot||'')}</span></button>`).join('')||'<span style="font-size:13px;color:var(--text-muted)">반이 없어요</span>'}
+    </div>
+    <label class="form-label">교재</label>
+    <input class="form-input" id="qhw-textbook" placeholder="예: 쎈 공통수학1">
+    ${tb.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;margin-bottom:12px">${tb.map(t=>`<button type="button" class="btn btn-outline btn-sm" data-t="${esc(t)}" onclick="var v=this.dataset.t;document.getElementById('qhw-textbook').value=v;var ti=document.getElementById('qhw-title');if(!ti.value.trim())ti.value=v">📘 ${t}</button>`).join('')}</div>`:'<div style="margin-bottom:12px"></div>'}
+    <label class="form-label">제목 *</label>
+    <input class="form-input" id="qhw-title" placeholder="예: 쎈 p.50~60" style="margin-bottom:12px">
+    <label class="form-label">내용 (선택)</label>
+    <input class="form-input" id="qhw-content" placeholder="문제 범위·메모" style="margin-bottom:12px">
+    <label class="form-label">마감일</label>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <button type="button" class="btn btn-outline btn-sm" onclick="qhwDue(1)">내일</button>
+      <button type="button" class="btn btn-outline btn-sm" onclick="qhwDue(3)">+3일</button>
+      <button type="button" class="btn btn-outline btn-sm" onclick="qhwDue(7)">+1주</button>
+      <input class="form-input" id="qhw-due" type="date" style="flex:1;min-width:150px">
+    </div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:16px;padding:14px;font-size:15px" onclick="doQuickSaveHw()">저장 + 학생에게 알림 📨</button>
+    <div style="font-size:12px;color:var(--text-muted);margin-top:8px;text-align:center">출제일은 오늘로 자동 설정 · 사진 최대 30장</div>`;
+  qhwClassId=null;
+  document.getElementById('quickHwModal').style.display='flex';
+}
+function closeQuickHw(){ document.getElementById('quickHwModal').style.display='none'; }
+function qhwPickClass(cid){ qhwClassId=cid; document.querySelectorAll('#qhw-cls-chips [data-cid]').forEach(b=>{ b.className='btn btn-'+(b.dataset.cid===cid?'primary':'outline')+' btn-sm'; }); }
+function qhwDue(days){ const d=new Date(); d.setDate(d.getDate()+days); const p=n=>String(n).padStart(2,'0'); const el=document.getElementById('qhw-due'); if(el) el.value=`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; }
+async function doQuickSaveHw(){
+  if(!qhwClassId){ showToast('반을 선택해주세요','error'); return; }
+  const title=document.getElementById('qhw-title').value.trim();
+  if(!title){ showToast('제목을 입력해주세요','error'); return; }
+  const cls=CLASSES.find(c=>c.id===qhwClassId);
+  const today=new Date().toISOString().slice(0,10);
+  const data={classId:qhwClassId,className:cls?.name||'',title,content:document.getElementById('qhw-content').value.trim(),textbook:document.getElementById('qhw-textbook').value.trim(),startDate:today,dueDate:document.getElementById('qhw-due').value,maxPhotos:30};
+  try{
+    await saveAssignment(data);
+    closeQuickHw();
+    showToast(`"${title}" 숙제 등록 완료! 📝`,'success');
+    if(curSec==='homework') rHomework(); else if(curSec==='dashboard') rDashboard();
+    fetch('/api/notify',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({tokens:classTokens(qhwClassId), title:'새 숙제가 등록됐어요 📝', body:`${cls?.name||''} · ${title}`})})
+      .then(r=>r.json()).then(j=>{ if(j&&j.sent) showToast(`알림 ${j.sent}명에게 발송 📨`); }).catch(()=>{});
+  }catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
 async function doCheck(sid){ const s=getSubmissions().find(x=>x.id===sid); const nv=!(s&&s.checked); await updateSub(sid,{checked:nv, ...(nv?{rejected:false}:{})}); showToast(nv?'숙제 확인 완료!':'확인을 취소했어요','success'); rHomework(); }
 // 대시보드에서 바로 확인 처리 (확인 후 대시보드만 새로고침)
 async function dashCheck(sid){
@@ -2122,6 +2182,8 @@ async function init(){
   }catch(e){ showToast('데이터를 불러오지 못했어요: '+e.message,'error'); }
   rDashboard();
   pruneOldFirebase();            // 3개월 지난 사진·기록 자동 정리 (백그라운드)
+  // 홈 화면 '숙제 입력' 바로가기로 들어오면 빠른 입력창 자동 열기
+  if(location.search.indexOf('quick=hw')>=0) setTimeout(openQuickHw, 300);
 }
 document.addEventListener('DOMContentLoaded',init);
 </script>
