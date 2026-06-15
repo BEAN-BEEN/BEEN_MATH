@@ -84,16 +84,24 @@
       </div>
 
       <form onsubmit="doLogin(event)">
-        <!-- 학생 로그인: 이름 + 핸드폰 뒤 4자리 -->
+        <!-- 학생 로그인: 이름 + 개인 비밀번호 (첫 로그인만 핸드폰 뒤4자리로 본인확인) -->
         <div id="studentFields">
           <div class="form-group">
             <label class="form-label">이름</label>
             <input class="form-input" type="text" id="s-name" placeholder="이름을 입력하세요">
           </div>
           <div class="form-group">
-            <label class="form-label">핸드폰 번호 뒤 4자리</label>
+            <label class="form-label">비밀번호</label>
+            <div class="pw-wrap">
+              <input class="form-input" type="password" id="s-pw" placeholder="나만의 비밀번호">
+              <button type="button" class="pw-toggle" onclick="toggleSPw()">👁️</button>
+            </div>
+            <div class="hint">내 비밀번호로 로그인해요</div>
+          </div>
+          <div class="form-group hidden" id="s-setup">
+            <label class="form-label">핸드폰 뒤 4자리 <span style="color:var(--text-muted);font-weight:400">· 처음 1회 본인 확인</span></label>
             <input class="form-input" type="tel" id="s-last4" inputmode="numeric" maxlength="4" placeholder="예: 2222">
-            <div class="hint">선생님이 등록한 핸드폰 번호의 마지막 4자리예요</div>
+            <div class="hint">🔐 첫 로그인이에요! 본인 확인 후, 위에 적은 비밀번호가 내 비밀번호로 설정돼요.</div>
           </div>
         </div>
 
@@ -113,8 +121,8 @@
       </form>
 
       <div class="info-box" id="infoBox">
-        🎒 <strong>학생</strong>은 회원가입 없이 <strong>이름 + 핸드폰 뒤 4자리</strong>로 로그인해요.<br>
-        명단은 선생님이 등록해줘요. 로그인이 안 되면 선생님께 문의하세요!
+        🎒 <strong>학생</strong>은 <strong>이름 + 나만의 비밀번호</strong>로 로그인해요.<br>
+        처음이면 본인 확인 후 비밀번호를 직접 정해요. 비밀번호를 잊으면 선생님께 초기화를 요청하세요!
       </div>
 
       <a href="about.html" style="display:block;text-align:center;margin-top:18px;padding:12px;border:1.5px solid var(--border);border-radius:9px;font-size:14px;font-weight:600;color:var(--text-sub);transition:all .15s" onmouseover="this.style.borderColor='var(--primary)';this.style.color='var(--primary)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-sub)'">📐 BEEN MATH 자세히 살펴보기 →</a>
@@ -150,13 +158,23 @@
     document.getElementById('studentFields').classList.toggle('hidden', role!=='student');
     document.getElementById('teacherFields').classList.toggle('hidden', role!=='teacher');
     document.getElementById('infoBox').innerHTML = (role==='student')
-      ? '🎒 <strong>학생</strong>은 회원가입 없이 <strong>이름 + 핸드폰 뒤 4자리</strong>로 로그인해요.<br>명단은 선생님이 등록해줘요. 로그인이 안 되면 선생님께 문의하세요!'
+      ? '🎒 <strong>학생</strong>은 <strong>이름 + 나만의 비밀번호</strong>로 로그인해요.<br>처음이면 본인 확인 후 비밀번호를 직접 정해요. 비밀번호를 잊으면 선생님께 초기화를 요청하세요!'
       : '👩‍🏫 <strong>선생님</strong>은 비밀번호 하나로 로그인해요.<br>가장 먼저 로그인하는 비밀번호가 선생님 비밀번호로 저장돼요. 꼭 기억해두세요!';
   }
 
   function togglePw(){
     const pw = document.getElementById('t-pw');
     pw.type = pw.type==='password' ? 'text' : 'password';
+  }
+  function toggleSPw(){
+    const pw = document.getElementById('s-pw');
+    pw.type = pw.type==='password' ? 'text' : 'password';
+  }
+  // 비밀번호 해시 (학생ID를 소금으로) — DB에 원문 저장 안 함
+  async function hashPw(salt, pw){
+    const data = new TextEncoder().encode('bm:'+salt+':'+pw);
+    const buf = await crypto.subtle.digest('SHA-256', data);
+    return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
   }
 
   function showToast(msg, type=''){
@@ -189,22 +207,48 @@
     }
   }
 
-  // ----- 학생 로그인: 이름 + 핸드폰 뒤 4자리 -----
+  // ----- 학생 로그인: 이름 + 개인 비밀번호 (첫 로그인만 핸드폰 뒤4자리로 본인확인) -----
   async function studentLogin(){
-    const name  = document.getElementById('s-name').value.trim();
-    const last4 = document.getElementById('s-last4').value.trim();
-    if(!name || !last4){ showToast('이름과 핸드폰 뒤 4자리를 입력해주세요','error'); return; }
+    const name = document.getElementById('s-name').value.trim();
+    const pw   = document.getElementById('s-pw').value;
+    if(!name || !pw){ showToast('이름과 비밀번호를 입력해주세요','error'); return; }
 
-    // 뒤 4자리로 후보를 찾고, 이름으로 확정 (복합 색인 불필요)
-    const snap = await db.collection('students').where('phoneLast4','==',last4).get();
-    const matches = snap.docs.map(d=>({id:d.id, ...d.data()})).filter(s => (s.name||'').trim() === name);
-
-    if(matches.length === 0){
-      showToast('일치하는 학생이 없어요. 선생님께 문의하세요','error');
-      return;
+    // 이름으로 후보 조회 (동명이인 대비해 여러 명 가능)
+    let cands;
+    try{ const snap = await db.collection('students').where('name','==',name).get(); cands = snap.docs.map(d=>({id:d.id,...d.data()})); }
+    catch(e){ cands = []; }
+    if(!cands.length){ // 띄어쓰기 등 보정 fallback
+      const all = await db.collection('students').get();
+      cands = all.docs.map(d=>({id:d.id,...d.data()})).filter(s=>(s.name||'').trim()===name);
     }
-    const stu = matches[0];
-    // 세션 저장
+    if(!cands.length){ showToast('등록되지 않은 이름이에요. 선생님께 문의하세요','error'); return; }
+
+    // 1) 이미 비밀번호를 설정한 학생 중 일치하는지
+    for(const c of cands){
+      if(c.pwHash){ const h = await hashPw(c.id, pw); if(h===c.pwHash){ enterStudent(c); return; } }
+    }
+    // 2) 첫 로그인(비번 미설정) — 핸드폰 뒤4자리로 본인 확인 후 비번 설정
+    const noPw = cands.filter(c=>!c.pwHash);
+    if(noPw.length){
+      const setupEl = document.getElementById('s-setup');
+      const last4 = document.getElementById('s-last4').value.trim();
+      if(setupEl.classList.contains('hidden') || !last4){
+        setupEl.classList.remove('hidden');
+        document.getElementById('s-pw-hint') && (document.getElementById('s-pw-hint').textContent='');
+        showToast('처음 로그인이에요! 핸드폰 뒤 4자리로 본인 확인 후 비밀번호가 설정돼요','');
+        return;
+      }
+      const target = noPw.find(c=>(c.phoneLast4||'')===last4);
+      if(!target){ showToast('본인 확인 실패 — 핸드폰 뒤 4자리를 확인하세요','error'); return; }
+      const h = await hashPw(target.id, pw);
+      await db.collection('students').doc(target.id).update({ pwHash:h });
+      showToast('비밀번호가 설정됐어요! 다음부턴 이름+비밀번호로 로그인해요 🔐','success');
+      enterStudent(target); return;
+    }
+    // 3) 비번 설정돼 있는데 일치 안 함
+    showToast('비밀번호가 틀렸어요. 기억나지 않으면 선생님께 초기화를 요청하세요','error');
+  }
+  function enterStudent(stu){
     const classIds = Array.isArray(stu.classIds) ? stu.classIds : (stu.classId ? [stu.classId] : []);
     const classNames = Array.isArray(stu.classNames) ? stu.classNames : (stu.className ? [stu.className] : []);
     localStorage.setItem('bm_role','student');

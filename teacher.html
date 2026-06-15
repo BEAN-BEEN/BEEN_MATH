@@ -871,11 +871,20 @@ function renderEditCard(){
       <div class="form-group"><label class="form-label">학교 <span style="color:var(--text-muted);font-weight:400">(내신 시험 일정 매칭용)</span></label><input class="form-input" id="es-school" value="${s.school||''}" placeholder="예: 송도고등학교"></div>
       <div class="form-group"><label class="form-label">학부모 연락처</label><input class="form-input" id="es-parent" value="${s.parentPhone||''}"></div>
     </div>
+    <div style="background:var(--bg);border-radius:10px;padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="font-size:13px">🔐 로그인 비밀번호: <strong>${s.pwHash?'설정됨':'아직 미설정'}</strong></span>
+      ${s.pwHash?`<button class="btn btn-outline btn-sm" onclick="doResetStudentPw('${s.id}','${(s.name||'').replace(/'/g,'')}')">비밀번호 초기화</button>`:'<span style="font-size:12px;color:var(--text-muted)">학생이 첫 로그인 때 직접 정해요</span>'}
+    </div>
     <div class="btn-row">
       <button class="btn btn-primary" onclick="doSaveEdit()">수정 저장</button>
       <button class="btn btn-outline" onclick="editStudentId=null;rStudents()">취소</button>
     </div>
   </div>`;
+}
+async function doResetStudentPw(id,name){
+  if(!confirm(`${name} 학생의 비밀번호를 초기화할까요?\n다음 로그인 때 핸드폰 뒤 4자리로 본인 확인 후 새 비밀번호를 정하게 돼요.`)) return;
+  try{ await updateStudentFS(id,{pwHash:''}); showToast(`${name} 비밀번호를 초기화했어요 🔐`,'success'); rStudents(); }
+  catch(e){ showToast('초기화 실패: '+e.message,'error'); }
 }
 async function doSaveEdit(){
   const s=getStudents().find(x=>x.id===editStudentId); if(!s)return;
