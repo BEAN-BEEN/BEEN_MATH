@@ -1126,7 +1126,7 @@ function rHomework(){
       </div>
       <div class="form-group"><label class="form-label">과제 제목 *</label><input class="form-input" id="hw-title" placeholder="예: 수학Ⅱ 3단원 연습문제" value="${editA?esc(editA.title):''}"></div>
       <div class="form-group"><label class="form-label">과제 내용</label><textarea class="form-textarea" id="hw-content" placeholder="교재 페이지, 문제 범위 등">${editA?(editA.content||''):''}</textarea></div>
-      <div class="form-group" style="max-width:180px"><label class="form-label">최대 사진 수</label><input class="form-input" id="hw-photos" type="number" value="${editA?(editA.maxPhotos||3):3}" min="1" max="10"></div>
+      <div class="form-group" style="max-width:180px"><label class="form-label">최대 사진 수</label><input class="form-input" id="hw-photos" type="number" value="${editA?(editA.maxPhotos||30):30}" min="1" max="30"></div>
       <div class="btn-row">
         <button class="btn btn-primary" onclick="doSaveAsgn()">${editA?'수정 저장 💾':'과제 저장하기'}</button>
         ${editA?`<button class="btn btn-outline" onclick="hwEditId=null;rHomework()">취소</button>`:''}
@@ -1213,7 +1213,7 @@ async function doSaveAsgn(){
   const classId=document.getElementById('hw-cls').value,title=document.getElementById('hw-title').value.trim();
   if(!classId||!title){showToast('반과 제목을 입력해주세요','error');return;}
   const cls=CLASSES.find(c=>c.id===classId);
-  const data={classId,className:cls?.name||'',title,content:document.getElementById('hw-content').value.trim(),textbook:document.getElementById('hw-textbook').value.trim(),startDate:document.getElementById('hw-start').value,dueDate:document.getElementById('hw-due').value,maxPhotos:parseInt(document.getElementById('hw-photos').value)||3};
+  const data={classId,className:cls?.name||'',title,content:document.getElementById('hw-content').value.trim(),textbook:document.getElementById('hw-textbook').value.trim(),startDate:document.getElementById('hw-start').value,dueDate:document.getElementById('hw-due').value,maxPhotos:parseInt(document.getElementById('hw-photos').value)||30};
   try{
     if(hwEditId){
       await updateAssignment(hwEditId,data); hwEditId=null;
