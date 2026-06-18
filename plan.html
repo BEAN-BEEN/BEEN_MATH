@@ -179,7 +179,13 @@ function isGongsu2(s){
   return txts.some(t=>{ const x=(t||'').replace(/\s/g,''); return x.includes('공수2')||x.includes('공통수학2'); });
 }
 // 특정 날짜의 직보 엔트리: [{school, time, students:[names]}]
-//  직보 창: 학교에 '직보 시작일'이 있으면 그 날~수학전날(주말 포함), 없으면 수학 N일 전~전날
+//  직보 창: '직보 시작일' 지정 시 그 날~수학전날(주말 포함).
+//          미지정 시 — 수학이 월요일(주말 뒤)이면 금·토·일, 그 외엔 전날 하루만.
+function jikboStartFor(e, md){
+  if(e.jikboStart) return e.jikboStart;
+  const wd=new Date(md+'T00:00:00').getDay();   // 1=월
+  return (wd===1) ? addDaysStr(md,-3) : addDaysStr(md,-1);
+}
 function jikboOn(dateStr){
   const bySchoolTime={}; // key: school|time
   P_EXAMS.forEach(e=>{
@@ -192,7 +198,7 @@ function jikboOn(dateStr){
     let hit=false;
     for(const md of mds){
       if(dateStr>=md) continue;        // 그 수학시험 이후는 제외
-      const start = e.jikboStart || addDaysStr(md, -jbDays);
+      const start = jikboStartFor(e, md);
       if(dateStr>=start && dateStr<md){ hit=true; break; }
     }
     if(!hit) return;
@@ -244,11 +250,7 @@ function rJikbo(){
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:12px;color:var(--text-muted)">
-      <span>수학시험 전</span>
-      <select class="form-select" style="width:80px;padding:5px 8px" onchange="jbDays=parseInt(this.value);rJikbo()">
-        ${[1,2,3,4,5].map(n=>`<option value="${n}" ${jbDays===n?'selected':''}>${n}일</option>`).join('')}
-      </select>
-      <span>동안 직보 · 시험기간엔 2시 / 그 외 5시 · <strong style="color:var(--primary)">이번 주 직보 ${totalWeek}명</strong></span>
+      <span>수학시험이 <strong>월요일(주말 뒤)</strong>이면 <strong>금·토·일</strong> 직보, 그 외엔 <strong>전날 하루</strong> · 시험기간 내 2시 / 그 외 5시 · <strong style="color:var(--primary)">이번 주 직보 ${totalWeek}명</strong></span>
     </div>
     <div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><div style="display:flex;gap:6px;min-width:760px">${cols}</div></div>
     ${P_EXAMS.length===0?'<div style="font-size:13px;color:var(--text-muted);margin-top:10px">학교 시험 일정을 입력하면(성적관리 → 학교별 내신 시험) 자동으로 직보가 생성돼요.</div>':''}`;
