@@ -170,13 +170,21 @@ let jbWeekStart=null, jbDays=3;
 function dStr(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
 function mondayOf(date){ const d=new Date(date); const dow=(d.getDay()+6)%7; d.setDate(d.getDate()-dow); d.setHours(0,0,0,0); return d; }
 function addDaysStr(dateStr, delta){ const d=new Date(dateStr+'T00:00:00'); d.setDate(d.getDate()+delta); return dStr(d); }
+// 공수2(공통수학2) 반 학생은 직보 제외
+function isGongsu2(s){
+  const ids = Array.isArray(s.classIds)?s.classIds:(s.classId?[s.classId]:[]);
+  const txts=[];
+  ids.forEach(id=>{ const c=P_CLASSES.find(x=>x.id===id); if(c){ txts.push(c.name||'', c.subject||''); } });
+  (s.classNames||[]).forEach(n=>txts.push(n));
+  return txts.some(t=>{ const x=(t||'').replace(/\s/g,''); return x.includes('공수2')||x.includes('공통수학2'); });
+}
 // 특정 날짜의 직보 엔트리: [{school, time, students:[names]}]
 //  직보 창: 학교에 '직보 시작일'이 있으면 그 날~수학전날(주말 포함), 없으면 수학 N일 전~전날
 function jikboOn(dateStr){
   const bySchoolTime={}; // key: school|time
   P_EXAMS.forEach(e=>{
     if(!e.school) return;
-    const studs=P_STUDENTS.filter(s=>(s.school||'')===e.school);
+    const studs=P_STUDENTS.filter(s=>(s.school||'')===e.school && !isGongsu2(s));
     if(!studs.length) return;
     const mds=examMathDates(e).map(m=>m.date).filter(Boolean).sort();
     if(!mds.length) return;
