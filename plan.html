@@ -96,6 +96,8 @@
     <div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><div id="calGrid"></div></div>
   </div>
 
+  <div class="card" id="jikboCard"></div>
+
   <div id="dayDetail"></div>
 
   <div class="card">
@@ -147,18 +149,101 @@ const todayStr=()=>{ const n=new Date(); return `${n.getFullYear()}-${pad(n.getM
 const fmtMD=s=>s?s.slice(5).replace('-','/'):'';
 
 // ----- 데이터 -----
-let P_CLASSES=[], P_MAKEUPS=[], P_EXAMS=[], P_EVENTS=[], P_TODOS=[];
+let P_CLASSES=[], P_MAKEUPS=[], P_EXAMS=[], P_EVENTS=[], P_TODOS=[], P_STUDENTS=[];
 async function loadAll(){
-  const [c,m,e,ev,td]=await Promise.all([
+  const [c,m,e,ev,td,st]=await Promise.all([
     db.collection('classes').get(), db.collection('makeups').get(),
-    db.collection('schoolExams').get(), db.collection('planEvents').get(), db.collection('planTodos').get()
+    db.collection('schoolExams').get(), db.collection('planEvents').get(), db.collection('planTodos').get(),
+    db.collection('students').get()
   ]);
   P_CLASSES=c.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.order||0)-(b.order||0));
   P_MAKEUPS=m.docs.map(d=>({id:d.id,...d.data()}));
   P_EXAMS=e.docs.map(d=>({id:d.id,...d.data()}));
   P_EVENTS=ev.docs.map(d=>({id:d.id,...d.data()}));
   P_TODOS=td.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.done?1:0)-(b.done?1:0)||(a.ts||0)-(b.ts||0));
+  P_STUDENTS=st.docs.map(d=>({id:d.id,...d.data()}));
 }
+// ===== 직보(시험 전 직접보강) 자동 생성 =====
+//  규칙: 학생의 수학시험일 전 N일(기본 3) 동안 직보.
+//        그 날이 시험기간 안이면 2시(학교시험 봄), 밖이면 5시.
+let jbWeekStart=null, jbDays=3;
+function dStr(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+function mondayOf(date){ const d=new Date(date); const dow=(d.getDay()+6)%7; d.setDate(d.getDate()-dow); d.setHours(0,0,0,0); return d; }
+// 특정 날짜의 직보 엔트리: [{school, time, students:[names]}]
+function jikboOn(dateStr){
+  const bySchoolTime={}; // key: school|time
+  P_EXAMS.forEach(e=>{
+    if(!e.school) return;
+    const studs=P_STUDENTS.filter(s=>(s.school||'')===e.school);
+    if(!studs.length) return;
+    examMathDates(e).forEach(m=>{
+      if(!m.date) return;
+      // m.date 전 N일 중 dateStr이 포함되는지
+      const md=new Date(m.date+'T00:00:00');
+      for(let k=1;k<=jbDays;k++){
+        const day=new Date(md); day.setDate(md.getDate()-k);
+        if(dStr(day)===dateStr){
+          const inExam = e.startDate && e.endDate && dateStr>=e.startDate && dateStr<=e.endDate;
+          const time = inExam ? '2시' : '5시';
+          const key=e.school+'|'+time;
+          if(!bySchoolTime[key]) bySchoolTime[key]={school:e.school, time, students:[]};
+          studs.forEach(s=>{ if(!bySchoolTime[key].students.includes(s.name)) bySchoolTime[key].students.push(s.name); });
+        }
+      }
+    });
+  });
+  return Object.values(bySchoolTime).sort((a,b)=>(a.time).localeCompare(b.time)||a.school.localeCompare(b.school));
+}
+function rJikbo(){
+  const el=document.getElementById('jikboCard'); if(!el) return;
+  if(jbWeekStart==null) jbWeekStart=mondayOf(new Date());
+  const days=[]; for(let i=0;i<7;i++){ const d=new Date(jbWeekStart); d.setDate(jbWeekStart.getDate()+i); days.push(d); }
+  const dowL=['월','화','수','목','금','토','일'];
+  const tStr=todayStr();
+  let totalWeek=0;
+  let cols=days.map((d,i)=>{
+    const ds=dStr(d);
+    const entries=jikboOn(ds);
+    const cnt=entries.reduce((a,e)=>a+e.students.length,0);
+    totalWeek+=cnt;
+    const isToday=ds===tStr;
+    let c=`<div style="min-width:150px;flex:1;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:${isToday?'var(--primary-light)':'var(--surface)'}">`;
+    c+=`<div style="text-align:center;padding:6px;background:${i>=5?'#FEF2F2':'var(--bg)'};font-weight:800;font-size:13px;color:${i===6?'#EF4444':(i===5?'#2563EB':'var(--text-sub)')}">${dowL[i]} <span style="font-weight:600;color:var(--text-muted)">${d.getMonth()+1}/${d.getDate()}</span></div>`;
+    c+=`<div style="padding:6px;min-height:60px">`;
+    if(entries.length){
+      entries.forEach(e=>{
+        c+=`<div style="margin-bottom:8px">
+          <div style="font-size:12px;font-weight:700;color:var(--orange)">🔶 ${e.time} · ${e.school} <span style="color:var(--text-muted)">${e.students.length}명</span></div>
+          <div style="font-size:12px;color:var(--text-sub);line-height:1.5">${e.students.join(', ')}</div>
+        </div>`;
+      });
+      c+=`<div style="font-size:11px;font-weight:700;color:var(--primary);border-top:1px dashed var(--border);padding-top:4px;margin-top:2px">직보 ${cnt}명</div>`;
+    } else { c+='<div style="font-size:12px;color:var(--text-muted);text-align:center;padding:10px 0">-</div>'; }
+    c+='</div></div>';
+    return c;
+  }).join('');
+  const wEnd=new Date(jbWeekStart); wEnd.setDate(jbWeekStart.getDate()+6);
+  el.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+      <div class="card-title" style="margin:0">🔶 직보 일정 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(시험 전 자동 생성)</span></div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <button class="btn btn-outline btn-sm" onclick="jbShift(-7)">◀</button>
+        <strong style="font-size:13px;min-width:120px;text-align:center">${jbWeekStart.getMonth()+1}/${jbWeekStart.getDate()} ~ ${wEnd.getMonth()+1}/${wEnd.getDate()}</strong>
+        <button class="btn btn-outline btn-sm" onclick="jbShift(7)">▶</button>
+        <button class="btn btn-outline btn-sm" onclick="jbWeekStart=null;rJikbo()">이번 주</button>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:12px;color:var(--text-muted)">
+      <span>수학시험 전</span>
+      <select class="form-select" style="width:80px;padding:5px 8px" onchange="jbDays=parseInt(this.value);rJikbo()">
+        ${[1,2,3,4,5].map(n=>`<option value="${n}" ${jbDays===n?'selected':''}>${n}일</option>`).join('')}
+      </select>
+      <span>동안 직보 · 시험기간엔 2시 / 그 외 5시 · <strong style="color:var(--primary)">이번 주 직보 ${totalWeek}명</strong></span>
+    </div>
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><div style="display:flex;gap:6px;min-width:760px">${cols}</div></div>
+    ${P_EXAMS.length===0?'<div style="font-size:13px;color:var(--text-muted);margin-top:10px">학교 시험 일정을 입력하면(성적관리 → 학교별 내신 시험) 자동으로 직보가 생성돼요.</div>':''}`;
+}
+function jbShift(n){ const d=new Date(jbWeekStart); d.setDate(d.getDate()+n); jbWeekStart=mondayOf(d); rJikbo(); }
 function isClassActive(c, dateStr){
   if(c.endDate && dateStr>c.endDate) return false;
   if(c.startDate && dateStr<c.startDate) return false;
@@ -360,7 +445,7 @@ async function init(){
   document.getElementById('ev-date').value=todayStr();
   loadThemeCloud();
   try{ await loadAll(); }catch(e){ showToast('데이터를 불러오지 못했어요: '+e.message,'error'); }
-  rLayerBtns(); rCal(); rDayDetail(); rUpcoming(); rTodos(); rBriefing();
+  rLayerBtns(); rCal(); rDayDetail(); rUpcoming(); rTodos(); rBriefing(); rJikbo();
 }
 document.addEventListener('DOMContentLoaded', init);
 </script>
