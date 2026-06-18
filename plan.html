@@ -169,28 +169,30 @@ async function loadAll(){
 let jbWeekStart=null, jbDays=3;
 function dStr(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
 function mondayOf(date){ const d=new Date(date); const dow=(d.getDay()+6)%7; d.setDate(d.getDate()-dow); d.setHours(0,0,0,0); return d; }
+function addDaysStr(dateStr, delta){ const d=new Date(dateStr+'T00:00:00'); d.setDate(d.getDate()+delta); return dStr(d); }
 // 특정 날짜의 직보 엔트리: [{school, time, students:[names]}]
+//  직보 창: 학교에 '직보 시작일'이 있으면 그 날~수학전날(주말 포함), 없으면 수학 N일 전~전날
 function jikboOn(dateStr){
   const bySchoolTime={}; // key: school|time
   P_EXAMS.forEach(e=>{
     if(!e.school) return;
     const studs=P_STUDENTS.filter(s=>(s.school||'')===e.school);
     if(!studs.length) return;
-    examMathDates(e).forEach(m=>{
-      if(!m.date) return;
-      // m.date 전 N일 중 dateStr이 포함되는지
-      const md=new Date(m.date+'T00:00:00');
-      for(let k=1;k<=jbDays;k++){
-        const day=new Date(md); day.setDate(md.getDate()-k);
-        if(dStr(day)===dateStr){
-          const inExam = e.startDate && e.endDate && dateStr>=e.startDate && dateStr<=e.endDate;
-          const time = inExam ? '2시' : '5시';
-          const key=e.school+'|'+time;
-          if(!bySchoolTime[key]) bySchoolTime[key]={school:e.school, time, students:[]};
-          studs.forEach(s=>{ if(!bySchoolTime[key].students.includes(s.name)) bySchoolTime[key].students.push(s.name); });
-        }
-      }
-    });
+    const mds=examMathDates(e).map(m=>m.date).filter(Boolean).sort();
+    if(!mds.length) return;
+    if(mds.includes(dateStr)) return; // 수학 시험 당일은 직보 아님
+    let hit=false;
+    for(const md of mds){
+      if(dateStr>=md) continue;        // 그 수학시험 이후는 제외
+      const start = e.jikboStart || addDaysStr(md, -jbDays);
+      if(dateStr>=start && dateStr<md){ hit=true; break; }
+    }
+    if(!hit) return;
+    const inExam = e.startDate && e.endDate && dateStr>=e.startDate && dateStr<=e.endDate;
+    const time = inExam ? '2시' : '5시';
+    const key=e.school+'|'+time;
+    if(!bySchoolTime[key]) bySchoolTime[key]={school:e.school, time, students:[]};
+    studs.forEach(s=>{ if(!bySchoolTime[key].students.includes(s.name)) bySchoolTime[key].students.push(s.name); });
   });
   return Object.values(bySchoolTime).sort((a,b)=>(a.time).localeCompare(b.time)||a.school.localeCompare(b.school));
 }
