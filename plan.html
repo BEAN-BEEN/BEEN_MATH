@@ -218,13 +218,14 @@ function jikboOn(dateStr){
   });
   return Object.values(bySchoolTime).sort((a,b)=>(a.time).localeCompare(b.time)||a.school.localeCompare(b.school));
 }
-// X/Y/Z가 들어간 반(공통수학2 등) 학생은 직보 제외
+// 담임 반인지 — role 지정 시 그 값, 미지정이면 이름의 X/Y/Z를 부담임으로 추정(기존 데이터 호환)
+function classIsHomeroom(c){ if(!c) return true; if(c.role) return c.role==='담임'; return !/[XYZ]/.test(c.name||''); }
+// 부담임 반(X/Y/Z)만 있는 학생은 직보 제외 — 담임 반이 하나라도 있으면 그대로 포함
 function isJikboExcluded(s){
   const ids=Array.isArray(s.classIds)?s.classIds:(s.classId?[s.classId]:[]);
-  const names=[];
-  ids.forEach(id=>{ const c=P_CLASSES.find(x=>x.id===id); if(c) names.push(c.name||''); });
-  (s.classNames||[]).forEach(n=>names.push(n));
-  return names.some(n=>/[XYZ]/.test(n));
+  const cls=ids.map(id=>P_CLASSES.find(x=>x.id===id)).filter(Boolean);
+  if(!cls.length) return false;            // 반 정보 없으면 포함
+  return !cls.some(classIsHomeroom);        // 담임 반이 하나도 없으면(전부 부담임) 제외
 }
 // 그날 직보 오는 학생 id 집합
 function jikboStudentIdsOn(dateStr){

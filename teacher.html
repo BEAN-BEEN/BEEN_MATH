@@ -1976,6 +1976,7 @@ function rSchedule(){
         <div class="form-group"><label class="form-label">시작</label><input class="form-input" id="sc-start" type="time"></div>
         <div class="form-group"><label class="form-label">종료</label><input class="form-input" id="sc-end" type="time"></div>
       </div>
+      <div class="form-group"><label class="form-label">담임/부담임 <span style="font-size:11px;color:var(--text-muted)">(부담임 반은 직보 일정에서 제외돼요)</span></label><select class="form-select" id="sc-role"><option value="담임">담임 — 직보 포함</option><option value="부담임">부담임 — 직보 제외</option></select></div>
       <div class="form-row-3">
         <div class="form-group"><label class="form-label">유형</label><select class="form-select" id="sc-type"><option value="정규">정규 수업</option><option value="보강">보강</option><option value="특강">특강</option></select></div>
         <div class="form-group"><label class="form-label">운영 시작일 <span style="color:var(--text-muted);font-weight:400">(특강 등, 선택)</span></label><input class="form-input" id="sc-sd" type="date"></div>
@@ -2004,7 +2005,7 @@ function rSchedule(){
     <div class="card">
       <div class="card-title">⚙️ 반 목록 / 시간·삭제</div>
       <div class="table-wrap"><table>
-        <thead><tr><th>반</th><th>요일</th><th>교시</th><th>시간</th><th>유형</th><th>운영기간 (특강)</th><th>학생</th><th>관리</th></tr></thead>
+        <thead><tr><th>반</th><th>요일</th><th>교시</th><th>시간</th><th>유형</th><th>담임/부담임</th><th>운영기간 (특강)</th><th>학생</th><th>관리</th></tr></thead>
         <tbody>${CLASSES.map(c=>`
           <tr>
             <td><strong>${c.name}</strong><br><span style="font-size:11px;color:var(--text-muted)">${c.subject||''}</span></td>
@@ -2012,12 +2013,20 @@ function rSchedule(){
             <td>${c.slot||'-'}</td>
             <td style="min-width:230px"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><input type="time" class="form-input" style="width:120px;padding:6px 8px" id="ct-s-${c.id}" value="${c.startTime||''}"><span>~</span><input type="time" class="form-input" style="width:120px;padding:6px 8px" id="ct-e-${c.id}" value="${c.endTime||''}"><button class="btn btn-outline btn-sm" onclick="doSaveClassTime('${c.id}')">저장</button></div></td>
             <td><span class="badge ${TYPE_BADGE[c.type]||'b-gray'}">${c.type||'정규'}</span></td>
+            <td><button class="btn ${classIsHomeroom(c)?'btn-green':'btn-outline'} btn-sm" onclick="doToggleRole('${c.id}')" title="누르면 전환">${classIsHomeroom(c)?'담임':'부담임'}</button></td>
             <td style="min-width:230px"><div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap"><input type="date" class="form-input" style="width:135px;padding:5px 6px" id="cp-s-${c.id}" value="${c.startDate||''}"><span>~</span><input type="date" class="form-input" style="width:135px;padding:5px 6px" id="cp-e-${c.id}" value="${c.endDate||''}"><button class="btn btn-outline btn-sm" onclick="doSaveClassPeriod('${c.id}')">저장</button> ${classPeriodStatus(c)}</div></td>
             <td>${getStudentsByClass(c.id).length}명</td>
             <td><button class="btn btn-red btn-sm" onclick="doDelClass('${c.id}','${c.name}')">삭제</button></td>
           </tr>`).join('')}</tbody>
       </table></div>
     </div>`;
+}
+// 담임 반인지 — role 지정 시 그 값, 미지정이면 이름의 X/Y/Z를 부담임으로 추정(기존 데이터 호환)
+function classIsHomeroom(c){ if(!c) return true; if(c.role) return c.role==='담임'; return !/[XYZ]/.test(c.name||''); }
+async function doToggleRole(id){
+  const c=CLASSES.find(x=>x.id===id); const cur=classIsHomeroom(c);
+  try{ await updateClassFS(id,{role: cur?'부담임':'담임'}); showToast(cur?'부담임으로 변경 — 직보에서 제외돼요':'담임으로 변경 — 직보에 포함돼요','success'); rSchedule(); }
+  catch(e){ showToast('변경 실패: '+e.message,'error'); }
 }
 async function doAddClass(){
   const name=document.getElementById('sc-name').value.trim();
@@ -2027,6 +2036,7 @@ async function doAddClass(){
     weekday:document.getElementById('sc-day').value, slot:document.getElementById('sc-slot').value.trim(),
     startTime:document.getElementById('sc-start').value, endTime:document.getElementById('sc-end').value,
     type:document.getElementById('sc-type').value,
+    role:(document.getElementById('sc-role')?.value)||'담임',
     startDate:document.getElementById('sc-sd').value, endDate:document.getElementById('sc-ed').value,
     order:(CLASSES.length?Math.max(...CLASSES.map(c=>c.order||0))+1:0)
   };
