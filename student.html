@@ -854,6 +854,8 @@ function _jbDates(e){ const mds=_jbMathDates(e).filter(Boolean).sort(); if(!mds.
   else { const sat=_jbWeekendSat(e); if(sat){ set.add(_jbAddDays(sat,-1)); set.add(sat); set.add(_jbAddDays(sat,1)); } else { mds.forEach(md=>set.add(_jbAddDays(md,-1))); } }
   mds.forEach(md=>set.delete(md)); return [...set]; }
 function myJikbo(){
+  // X/Y/Z가 들어간 반(공통수학2 등) 학생은 직보 제외
+  if((S_CLASSES||[]).some(c=>/[XYZ]/.test(c.name||''))) return [];
   const today=new Date().toISOString().slice(0,10); const out=[];
   (S_SCHOOL_EXAMS||[]).forEach(e=>{ _jbDates(e).forEach(ds=>{ if(ds<today) return;
     const inExam=e.startDate&&e.endDate&&ds>=e.startDate&&ds<=e.endDate;

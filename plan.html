@@ -207,7 +207,7 @@ function jikboOn(dateStr){
   const bySchoolTime={}; // key: school|time
   P_EXAMS.forEach(e=>{
     if(!e.school) return;
-    const studs=P_STUDENTS.filter(s=>(s.school||'')===e.school);
+    const studs=P_STUDENTS.filter(s=>(s.school||'')===e.school && !isJikboExcluded(s));
     if(!studs.length) return;
     if(!jikboDates(e).includes(dateStr)) return;
     const inExam = e.startDate && e.endDate && dateStr>=e.startDate && dateStr<=e.endDate;
@@ -218,12 +218,20 @@ function jikboOn(dateStr){
   });
   return Object.values(bySchoolTime).sort((a,b)=>(a.time).localeCompare(b.time)||a.school.localeCompare(b.school));
 }
+// X/Y/Z가 들어간 반(공통수학2 등) 학생은 직보 제외
+function isJikboExcluded(s){
+  const ids=Array.isArray(s.classIds)?s.classIds:(s.classId?[s.classId]:[]);
+  const names=[];
+  ids.forEach(id=>{ const c=P_CLASSES.find(x=>x.id===id); if(c) names.push(c.name||''); });
+  (s.classNames||[]).forEach(n=>names.push(n));
+  return names.some(n=>/[XYZ]/.test(n));
+}
 // 그날 직보 오는 학생 id 집합
 function jikboStudentIdsOn(dateStr){
   const set=new Set();
   P_EXAMS.forEach(e=>{
     if(!e.school || !jikboDates(e).includes(dateStr)) return;
-    P_STUDENTS.forEach(s=>{ if((s.school||'')===e.school) set.add(s.id); });
+    P_STUDENTS.forEach(s=>{ if((s.school||'')===e.school && !isJikboExcluded(s)) set.add(s.id); });
   });
   return set;
 }
