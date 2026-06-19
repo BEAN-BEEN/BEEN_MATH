@@ -217,6 +217,33 @@ function jikboOn(dateStr){
   });
   return Object.values(bySchoolTime).sort((a,b)=>(a.time).localeCompare(b.time)||a.school.localeCompare(b.school));
 }
+// 그날 직보 오는 학생 id 집합
+function jikboStudentIdsOn(dateStr){
+  const set=new Set();
+  P_EXAMS.forEach(e=>{
+    if(!e.school || !jikboDates(e).includes(dateStr)) return;
+    P_STUDENTS.forEach(s=>{ if((s.school||'')===e.school) set.add(s.id); });
+  });
+  return set;
+}
+// 그날 정규수업이 있는 학생 id 집합 (해당 요일·활성 정규반)
+function regularStudentIdsOn(dateStr){
+  const wd=['sun','mon','tue','wed','thu','fri','sat'][new Date(dateStr+'T00:00:00').getDay()];
+  const clsIds=new Set(P_CLASSES.filter(c=>c.weekday===wd && isClassActive(c,dateStr) && (!c.type||c.type==='정규')).map(c=>c.id));
+  const set=new Set();
+  if(!clsIds.size) return set;
+  P_STUDENTS.forEach(s=>{ const ids=Array.isArray(s.classIds)?s.classIds:(s.classId?[s.classId]:[]); if(ids.some(id=>clsIds.has(id))) set.add(s.id); });
+  return set;
+}
+// 그 학생이 '다음 날' 타과목 시험을 보는지 (다음날이 시험기간 안 + 수학시험일 아님)
+function hasOtherExamNextDay(s, dateStr){
+  const next=addDaysStr(dateStr,1);
+  return P_EXAMS.some(e=>{
+    if((s.school||'')!==e.school || !(e.startDate&&e.endDate)) return false;
+    if(!(next>=e.startDate && next<=e.endDate)) return false;       // 다음날이 시험기간 안
+    return !examMathDates(e).map(m=>m.date).includes(next);          // 수학시험일이 아니면 = 타과목
+  });
+}
 function rJikbo(){
   const el=document.getElementById('jikboCard'); if(!el) return;
   if(jbWeekStart==null) jbWeekStart=mondayOf(new Date());
@@ -227,8 +254,11 @@ function rJikbo(){
   let cols=days.map((d,i)=>{
     const ds=dStr(d);
     const entries=jikboOn(ds);
-    const cnt=entries.reduce((a,e)=>a+e.students.length,0);
-    totalWeek+=cnt;
+    const J=jikboStudentIdsOn(ds);
+    const R=regularStudentIdsOn(ds);
+    let M=0; R.forEach(id=>{ if(J.has(id)) return; const s=P_STUDENTS.find(x=>x.id===id); if(s&&hasOtherExamNextDay(s,ds)) return; M++; });
+    const N=J.size, total=N+M;
+    totalWeek+=N;
     const isToday=ds===tStr;
     let c=`<div style="min-width:150px;flex:1;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:${isToday?'var(--primary-light)':'var(--surface)'}">`;
     c+=`<div style="text-align:center;padding:6px;background:${i>=5?'#FEF2F2':'var(--bg)'};font-weight:800;font-size:13px;color:${i===6?'#EF4444':(i===5?'#2563EB':'var(--text-sub)')}">${dowL[i]} <span style="font-weight:600;color:var(--text-muted)">${d.getMonth()+1}/${d.getDate()}</span></div>`;
@@ -240,8 +270,10 @@ function rJikbo(){
           <div style="font-size:12px;color:var(--text-sub);line-height:1.5">${e.students.join(', ')}</div>
         </div>`;
       });
-      c+=`<div style="font-size:11px;font-weight:700;color:var(--primary);border-top:1px dashed var(--border);padding-top:4px;margin-top:2px">직보 ${cnt}명</div>`;
-    } else { c+='<div style="font-size:12px;color:var(--text-muted);text-align:center;padding:10px 0">-</div>'; }
+    } else if(!total){ c+='<div style="font-size:12px;color:var(--text-muted);text-align:center;padding:10px 0">-</div>'; }
+    if(total){
+      c+=`<div style="font-size:11px;font-weight:700;border-top:1px dashed var(--border);padding-top:4px;margin-top:2px"><span style="color:var(--primary)">직보 ${N}</span> · <span style="color:var(--text-muted)">수업 ${M}</span> · <span style="color:var(--orange)">총 ${total}명</span></div>`;
+    }
     c+='</div></div>';
     return c;
   }).join('');
