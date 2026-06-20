@@ -196,9 +196,15 @@ function jikboDates(e){
     let d=e.jikboStart;
     while(d<last){ set.add(d); d=addDaysStr(d,1); }   // 시작일~마지막 수학 전날
   } else {
-    const sat=weekendSatInPeriod(e);
-    if(sat){ set.add(addDaysStr(sat,-1)); set.add(sat); set.add(addDaysStr(sat,1)); } // 주말 낌 → 금·토·일
-    else { mds.forEach(md=>set.add(addDaysStr(md,-1))); }                              // 주말 안 낌 → 전날 하루
+    // 수학시험이 '주말 직후(월요일)'면 금·토·일, 그 외엔 전날 하루
+    //  (주말이 시험기간에 껴 있어도 수학 직전이 아니면 전날만 — 양명고 케이스)
+    mds.forEach(md=>{
+      if(new Date(md+'T00:00:00').getDay()===1){ // 월요일
+        set.add(addDaysStr(md,-3)); set.add(addDaysStr(md,-2)); set.add(addDaysStr(md,-1)); // 금·토·일
+      } else {
+        set.add(addDaysStr(md,-1)); // 전날 하루
+      }
+    });
   }
   mds.forEach(md=>set.delete(md)); // 수학 시험 당일은 제외
   return [...set];
@@ -298,7 +304,7 @@ function rJikbo(){
       </div>
     </div>
     <div style="margin-bottom:10px;font-size:12px;color:var(--text-muted)">
-      시험기간에 <strong>주말이 끼면</strong> <strong>금·토·일</strong> 직보, 그 외엔 <strong>전날 하루</strong> · 시험기간 내 2시 / 그 외 5시 · <strong style="color:var(--primary)">표시 기간 직보 ${totalJikbo}명</strong>
+      수학시험이 <strong>월요일(주말 직후)</strong>이면 <strong>금·토·일</strong> 직보, 그 외엔 <strong>전날 하루</strong> · 시험기간 내 2시 / 그 외 5시 · <strong style="color:var(--primary)">표시 기간 직보 ${totalJikbo}명</strong>
     </div>
     ${weeksHtml}
     ${P_EXAMS.length===0?'<div style="font-size:13px;color:var(--text-muted);margin-top:10px">학교 시험 일정을 입력하면(성적관리 → 학교별 내신 시험) 자동으로 직보가 생성돼요.</div>':''}`;
