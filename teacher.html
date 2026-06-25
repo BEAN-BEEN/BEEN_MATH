@@ -1456,12 +1456,58 @@ async function doSaveAtt(){
 // GRADES
 // ================================================================
 let exEditId=null;
+// 🎯 학생별 약점 대시보드 — 채점된 시험을 모아 점수 추이 + 자주 약했던 능력 집계
+let gradeDashStId='';
+function studentGradeDash(stId){
+  if(!stId) return '<div style="color:var(--text-muted);padding:10px;font-size:13px">학생을 선택하면 시험 점수 추이와 자주 약했던 능력이 한눈에 나와요. (시험이 쌓일수록 정확해져요)</div>';
+  const st=getStudents().find(s=>s.id===stId);
+  const subs=getExamSubs().filter(s=>s.studentId===stId && s.score!=null);
+  if(!subs.length) return `<div style="color:var(--text-muted);padding:10px;font-size:13px">${st?.name||''} 학생의 채점된 시험이 아직 없어요. 점수를 입력하면 여기 분석이 쌓여요.</div>`;
+  const rows=subs.map(s=>{ const e=getExams().find(x=>x.id===s.examId); const max=s.maxScore||(e&&e.maxScore)||100;
+    return {title:s.examTitle||(e&&e.title)||'시험', date:(e&&e.date)||'', score:s.score, max, pct:Math.round(s.score/max*100), weak:s.weakAbilities||[], comment:s.comment||''}; })
+    .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const avg=Math.round(rows.reduce((a,r)=>a+r.pct,0)/rows.length);
+  const freq={}; rows.forEach(r=>(r.weak||[]).forEach(w=>{ if(w) freq[w]=(freq[w]||0)+1; }));
+  const weak=Object.entries(freq).sort((a,b)=>b[1]-a[1]);
+  const maxFreq=weak.length?weak[0][1]:1;
+  const barColor=p=>p>=80?'var(--green)':(p>=60?'var(--primary)':(p>=40?'var(--yellow)':'var(--red)'));
+  return `
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+      <div class="rp-stat" style="flex:1;min-width:90px"><div class="rp-val">${avg}<span style="font-size:13px">%</span></div><div class="rp-lbl">평균 득점률</div></div>
+      <div class="rp-stat" style="flex:1;min-width:90px"><div class="rp-val">${rows.length}</div><div class="rp-lbl">채점 시험 수</div></div>
+      <div class="rp-stat" style="flex:1;min-width:90px"><div class="rp-val" style="font-size:15px">${weak.length?weak[0][0]:'-'}</div><div class="rp-lbl">가장 약한 능력</div></div>
+    </div>
+    <div style="font-size:13px;font-weight:700;margin:10px 0 6px">📉 점수 추이</div>
+    ${rows.map(r=>`<div style="margin-bottom:7px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px"><span style="color:var(--text-sub)">${r.title} <span style="color:var(--text-muted)">${r.date?('· '+r.date.slice(5)):''}</span></span><span style="font-weight:700;color:${barColor(r.pct)}">${r.score}/${r.max} (${r.pct}%)</span></div>
+      <div style="height:7px;background:var(--bg);border-radius:4px;overflow:hidden"><div style="height:100%;width:${r.pct}%;background:${barColor(r.pct)};border-radius:4px"></div></div>
+    </div>`).join('')}
+    ${weak.length?`<div style="font-size:13px;font-weight:700;margin:14px 0 6px">🎯 자주 부족했던 능력</div>
+    ${weak.map(([ab,cnt])=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+      <span style="font-size:12px;min-width:64px">${ab}</span>
+      <div style="flex:1;height:14px;background:var(--bg);border-radius:4px;overflow:hidden"><div style="height:100%;width:${Math.round(cnt/maxFreq*100)}%;background:var(--orange);border-radius:4px"></div></div>
+      <span style="font-size:11px;color:var(--text-muted)">${cnt}회</span>
+    </div>`).join('')}`:''}
+    ${rows.filter(r=>r.comment).length?`<div style="font-size:13px;font-weight:700;margin:14px 0 6px">💬 최근 총평</div>
+    ${rows.slice().reverse().filter(r=>r.comment).slice(0,3).map(r=>`<div style="font-size:12px;color:var(--text-sub);background:var(--bg);border-radius:8px;padding:7px 10px;margin-bottom:5px"><strong>${r.title}</strong> · ${r.comment}</div>`).join('')}`:''}`;
+}
 function rGrades(){
   const exams=getExams(),esubs=getExamSubs(),pendSubs=esubs.filter(s=>s.score===null||s.score===undefined);
   const editE=exEditId?exams.find(e=>e.id===exEditId):null;
   document.getElementById('gradesContent').innerHTML=`
     ${schoolExamCardHtml()}
     ${mockExamCardHtml()}
+    <div class="card" style="border-left:4px solid var(--purple)">
+      <div class="card-title">🎯 학생별 약점 대시보드 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(점수 추이 + 자주 약했던 능력)</span></div>
+      <div class="form-group" style="max-width:360px">
+        <label class="form-label">학생 선택</label>
+        <select class="form-select" id="gd-student" onchange="gradeDashStId=this.value; document.getElementById('gradeDash').innerHTML=studentGradeDash(gradeDashStId)">
+          <option value="">학생을 선택하세요</option>
+          ${getStudents().slice().sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(s=>`<option value="${s.id}" ${gradeDashStId===s.id?'selected':''}>${s.name}${s.school?(' · '+s.school):''}</option>`).join('')}
+        </select>
+      </div>
+      <div id="gradeDash">${studentGradeDash(gradeDashStId)}</div>
+    </div>
     <div class="card" style="border-left:4px solid var(--primary)">
       <div class="card-title">🤖 AI 시험지 분석 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(문제별 단원·요구능력·난이도)</span></div>
       <div class="upload-area" onclick="this.querySelector('input').click()">
