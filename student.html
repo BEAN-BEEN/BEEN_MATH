@@ -1204,12 +1204,68 @@ function renderAttendance() {
 // ================================================================
 // GRADES
 // ================================================================
+// 📄 성적표 (부모님 공유용) — 시험·모의고사·약점·총평을 깔끔하게
+function reportCardHtml(){
+  const exams=getExams().filter(e=>e.status==='scored');
+  const r=getReport();
+  const mocks=(S_MOCKSUBS||[]).map(s=>{ const m=(S_MOCKEXAMS||[]).find(x=>x.id===s.mockId); return {title:(m&&m.title)||'모의고사', date:(m&&m.date)||'', score:s.score, max:s.maxScore||(m&&m.maxScore)||100}; }).filter(x=>x.score!=null).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const examRows=exams.map(e=>({title:e.title, date:e.date, score:e.score, max:e.maxScore||100, weak:e.weakAbilities||[]})).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const pct=(s,m)=>Math.round(s/m*100);
+  const allPct=[...examRows.map(e=>pct(e.score,e.max)),...mocks.map(m=>pct(m.score,m.max))];
+  const avg=allPct.length?Math.round(allPct.reduce((a,b)=>a+b,0)/allPct.length):null;
+  const freq={}; examRows.forEach(e=>(e.weak||[]).forEach(w=>{ if(w) freq[w]=(freq[w]||0)+1; }));
+  const weak=Object.entries(freq).sort((a,b)=>b[1]-a[1]).map(x=>x[0]);
+  const today=new Date().toLocaleDateString('ko-KR');
+  const row=(t,d,sc,mx)=>`<tr><td style="padding:6px 8px;border-bottom:1px solid #eee">${t}</td><td style="padding:6px 8px;border-bottom:1px solid #eee;color:#888">${d?d.slice(2):'-'}</td><td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-weight:700">${sc}/${mx} (${pct(sc,mx)}%)</td></tr>`;
+  return `
+  <div style="font-family:'Noto Sans KR',sans-serif;color:#1E293B">
+    <div style="text-align:center;border-bottom:3px solid #114C56;padding-bottom:10px;margin-bottom:14px">
+      <div style="font-size:13px;color:#16A6A6;font-weight:800;letter-spacing:1px">BEEN MATH</div>
+      <div style="font-size:20px;font-weight:800;margin-top:4px">${STUDENT.name} 학생 성적표</div>
+      <div style="font-size:12px;color:#888;margin-top:2px">${S_SCHOOL||''}${S_SCHOOL?' · ':''}발행일 ${today}</div>
+    </div>
+    <div style="display:flex;gap:8px;text-align:center;margin-bottom:14px">
+      <div style="flex:1;background:#F0FDFA;border-radius:10px;padding:10px"><div style="font-size:22px;font-weight:800;color:#114C56">${avg!=null?avg+'%':'-'}</div><div style="font-size:11px;color:#666">평균 득점률</div></div>
+      <div style="flex:1;background:#EEF2FF;border-radius:10px;padding:10px"><div style="font-size:22px;font-weight:800;color:#5B6CF5">${r.homeworkRate}%</div><div style="font-size:11px;color:#666">숙제 제출률</div></div>
+      <div style="flex:1;background:#ECFDF5;border-radius:10px;padding:10px"><div style="font-size:22px;font-weight:800;color:#10B981">${r.attendanceRate}%</div><div style="font-size:11px;color:#666">출석률</div></div>
+    </div>
+    ${examRows.length?`<div style="font-size:13px;font-weight:700;margin:10px 0 4px">📋 시험 성적</div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px"><tbody>${examRows.map(e=>row(e.title,e.date,e.score,e.max)).join('')}</tbody></table>`:''}
+    ${mocks.length?`<div style="font-size:13px;font-weight:700;margin:14px 0 4px">📝 모의고사</div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px"><tbody>${mocks.map(m=>row(m.title,m.date,m.score,m.max)).join('')}</tbody></table>`:''}
+    ${weak.length?`<div style="font-size:13px;font-weight:700;margin:14px 0 4px">🎯 보완할 능력</div><div style="font-size:13px;color:#7C2D12;background:#FFF7ED;border-radius:8px;padding:8px 12px">${weak.join(', ')}</div>`:''}
+    ${(r.teacherComment&&r.teacherComment.indexOf('아직')<0)?`<div style="font-size:13px;font-weight:700;margin:14px 0 4px">💬 선생님 총평</div><div style="font-size:13px;color:#065F46;background:#ECFDF5;border-radius:8px;padding:8px 12px;line-height:1.6">${r.teacherComment}</div>`:''}
+    ${(!examRows.length&&!mocks.length)?'<div style="text-align:center;color:#888;padding:20px">아직 등록된 시험 성적이 없어요.</div>':''}
+    <div style="text-align:center;font-size:11px;color:#aab;margin-top:16px">혜빈쌤과 함께하는 BEEN MATH</div>
+  </div>`;
+}
+function openReportCard(){
+  const ov=document.createElement('div'); ov.setAttribute('data-rc','1');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:3000;display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:20px';
+  ov.innerHTML=`<div style="background:#fff;border-radius:16px;max-width:480px;width:100%;padding:22px;box-shadow:0 20px 50px rgba(0,0,0,.3)">
+    ${reportCardHtml()}
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-outline btn-sm" style="flex:1;justify-content:center" onclick="this.closest('[data-rc]').remove()">닫기</button>
+      <button class="btn btn-primary btn-sm" style="flex:1;justify-content:center" onclick="printReportCard()">🖨 인쇄 / PDF</button>
+    </div>
+  </div>`;
+  ov.onclick=e=>{ if(e.target===ov) ov.remove(); };
+  document.body.appendChild(ov);
+}
+function printReportCard(){
+  const w=window.open('','_blank','width=600,height=820');
+  if(!w){ showToast('팝업이 막혔어요. 화면을 캡처해서 보내도 돼요 📷','warning'); return; }
+  w.document.write(`<html><head><meta charset="utf-8"><title>${STUDENT.name} 성적표</title><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;800&display=swap" rel="stylesheet"></head><body style="margin:0;padding:24px">${reportCardHtml()}</body></html>`);
+  w.document.close();
+  setTimeout(()=>{ try{ w.focus(); w.print(); }catch(e){} }, 500);
+}
 function renderGrades() {
   const exams = getExams();
   const pendSub = exams.filter(e=>e.status==='pending_submission');
   const grading = exams.filter(e=>e.status==='grading');
   const scored = exams.filter(e=>e.status==='scored');
   let html='';
+  html += `<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn btn-primary btn-sm" onclick="openReportCard()">📄 성적표 (부모님께 보여주기)</button></div>`;
   if (pendSub.length) {
     html += `<div class="sec-label" style="color:var(--orange)">📋 답안지 제출할 시험</div>`;
     html += pendSub.map(e=>`
