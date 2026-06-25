@@ -405,6 +405,26 @@ function rCal(){
 }
 
 // ----- 선택 날짜 상세 -----
+// 그날 정규수업별 출결 예상 — 직보 가는 학생 / 다음날 타과목 시험 학생은 '빠짐'으로 분리
+function classAttendanceHtml(dateStr){
+  const wd=['sun','mon','tue','wed','thu','fri','sat'][new Date(dateStr+'T00:00:00').getDay()];
+  const classes=P_CLASSES.filter(c=>c.weekday===wd && isClassActive(c,dateStr) && (!c.type||c.type==='정규')).sort((a,b)=>(a.slot||'').localeCompare(b.slot||''));
+  if(!classes.length) return '';
+  const jb=jikboStudentIdsOn(dateStr);
+  let html='<div style="margin-top:10px;border-top:1px dashed var(--border);padding-top:10px"><div style="font-size:13px;font-weight:700;margin-bottom:6px">👥 수업별 출결 예상 <span style="font-size:11px;color:var(--text-muted);font-weight:400">(직보·다음날 시험 학생은 빠짐)</span></div>';
+  classes.forEach(c=>{
+    const roster=P_STUDENTS.filter(s=>{ const ids=Array.isArray(s.classIds)?s.classIds:(s.classId?[s.classId]:[]); return ids.includes(c.id); });
+    const coming=[], jikbo=[], exam=[];
+    roster.forEach(s=>{ if(jb.has(s.id)) jikbo.push(s.name); else if(hasOtherExamNextDay(s,dateStr)) exam.push(s.name); else coming.push(s.name); });
+    html+=`<div style="background:var(--bg);border-radius:8px;padding:8px 10px;margin-bottom:6px">
+      <div style="font-size:13px;font-weight:700">${c.name} <span style="font-size:11px;color:var(--text-muted)">${c.startTime&&c.endTime?(c.startTime+'~'+c.endTime):(c.slot||'')}</span> · <span style="color:var(--green)">올 ${coming.length}명</span>${(jikbo.length+exam.length)?` / <span style="color:var(--text-muted)">빠짐 ${jikbo.length+exam.length}명</span>`:''}</div>
+      <div style="font-size:12px;color:var(--text-sub);margin-top:3px">✅ ${coming.join(', ')||'-'}</div>
+      ${jikbo.length?`<div style="font-size:12px;color:var(--orange);margin-top:2px">🔶 직보로 빠짐: ${jikbo.join(', ')}</div>`:''}
+      ${exam.length?`<div style="font-size:12px;color:var(--red);margin-top:2px">📝 다음날 시험 준비: ${exam.join(', ')}</div>`:''}
+    </div>`;
+  });
+  return html+'</div>';
+}
 function rDayDetail(){
   const el=document.getElementById('dayDetail');
   const items=dayItems(selDate);
@@ -420,6 +440,7 @@ function rDayDetail(){
         <div><span class="chip" style="${ITEM_STYLE[it.type]}">${it.text}</span> <span style="font-size:12px;color:var(--text-muted)">${it.sub||''}${it.repeat?' · 🔁'+({daily:'매일',weekly:'매주',monthly:'매월'}[it.repeat]||''):''}</span></div>
         ${it.id?`<button class="btn btn-red btn-sm" onclick="doDelEvent('${it.id}')">삭제</button>`:''}
       </div>`).join(''):'<div style="color:var(--text-muted);padding:10px;font-size:13px">이 날은 일정이 없어요 🍃</div>'}
+    ${classAttendanceHtml(selDate)}
   </div>`;
 }
 
