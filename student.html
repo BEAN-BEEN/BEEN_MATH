@@ -690,9 +690,13 @@ async function submitHomework(assignmentId) {
   const late = !!(a && a.dueDate && today > a.dueDate);
   const base={ photos, offline:false, late, submittedAt:new Date().toLocaleString('ko-KR'), checked:false, needsRetry:false, retryDone:false, rejected:false, rejectReason:'' };
   const exist=S_SUBMISSIONS.find(s=>s.assignmentId===assignmentId);
-  if(exist){ await db.collection('submissions').doc(exist.id).update(base); }
-  else{ await db.collection('submissions').add({ assignmentId, assignmentTitle:a?a.title:'', classId:a?a.classId:'', className:a?a.className:'', studentId:STUDENT.id, studentName:STUDENT.name, ...base, ts:Date.now() }); }
-  await loadStudentData();
+  if(exist){ await db.collection('submissions').doc(exist.id).update(base); Object.assign(exist, base); }
+  else{
+    const payload={ assignmentId, assignmentTitle:a?a.title:'', classId:a?a.classId:'', className:a?a.className:'', studentId:STUDENT.id, studentName:STUDENT.name, ...base, ts:Date.now() };
+    const ref=await db.collection('submissions').add(payload);
+    S_SUBMISSIONS.push({ id:ref.id, ...payload });   // 저장 즉시 로컬 반영 → 새로고침이 느리거나 실패해도 '제출 완료' 표시됨
+  }
+  try{ await loadStudentData(); }catch(e){ console.warn('제출 후 새로고침 실패(무시):', e); }
 }
 // ✋ 사진 없이 교실에서 직접 검사받기 요청
 async function submitHomeworkOffline(assignmentId) {
@@ -701,9 +705,13 @@ async function submitHomeworkOffline(assignmentId) {
   const late = !!(a && a.dueDate && today > a.dueDate);
   const base={ photos:[], offline:true, late, submittedAt:new Date().toLocaleString('ko-KR'), checked:false, needsRetry:false, retryDone:false, rejected:false, rejectReason:'' };
   const exist=S_SUBMISSIONS.find(s=>s.assignmentId===assignmentId);
-  if(exist){ await db.collection('submissions').doc(exist.id).update(base); }
-  else{ await db.collection('submissions').add({ assignmentId, assignmentTitle:a?a.title:'', classId:a?a.classId:'', className:a?a.className:'', studentId:STUDENT.id, studentName:STUDENT.name, ...base, ts:Date.now() }); }
-  await loadStudentData();
+  if(exist){ await db.collection('submissions').doc(exist.id).update(base); Object.assign(exist, base); }
+  else{
+    const payload={ assignmentId, assignmentTitle:a?a.title:'', classId:a?a.classId:'', className:a?a.className:'', studentId:STUDENT.id, studentName:STUDENT.name, ...base, ts:Date.now() };
+    const ref=await db.collection('submissions').add(payload);
+    S_SUBMISSIONS.push({ id:ref.id, ...payload });
+  }
+  try{ await loadStudentData(); }catch(e){ console.warn('신청 후 새로고침 실패(무시):', e); }
 }
 // 🗑 제출 취소 — 선생님이 확인하기 전이면 학생이 스스로 무를 수 있어요 (사진도 함께 정리)
 async function submitHomeworkCancel(subId){
@@ -1090,12 +1098,13 @@ function handlePreview(input, id) {
 async function doSubmit(id) {
   const fi=document.getElementById('hwfile-'+id);
   if(!fi || !fi.files || !fi.files.length){ showToast('사진을 먼저 선택해주세요. (사진 없이 검사받으려면 ‘직접 검사받기’)','warning'); return; }
+  showToast('📤 제출 중이에요… 잠시만요','');
   try{
     await submitHomework(id);
+    renderHomework();        // 카드 먼저 '제출 완료'로 갱신
     launchConfetti();
-    showToast('숙제 제출 완료! 잘했어요 🎉','success');
-    renderHomework();
-  }catch(e){ showToast('제출 실패: '+e.message,'error'); }
+    showSubmitDone();        // 또렷한 ✅ 제출 완료 확인
+  }catch(e){ showToast('제출 실패: '+e.message+' — 사진/인터넷 확인 후 다시 시도해주세요','error'); }
 }
 // ✏️ '다시 올리기' 영역 펼치기/접기
 function toggleRedo(id){
@@ -1153,6 +1162,14 @@ function launchConfetti(){
     document.body.appendChild(c);
     setTimeout(()=>c.remove(),3600);
   }
+}
+// ✅ 제출 완료 확인 — 화면 중앙에 또렷하게 잠깐 표시
+function showSubmitDone(){
+  const o=document.createElement('div');
+  o.style.cssText='position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:3500;pointer-events:none';
+  o.innerHTML='<div style="background:var(--green,#10B981);color:#fff;padding:22px 30px;border-radius:18px;box-shadow:0 12px 40px rgba(0,0,0,.28);text-align:center;animation:tIn .3s ease"><div style="font-size:42px;line-height:1">✅</div><div style="font-size:17px;font-weight:800;margin-top:8px">숙제 제출 완료!</div><div style="font-size:13px;opacity:.92;margin-top:3px">잘했어요 🎉 선생님이 확인할 거예요</div></div>';
+  document.body.appendChild(o);
+  setTimeout(()=>o.remove(),1900);
 }
 
 // ================================================================
