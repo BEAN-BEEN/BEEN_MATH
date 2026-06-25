@@ -227,7 +227,8 @@ function jikboOn(dateStr){
     if(!studs.length) return;
     if(!jikboDates(e).includes(dateStr)) return;
     const inExam = e.startDate && e.endDate && dateStr>=e.startDate && dateStr<=e.endDate;
-    const time = inExam ? '2시' : '5시';
+    const dow = new Date(dateStr+'T00:00:00').getDay();
+    const time = (dow===0||dow===6) ? '오전 11시' : (inExam ? '2시' : '5시');   // 토·일은 11시로 통일
     const key=e.school+'|'+time;
     if(!bySchoolTime[key]) bySchoolTime[key]={school:e.school, time, students:[]};
     studs.forEach(s=>{ if(!bySchoolTime[key].students.includes(s.name)) bySchoolTime[key].students.push(s.name); });

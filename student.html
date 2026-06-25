@@ -860,7 +860,9 @@ function myJikbo(){
   const today=new Date().toISOString().slice(0,10); const out=[];
   (S_SCHOOL_EXAMS||[]).forEach(e=>{ _jbDates(e).forEach(ds=>{ if(ds<today) return;
     const inExam=e.startDate&&e.endDate&&ds>=e.startDate&&ds<=e.endDate;
-    out.push({date:ds, time:inExam?'오후 2시':'오후 5시', title:e.title||'시험'}); }); });
+    const dow=new Date(ds+'T00:00:00').getDay();
+    const time=(dow===0||dow===6)?'오전 11시':(inExam?'오후 2시':'오후 5시');   // 토·일은 11시
+    out.push({date:ds, time, title:e.title||'시험'}); }); });
   out.sort((a,b)=>a.date.localeCompare(b.date));
   return out;
 }
@@ -911,7 +913,7 @@ function renderHome() {
             <span class="badge b-orange">${j.time}</span>
             <span style="font-size:12px;color:var(--text-muted)">${j.title}</span>
           </div>`; }).join('')}
-        <div style="font-size:11px;color:var(--text-muted);margin-top:8px">시험기간엔 오후 2시, 그 외엔 오후 5시예요. 늦지 않게 와주세요!</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:8px">토·일은 오전 11시, 평일은 시험기간엔 오후 2시·그 외엔 오후 5시예요. 늦지 않게 와주세요!</div>
       </div>`;
     })()}
     <div class="hero-banner">
