@@ -362,7 +362,11 @@ function dayItems(dateStr){
   const items=[];
   if(layers.teach){
     P_CLASSES.filter(c=>c.weekday===wd&&isClassActive(c,dateStr)).sort((a,b)=>(a.slot||'').localeCompare(b.slot||'')).forEach(c=>items.push({type:'class',text:c.name,sub:(c.startTime&&c.endTime?c.startTime+'~'+c.endTime:(c.slot||''))+(c.type&&c.type!=='정규'?' · '+c.type:'')}));
-    P_MAKEUPS.filter(m=>m.date===dateStr).forEach(m=>items.push({type:'makeup',text:'🔶 '+(m.className||'보강'),sub:(m.time||'')+(m.note?' · '+m.note:'')}));
+    // 직보: 직보 카드와 동일하게 계산해서 표시
+    const _jb=jikboOn(dateStr);
+    if(_jb.length){ const cnt=_jb.reduce((a,e)=>a+e.students.length,0); items.push({type:'jikbo',text:'🔶 직보',sub:_jb.map(e=>e.time+' '+e.school).join(', ')+' · '+cnt+'명'}); }
+    // 보강: 자동 직보 찌꺼기 제외, 실제 보강만
+    P_MAKEUPS.filter(m=>m.date===dateStr && !m.auto && !((m.className||'').includes('직보'))).forEach(m=>items.push({type:'makeup',text:'🔶 '+(m.className||'보강'),sub:(m.time||'')+(m.note?' · '+m.note:'')}));
     P_EXAMS.forEach(e=>examMathDates(e).forEach(m=>{ if(m.date===dateStr) items.push({type:'math',text:'📐 '+(e.school||'')+' '+(m.label||'수학'),sub:e.title||''}); }));
   }
   if(layers.academy) P_EVENTS.filter(e=>e.category==='academy'&&occursOn(e,dateStr)).forEach(e=>items.push({type:'academy',text:e.title,sub:(e.time||'')+(e.note?' · '+e.note:''),id:e.id,repeat:e.repeat}));
@@ -372,6 +376,7 @@ function dayItems(dateStr){
 function examShade(dateStr){ return layers.teach && P_EXAMS.some(e=>e.startDate&&e.endDate&&dateStr>=e.startDate&&dateStr<=e.endDate); }
 const ITEM_STYLE={
   class:'color:var(--primary);background:var(--primary-light)',
+  jikbo:'color:#fff;background:var(--orange)',
   makeup:'color:#fff;background:var(--orange)',
   math:'color:#DC2626;background:transparent;font-weight:800;padding-left:0',
   academy:'color:var(--purple);background:var(--purple-light)',
@@ -448,7 +453,7 @@ function rDayDetail(){
 function rBriefing(){
   const t=todayStr();
   const items=dayItems(t).filter(it=>['class','makeup','math'].includes(it.type)||true);
-  const cls=items.filter(i=>i.type==='class'), mks=items.filter(i=>i.type==='makeup');
+  const cls=items.filter(i=>i.type==='class'), mks=items.filter(i=>i.type==='makeup'), jbs=items.filter(i=>i.type==='jikbo');
   const evs=items.filter(i=>i.type==='academy'||i.type==='personal');
   const examsNow=P_EXAMS.filter(e=>e.startDate&&e.endDate&&t>=e.startDate&&t<=e.endDate);
   const dueTodos=P_TODOS.filter(x=>!x.done&&x.due&&x.due<=t);
@@ -457,6 +462,7 @@ function rBriefing(){
     <div style="font-size:16px;font-weight:800;margin-bottom:10px">☀️ 오늘 브리핑</div>
     <div style="display:flex;flex-direction:column;gap:6px;font-size:14px">
       <div>📚 수업 ${cls.length?cls.map(c=>`<strong>${c.text}</strong>`).join(', '):'없음'}</div>
+      ${jbs.length?`<div>🔶 직보 <strong>${jbs.map(j=>j.sub||'').join(' / ')}</strong></div>`:''}
       ${mks.length?`<div>🔶 보강 ${mks.map(m=>`<strong>${m.text.replace('🔶 ','')}</strong> ${m.sub||''}`).join(', ')}</div>`:''}
       ${examsNow.length?`<div>📕 시험기간 진행중: ${examsNow.map(e=>e.school).join(', ')}</div>`:''}
       ${within7.length?`<div>📐 다가오는 수학시험: ${within7.join(' · ')}</div>`:''}
@@ -493,7 +499,10 @@ function rUpcoming(){
     const d=new Date(); d.setDate(d.getDate()+i);
     const ds=`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
     P_EVENTS.filter(e=>occursOn(e,ds)).forEach(e=>out.push({...e, on:ds}));
-    if(layers.teach) P_MAKEUPS.filter(m=>m.date===ds).forEach(m=>out.push({title:'🔶 보강 '+(m.className||''), category:'teach', time:m.time, on:ds}));
+    if(layers.teach){
+      jikboOn(ds).forEach(j=>out.push({title:`🔶 직보 ${j.school} (${j.students.length}명)`, category:'teach', time:j.time, on:ds}));
+      P_MAKEUPS.filter(m=>m.date===ds && !m.auto && !((m.className||'').includes('직보'))).forEach(m=>out.push({title:'🔶 보강 '+(m.className||''), category:'teach', time:m.time, on:ds}));
+    }
   }
   document.getElementById('upcomingList').innerHTML = out.length? out.map(e=>`
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid var(--border)">
