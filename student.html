@@ -477,9 +477,10 @@
 <!-- Firebase SDK (compat) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
-<script src="firebase-init.js?v=2026061102"></script>
+<script src="firebase-init.js?v=2026070101"></script>
 
 <script>
 // ================================================================
@@ -1878,6 +1879,7 @@ function logout(){
 
 async function init(){
   requireRole('student');   // 학생 아니면 로그인 페이지로
+  await window.bmAuthReady;  // 익명 인증(출입증) 완료 후 데이터 요청
   const info = document.getElementById('sidebarUserInfo');
   if(info) info.textContent = STUDENT.name + ' 학생' + (STUDENT.className ? (' · ' + STUDENT.className) : '');
   buildSidebar();

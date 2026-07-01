@@ -18,6 +18,23 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
+// ================================================================
+// 🔐 익명 인증 — 앱에 들어온 클라이언트에만 '출입증'(auth) 발급
+//  · 규칙을 `if request.auth != null`로 잠가도 앱은 그대로 작동
+//  · 학생/선생님은 기존 이름+비밀번호 로그인 그대로 (출입증은 뒤에서 자동)
+//  · 콘솔 Authentication에서 '익명' 로그인이 사용 설정돼 있어야 함
+//  각 페이지 init에서 `await window.bmAuthReady` 후 데이터를 불러옴
+// ================================================================
+window.bmAuthReady = new Promise(function(resolve){
+  var done=false, finish=function(u){ if(!done){ done=true; resolve(u||null); } };
+  try{
+    if(!firebase.auth){ finish(null); return; }
+    firebase.auth().onAuthStateChanged(function(user){ if(user) finish(user); });
+    firebase.auth().signInAnonymously().catch(function(e){ console.warn('익명 인증 실패:', e && (e.code||e.message)); finish(null); });
+    setTimeout(function(){ finish(null); }, 6000);   // 안전장치: 응답 없어도 6초 뒤 진행
+  }catch(e){ finish(null); }
+});
+
 // 푸시 알림(FCM) 공개 키 (VAPID) — 공개돼도 안전한 값이에요
 const FCM_VAPID_KEY = "BNvh-x2hLucnbXNZILzvs6O2RzhsrUvlrUIbtcS5F3RxQqej25oHhz8zz4s2_HoZ-Ue1EmEJzpSKlzS5VVeJiRo";
 

@@ -136,7 +136,8 @@
   <!-- Firebase SDK (compat) -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="firebase-init.js?v=2026061102"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="firebase-init.js?v=2026070101"></script>
 
   <script>
   // ================================================================
@@ -192,6 +193,7 @@
   // ================================================================
   async function doLogin(e){
     e.preventDefault();
+    await window.bmAuthReady;   // 익명 인증(출입증) 완료 후 로그인 조회
     const btn = document.getElementById('loginBtn');
     btn.disabled = true; btn.textContent = '로그인 중...';
     try {

@@ -277,7 +277,8 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
-<script src="firebase-init.js?v=2026061102"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="firebase-init.js?v=2026070101"></script>
 
 <script>
 // ================================================================
@@ -2241,6 +2242,7 @@ async function pruneOldFirebase(){
 
 async function init(){
   requireRole('teacher');   // 선생님 아니면 로그인 페이지로
+  await window.bmAuthReady;  // 익명 인증(출입증) 완료 후 데이터 요청
   document.getElementById('todayDate').textContent=new Date().toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
   buildSidebar();
   loadThemeCloud();              // 학원 공통 테마 적용
