@@ -238,6 +238,10 @@
       <div class="page-header"><div class="page-title">숙제 관리</div></div>
       <div class="content-area" id="homeworkContent"></div>
     </div>
+    <div class="section" id="sec-review">
+      <div class="page-header"><div class="page-title">복습 관리</div></div>
+      <div class="content-area" id="reviewContent"></div>
+    </div>
     <div class="section" id="sec-attendance">
       <div class="page-header"><div class="page-title">출석 관리</div></div>
       <div class="content-area" id="attendanceContent"></div>
@@ -352,6 +356,23 @@ function subCompletion(sub){
 }
 async function saveAssignment(d){ d.createdAt=new Date().toISOString().slice(0,10); await db.collection('assignments').add(d); await loadAssignments(); }
 async function updateSub(sid,u){ await db.collection('submissions').doc(sid).update(u); await loadSubmissions(); }
+
+// ===== 복습(리뷰)·복습 제출 = Firebase 공유 (선생님이 번호 지정 → 학생 재풀이 사진 → 확인) =====
+let REVIEWS_CACHE=[], REVIEWSUBS_CACHE=[];
+async function loadReviews(){ const s=await db.collection('reviews').get(); REVIEWS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')); }
+async function loadReviewSubs(){ const s=await db.collection('reviewSubs').get(); REVIEWSUBS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})); }
+function getReviews(){return REVIEWS_CACHE;}
+function getReviewSubs(rid){return REVIEWSUBS_CACHE.filter(s=>s.reviewId===rid);}
+async function saveReview(d){ d.createdAt=new Date().toISOString().slice(0,10); await db.collection('reviews').add(d); await loadReviews(); }
+async function updateReview(id,d){ await db.collection('reviews').doc(id).update(d); await loadReviews(); }
+async function deleteReview(id){ await db.collection('reviews').doc(id).delete(); await loadReviews(); }
+// 한 복습 제출 상태 — 지정 번호가 모두 사진이 올라오면 done
+function revStat(rev,sub){
+  const nums=Array.isArray(rev.nums)?rev.nums:[];
+  const photos=(sub&&sub.photos)||{};
+  const doneNos=nums.filter(n=>photos[n]);
+  return { started:doneNos.length>0, doneCnt:doneNos.length, total:nums.length, done:nums.length>0&&doneNos.length===nums.length, photos, checked:!!(sub&&sub.checked) };
+}
 
 // ===== 그 외 데이터는 아직 이 브라우저에만 저장돼요 (다음 단계에서 Firebase로) =====
 // ===== 출석·성적 = Firebase 공유 (선생님↔학생) =====
@@ -621,12 +642,13 @@ const ICONS={
   consultation:_svg('<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 015.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>'),
   report:_svg('<path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="7"/><rect x="12" y="7" width="3" height="11"/><rect x="17" y="4" width="3" height="14"/>'),
   home:_svg('<path d="M3 11l9-8 9 8"/><path d="M5 10v10a1 1 0 001 1h3v-6h6v6h3a1 1 0 001-1V10"/>'),
+  review:_svg('<path d="M3 12a9 9 0 019-9 9 9 0 018 5"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 01-9 9 9 9 0 01-8-5"/><path d="M3 21v-5h5"/>'),
   teacher:_svg('<path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1.5 3 3 6 3s6-1.5 6-3v-5"/>')
 };
 const NAV=[
   {id:'dashboard',label:'대시보드'},{id:'students',label:'학생 관리'},
   {id:'classroom',label:'반별 관리'},
-  {id:'homework',label:'숙제 관리'},{id:'attendance',label:'출석 관리'},
+  {id:'homework',label:'숙제 관리'},{id:'review',label:'복습 관리'},{id:'attendance',label:'출석 관리'},
   {id:'grades',label:'성적 관리'},{id:'questions',label:'질문 관리'},
   {id:'videos',label:'수업 영상 관리'},{id:'materials',label:'자료실 관리'},
   {id:'schedule',label:'시간표 관리'},{id:'consultation',label:'상담 관리'},
@@ -649,7 +671,7 @@ function navigate(s){
   curSec=s;renderSection(s);window.scrollTo(0,0);closeMob();
 }
 function renderSection(s){
-  ({dashboard:rDashboard,students:rStudents,classroom:rClassroom,homework:rHomework,attendance:rAttendance,grades:rGrades,questions:rQuestions,videos:rVideos,materials:rMaterials,schedule:rSchedule,consultation:rConsultation,report:rReport})[s]?.();
+  ({dashboard:rDashboard,students:rStudents,classroom:rClassroom,homework:rHomework,review:rReview,attendance:rAttendance,grades:rGrades,questions:rQuestions,videos:rVideos,materials:rMaterials,schedule:rSchedule,consultation:rConsultation,report:rReport})[s]?.();
 }
 function toggleMob(){document.getElementById('sidebar').classList.toggle('mob-open');document.getElementById('mobOverlay').classList.toggle('open');}
 function closeMob(){document.getElementById('sidebar').classList.remove('mob-open');document.getElementById('mobOverlay').classList.remove('open');}
@@ -1308,6 +1330,110 @@ async function doDelAsgn(id,title){
   if(!confirm(`"${title}" 과제를 삭제할까요?\n(이미 제출한 기록은 남아있을 수 있어요)`)) return;
   try{ await deleteAssignment(id); if(hwEditId===id)hwEditId=null; showToast('과제를 삭제했어요','warning'); rHomework(); }
   catch(e){ showToast('삭제 실패: '+e.message,'error'); }
+}
+
+// ================================================================
+// 🔁 복습 관리 — 선생님이 다시 풀 문제 번호를 지정하면, 학생이 재풀이 사진 업로드 → 확인
+// ================================================================
+let revEditId=null, revOpenId=null;
+// "1-5, 8, 10~12" → [1,2,3,4,5,8,10,11,12] (중복 제거·정렬)
+function parseNums(str){
+  const set=new Set();
+  (str||'').split(',').forEach(part=>{
+    const m=part.trim().match(/^(\d+)\s*[-~]\s*(\d+)$/);
+    if(m){ let a=+m[1],b=+m[2]; if(a>b)[a,b]=[b,a]; for(let i=a;i<=b&&i-a<200;i++) set.add(i); }
+    else { const n=parseInt(part,10); if(n>0) set.add(n); }
+  });
+  return [...set].sort((a,b)=>a-b);
+}
+function rReview(){
+  const revs=getReviews();
+  const editR=revEditId?revs.find(x=>x.id===revEditId):null;
+  const esc=s=>(s||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  document.getElementById('reviewContent').innerHTML=`
+    <div class="card" ${editR?'style="border-left:4px solid var(--orange)"':''}>
+      <div class="card-title">${editR?'✏️ 복습 수정':'🔁 새 복습 내기'}</div>
+      <div style="font-size:12px;color:var(--text-muted);margin:-6px 0 12px">다시 풀 문제 번호를 지정하면, 학생이 번호별로 다시 푼 사진을 올려요. 전부 올리면 복습 완료 → 선생님이 확인하면 끝!</div>
+      <div class="form-row-3">
+        <div class="form-group"><label class="form-label">대상 반 *</label>${classSelect('rv-cls')}</div>
+        <div class="form-group"><label class="form-label">교재 <span style="font-size:11px;color:var(--text-muted)">(선택)</span></label><input class="form-input" id="rv-textbook" placeholder="예: 쎈 공통수학1" value="${editR?esc(editR.textbook):''}"></div>
+        <div class="form-group"><label class="form-label">마감일 <span style="font-size:11px;color:var(--text-muted)">(선택)</span></label><input class="form-input" id="rv-due" type="date" value="${editR?(editR.dueDate||''):''}"></div>
+      </div>
+      <div class="form-group"><label class="form-label">복습 제목 *</label><input class="form-input" id="rv-title" placeholder="예: 3단원 틀린 문제 다시 풀기" value="${editR?esc(editR.title):''}"></div>
+      <div class="form-group" style="background:var(--primary-light);border-radius:10px;padding:12px">
+        <label class="form-label">🔢 다시 풀 문제 번호 * <span style="font-size:11px;color:var(--text-muted)">(쉼표·범위 가능 — 예: 1, 3, 5-8)</span></label>
+        <input class="form-input" id="rv-nums" placeholder="예: 1, 3, 5-8" value="${editR?esc((editR.nums||[]).join(', ')):''}">
+      </div>
+      <div class="form-group"><label class="form-label">안내 메모 <span style="font-size:11px;color:var(--text-muted)">(선택)</span></label><textarea class="form-textarea" id="rv-note" placeholder="예: 풀이 과정까지 보이게 찍어서 올려주세요">${editR?(editR.note||''):''}</textarea></div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="doSaveReview()">${editR?'수정 저장 💾':'복습 내기'}</button>
+        ${editR?`<button class="btn btn-outline" onclick="revEditId=null;rReview()">취소</button>`:''}
+      </div>
+    </div>
+    ${revs.length===0?`<div class="card" style="text-align:center;padding:30px;color:var(--text-muted)">아직 낸 복습이 없어요. 위에서 첫 복습을 내보세요!</div>`:''}
+    ${revs.map(rev=>{
+      const subs=getReviewSubs(rev.id), sts=getStudentsByClass(rev.classId), isOpen=revOpenId===rev.id;
+      const stats=sts.map(st=>revStat(rev,subs.find(s=>s.studentId===st.id)));
+      const doneN=stats.filter(s=>s.done).length;
+      const checkedN=stats.filter(s=>s.checked).length;
+      return `
+        <div class="card" style="border-left:4px solid var(--primary);margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+            <div><span class="chip">${rev.className}</span><strong style="margin-left:8px">${rev.title}</strong>
+              <span class="badge b-primary">🔢 ${(rev.nums||[]).length}문제</span>
+              <span class="badge ${doneN===sts.length&&sts.length?'b-green':'b-orange'}">완료 ${doneN}/${sts.length}</span>
+              ${checkedN?`<span class="badge b-green">✅ 확인 ${checkedN}</span>`:''}
+              ${rev.textbook?`<span style="margin-left:6px;font-size:12px;color:var(--text-muted)">📘 ${rev.textbook}</span>`:''}
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span style="font-size:12px;color:var(--text-muted)">번호 ${(rev.nums||[]).join(', ')}${rev.dueDate?(' · 마감 '+rev.dueDate):''}</span>
+              <button class="btn btn-outline btn-sm" onclick="revOpenId=revOpenId==='${rev.id}'?null:'${rev.id}';rReview()">${isOpen?'접기':'현황 보기'}</button>
+              <button class="btn btn-outline btn-sm" onclick="revEditId='${rev.id}';rReview();window.scrollTo({top:0,behavior:'smooth'})">✏️ 수정</button>
+              <button class="btn btn-red btn-sm" onclick="doDelReview('${rev.id}','${(rev.title||'').replace(/'/g,'')}')">삭제</button>
+            </div>
+          </div>
+          ${isOpen?`<div style="margin-top:14px"><div class="table-wrap"><table>
+            <thead><tr><th>학생</th><th>진행</th><th>재풀이 사진</th><th>확인</th></tr></thead>
+            <tbody>${sts.map(st=>{const sub=subs.find(s=>s.studentId===st.id);const o=revStat(rev,sub);
+              const statusCell=o.done?'<span class="badge b-green">✅ 다 풀었어요</span>':(o.started?`<span class="badge b-orange">진행 ${o.doneCnt}/${o.total}</span>`:'<span class="badge b-red">아직 안 함</span>');
+              const photoCell=o.started?`<button class="btn btn-outline btn-sm" onclick='showPhotoModal(${JSON.stringify(Object.values(o.photos))})'>📷 ${o.doneCnt}장</button>`:'-';
+              const checkCell=sub?`<button class="btn ${o.checked?'btn-green':'btn-outline'} btn-sm" onclick="doCheckReview('${sub.id}')">${o.checked?'✓ 확인됨':'확인'}</button>`:'-';
+              return `<tr><td><strong>${st.name}</strong></td><td>${statusCell}</td><td>${photoCell}</td><td>${checkCell}</td></tr>`;
+            }).join('')}</tbody>
+          </table></div></div>`:''}
+        </div>`;
+    }).join('')}`;
+  if(revEditId){ const rev=revs.find(x=>x.id===revEditId); const cs=document.getElementById('rv-cls'); if(rev&&cs) cs.value=rev.classId; }
+}
+async function doSaveReview(){
+  const classId=document.getElementById('rv-cls').value, title=document.getElementById('rv-title').value.trim();
+  const nums=parseNums(document.getElementById('rv-nums').value);
+  if(!classId||!title){ showToast('반과 제목을 입력해주세요','error'); return; }
+  if(!nums.length){ showToast('다시 풀 문제 번호를 입력해주세요','error'); return; }
+  const cls=CLASSES.find(c=>c.id===classId);
+  const data={classId,className:cls?.name||'',title,textbook:document.getElementById('rv-textbook').value.trim(),note:document.getElementById('rv-note').value.trim(),dueDate:document.getElementById('rv-due').value,nums};
+  try{
+    if(revEditId){
+      await updateReview(revEditId,data); revEditId=null;
+      showToast(`"${title}" 복습 수정 완료 ✏️`,'success'); rReview();
+    }else{
+      await saveReview(data);
+      showToast(`"${title}" 복습 등록 완료! 학생들이 바로 볼 수 있어요 🔁`,'success'); rReview();
+      fetch('/api/notify',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({tokens:classTokens(classId), title:'새 복습이 등록됐어요 🔁', body:`${cls?.name||''} · ${title}`})})
+        .then(r=>r.json()).then(j=>{ if(j&&j.sent) showToast(`알림 ${j.sent}명에게 발송 📨`); }).catch(()=>{});
+    }
+  }catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+async function doDelReview(id,title){
+  if(!confirm(`"${title}" 복습을 삭제할까요?`)) return;
+  try{ await deleteReview(id); if(revEditId===id)revEditId=null; showToast('복습을 삭제했어요','warning'); rReview(); }
+  catch(e){ showToast('삭제 실패: '+e.message,'error'); }
+}
+async function doCheckReview(subId){
+  const sub=REVIEWSUBS_CACHE.find(s=>s.id===subId); if(!sub) return;
+  try{ await db.collection('reviewSubs').doc(subId).update({checked:!sub.checked}); await loadReviewSubs(); rReview(); }
+  catch(e){ showToast('처리 실패: '+e.message,'error'); }
 }
 // ➕ 빠른 숙제 입력 (수업 끝나고 폰으로 바로)
 let qhwClassId=null;
@@ -2292,6 +2418,8 @@ async function init(){
     await loadStudents();        // 학생 명단
     await loadAssignments();     // 숙제(과제)
     await loadSubmissions();     // 제출 현황
+    await loadReviews();         // 복습(번호 지정)
+    await loadReviewSubs();      // 복습 재풀이 제출
     await loadAttendance();      // 출석
     await loadExams();           // 시험
     await loadExamSubs();        // 답안지/점수

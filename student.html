@@ -341,6 +341,15 @@
       <div class="content-area" id="homeworkContent"></div>
     </div>
 
+    <!-- 복습 -->
+    <div class="section" id="sec-review">
+      <div class="page-header">
+        <div class="page-title">복습</div>
+        <div class="page-subtitle">선생님이 정해준 문제를 다시 풀어 사진으로 올려요</div>
+      </div>
+      <div class="content-area" id="reviewContent"></div>
+    </div>
+
     <!-- 출석 -->
     <div class="section" id="sec-attendance">
       <div class="page-header">
@@ -433,11 +442,11 @@
   <div class="bn-item" onclick="navigate('homework')" data-sec="homework">
     <div class="bn-icon">📝</div><div class="bn-label">숙제</div>
   </div>
+  <div class="bn-item" onclick="navigate('review')" data-sec="review">
+    <div class="bn-icon">🔁</div><div class="bn-label">복습</div>
+  </div>
   <div class="bn-item" onclick="navigate('report')" data-sec="report">
     <div class="bn-icon">📊</div><div class="bn-label">리포트</div>
-  </div>
-  <div class="bn-item" onclick="navigate('questions')" data-sec="questions">
-    <div class="bn-icon">💬</div><div class="bn-label">질문실</div>
   </div>
   <div class="bn-item" id="moreBtn" onclick="openDrawer()">
     <div class="bn-icon">☰</div><div class="bn-label">더보기</div>
@@ -450,6 +459,9 @@
   <div class="drawer-handle"></div>
   <div class="drawer-title">더보기</div>
   <div class="drawer-grid">
+    <div class="drawer-item" onclick="navigate('questions');closeDrawer()">
+      <div class="di-icon">💬</div><div class="di-label">질문실</div>
+    </div>
     <div class="drawer-item" onclick="navigate('attendance');closeDrawer()">
       <div class="di-icon">🗓️</div><div class="di-label">출석</div>
     </div>
@@ -515,7 +527,7 @@ const REPORT = {
 const WD_LABEL={mon:'월',tue:'화',wed:'수',thu:'목',fri:'금',sat:'토',sun:'일'};
 
 // ===== Firebase에서 내 반·숙제·제출·출석·성적 불러오기 =====
-let S_CLASSES=[], ALL_CLASSES=[], S_ASSIGNMENTS=[], S_SUBMISSIONS=[], S_ATTENDANCE=[], S_EXAMS=[], S_EXAMSUBS=[], S_QUESTIONS=[], S_NOTICES=[];
+let S_CLASSES=[], ALL_CLASSES=[], S_ASSIGNMENTS=[], S_SUBMISSIONS=[], S_ATTENDANCE=[], S_EXAMS=[], S_EXAMSUBS=[], S_QUESTIONS=[], S_NOTICES=[], S_REVIEWS=[], S_REVIEWSUBS=[];
 let S_SCHOOL='', S_SCHOOLEXAM=null, S_MATHEVENTS=[], S_SCHOOL_EXAMS=[], S_MAKEUPS=[], ALL_MAKEUPS=[], ALL_SCHOOL_EXAMS=[];
 let calScope='mine'; // 'mine' = 내 일정만, 'all' = 전체 학교
 let S_MOCKEXAMS=[], S_MOCKSUBS=[];
@@ -528,6 +540,11 @@ async function loadStudentData(){
   const asn = await db.collection('assignments').get();
   S_ASSIGNMENTS = asn.docs.map(d=>({id:d.id,...d.data()})).filter(a=>ids.includes(a.classId))
     .sort((x,y)=>(y.createdAt||'').localeCompare(x.createdAt||''));
+  // 복습 (내 반) — 선생님이 번호 지정
+  try{ const rv = await db.collection('reviews').get();
+    S_REVIEWS = rv.docs.map(d=>({id:d.id,...d.data()})).filter(r=>ids.includes(r.classId))
+      .sort((x,y)=>(y.createdAt||'').localeCompare(x.createdAt||'')); }
+  catch(e){ S_REVIEWS=[]; }
   // 내 반의 시험
   const ex = await db.collection('exams').get();
   S_EXAMS = ex.docs.map(d=>({id:d.id,...d.data()})).filter(e=>ids.includes(e.classId))
@@ -547,6 +564,9 @@ async function loadStudentData(){
   if(STUDENT.id){
     const sub = await db.collection('submissions').where('studentId','==',STUDENT.id).get();
     S_SUBMISSIONS = sub.docs.map(d=>({id:d.id,...d.data()}));
+    try{ const rvs = await db.collection('reviewSubs').where('studentId','==',STUDENT.id).get();
+      S_REVIEWSUBS = rvs.docs.map(d=>({id:d.id,...d.data()})); }
+    catch(e){ S_REVIEWSUBS=[]; }
     const es = await db.collection('examSubs').where('studentId','==',STUDENT.id).get();
     S_EXAMSUBS = es.docs.map(d=>({id:d.id,...d.data()}));
     const q = await db.collection('questions').where('studentId','==',STUDENT.id).get();
@@ -589,7 +609,7 @@ async function loadStudentData(){
     S_MOCKEXAMS=mk.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
     const mks=await db.collection('mockSubs').where('studentId','==',STUDENT.id).get();
     S_MOCKSUBS=mks.docs.map(d=>({id:d.id,...d.data()}));
-  } else { S_SUBMISSIONS=[]; S_EXAMSUBS=[]; S_QUESTIONS=[]; S_REPORT=null; S_SCHOOLEXAM=null; S_MOCKEXAMS=[]; S_MOCKSUBS=[]; }
+  } else { S_SUBMISSIONS=[]; S_REVIEWSUBS=[]; S_EXAMSUBS=[]; S_QUESTIONS=[]; S_REPORT=null; S_SCHOOLEXAM=null; S_MOCKEXAMS=[]; S_MOCKSUBS=[]; }
   // 공지사항 (전체 공통)
   try{ const nt = await db.collection('notices').get(); S_NOTICES = nt.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.ts||0)-(a.ts||0)); }
   catch(e){ S_NOTICES=[]; }
@@ -766,6 +786,7 @@ const _svg=p=>`<svg viewBox="0 0 24 24" width="19" height="19" fill="none" strok
 const ICONS={
   home:_svg('<path d="M3 11l9-8 9 8"/><path d="M5 10v10a1 1 0 001 1h3v-6h6v6h3a1 1 0 001-1V10"/>'),
   homework:_svg('<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h4"/>'),
+  review:_svg('<path d="M3 12a9 9 0 019-9 9 9 0 018 5"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 01-9 9 9 9 0 01-8-5"/><path d="M3 21v-5h5"/>'),
   attendance:_svg('<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M9 16l2 2 4-4"/>'),
   grades:_svg('<circle cx="12" cy="8" r="5"/><path d="M8.5 12.5L7 22l5-3 5 3-1.5-9.5"/>'),
   report:_svg('<path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="7"/><rect x="12" y="7" width="3" height="11"/><rect x="17" y="4" width="3" height="14"/>'),
@@ -779,6 +800,7 @@ const ICONS={
 const NAV_ITEMS = [
   { id:'home',         label:'홈' },
   { id:'homework',     label:'숙제' },
+  { id:'review',       label:'복습' },
   { id:'attendance',   label:'출석' },
   { id:'grades',       label:'성적' },
   { id:'report',       label:'학습 리포트' },
@@ -790,7 +812,7 @@ const NAV_ITEMS = [
   { id:'teacher',      label:'혜빈쌤' }
 ];
 const PAGE_TITLES = {
-  home:'홈', homework:'숙제', attendance:'출석', grades:'성적', report:'학습 리포트',
+  home:'홈', homework:'숙제', review:'복습', attendance:'출석', grades:'성적', report:'학습 리포트',
   questions:'질문실', videos:'수업 영상', materials:'자료실', schedule:'시간표',
   consultation:'상담 신청', teacher:'혜빈쌤'
 };
@@ -816,7 +838,7 @@ function navigate(sec) {
   window.scrollTo(0,0);
 }
 function renderSection(s) {
-  const map = { home:renderHome, homework:renderHomework, attendance:renderAttendance, grades:renderGrades, report:renderReport, questions:renderQuestions, videos:renderVideos, materials:renderMaterials, schedule:renderSchedule, consultation:renderConsultation, teacher:renderTeacher };
+  const map = { home:renderHome, homework:renderHomework, review:renderReview, attendance:renderAttendance, grades:renderGrades, report:renderReport, questions:renderQuestions, videos:renderVideos, materials:renderMaterials, schedule:renderSchedule, consultation:renderConsultation, teacher:renderTeacher };
   map[s]?.();
 }
 
@@ -891,6 +913,11 @@ function renderHome() {
   const submitted = asgn.filter(a => a.status==='submitted');
   const needsRetry = submitted.filter(a => a.needsRetry).length;
   const checking = submitted.filter(a => !a.teacherChecked).length;
+  // 🔶 오답 축 — 틀린 번호를 입력했지만 고친 사진이 아직 안 끝났거나, 선생님이 오답 표시한 것
+  const oapTodo = asgn.filter(a => (a.isOap && a.oapEntered && !a.oapDone) || a.needsRetry).length;
+  // 🔁 복습 축 — 아직 다 못 푼 복습
+  const revs = getReviews();
+  const revTodo = revs.filter(r => !r.done).length;
   const att = getAttendance();
   const qs = getQuestions();
   const r = getReport();
@@ -956,29 +983,36 @@ function renderHome() {
         <div class="a-icon">🔔</div>
         <div><h4>보강 수업이 예정되어 있어요</h4><p>${m.date} ${m.time} · ${m.className} · ${m.reason}</p></div>
       </div>`).join('')}
-    <div class="stats-grid">
-      <div class="stat-card" onclick="navigate('homework')">
-        <div class="s-icon">📝</div><div class="s-label">숙제</div>
-        <div class="stat-row"><span class="sl">제출할</span><span class="sv" style="color:var(--primary)">${pending.length}개</span></div>
-        <div class="stat-row"><span class="sl">확인중</span><span class="sv" style="color:var(--yellow)">${checking}개</span></div>
-        <div class="stat-row"><span class="sl">오답</span><span class="sv" style="color:var(--red)">${needsRetry}개</span></div>
+    <div style="font-size:15px;font-weight:800;margin:4px 2px 10px">오늘 할 일</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
+      ${[
+        {sec:'homework', accent:'var(--primary)', icon:'📝', name:'숙제', n:pending.length,
+         todo:'제출할 숙제가 있어요', clear:'모두 제출 완료 🎉', cta:'숙제 하러 가기'},
+        {sec:'homework', accent:'var(--orange)', icon:'🔶', name:'오답', n:oapTodo,
+         todo:'고쳐야 할 오답이 있어요', clear:'오답 없이 깔끔해요 ✨', cta:'오답 고치러 가기'},
+        {sec:'review', accent:'#7C3AED', icon:'🔁', name:'복습', n:revTodo,
+         todo:'다시 풀 문제가 있어요', clear:'복습 완료 🎉', cta:'복습 하러 가기'}
+      ].map(x=>`
+        <div class="stat-card" onclick="navigate('${x.sec}')" style="cursor:pointer;border-top:4px solid ${x.accent};text-align:center;padding:18px 14px">
+          <div style="font-size:34px;line-height:1">${x.icon}</div>
+          <div style="font-size:15px;font-weight:800;margin-top:6px">${x.name}</div>
+          <div style="font-size:32px;font-weight:900;color:${x.accent};margin:2px 0;letter-spacing:-1px">${x.n}<span style="font-size:15px;font-weight:700">개</span></div>
+          <div style="font-size:12px;color:var(--text-muted);min-height:16px">${x.n?x.todo:x.clear}</div>
+          <div style="color:${x.accent};font-weight:700;font-size:13px;margin-top:10px">${x.cta} →</div>
+        </div>`).join('')}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px">
+      <div class="stat-card" onclick="navigate('attendance')" style="cursor:pointer;padding:12px">
+        <div class="s-label" style="font-size:12px">🗓️ 출석</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:6px">출석 ${att.filter(a=>a.status==='present').length} · 지각 ${att.filter(a=>a.status==='late').length} · 결석 ${att.filter(a=>a.status==='absent').length}</div>
       </div>
-      <div class="stat-card" onclick="navigate('attendance')">
-        <div class="s-icon">🗓️</div><div class="s-label">출석</div>
-        <div class="stat-row"><span class="sl">출석</span><span class="sv" style="color:var(--green)">${att.filter(a=>a.status==='present').length}회</span></div>
-        <div class="stat-row"><span class="sl">지각</span><span class="sv" style="color:var(--yellow)">${att.filter(a=>a.status==='late').length}회</span></div>
-        <div class="stat-row"><span class="sl">결석</span><span class="sv" style="color:var(--red)">${att.filter(a=>a.status==='absent').length}회</span></div>
+      <div class="stat-card" onclick="navigate('grades')" style="cursor:pointer;padding:12px">
+        <div class="s-label" style="font-size:12px">🏆 성적</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:6px">최근 ${recentScore} · ${changeStr}</div>
       </div>
-      <div class="stat-card" onclick="navigate('grades')">
-        <div class="s-icon">🏆</div><div class="s-label">성적</div>
-        <div class="stat-row"><span class="sl">최근 점수</span><span class="sv" style="color:var(--primary)">${recentScore}</span></div>
-        <div class="stat-row"><span class="sl">변화</span><span class="sv" style="color:var(--green)">${changeStr}</span></div>
-        <div class="stat-row"><span class="sl">평균</span><span class="sv">${avgScore}</span></div>
-      </div>
-      <div class="stat-card" onclick="navigate('questions')">
-        <div class="s-icon">💬</div><div class="s-label">질문</div>
-        <div class="stat-row"><span class="sl">새 답변</span><span class="sv" style="color:var(--green)">${qs.filter(q=>q.status==='answered').length}개</span></div>
-        <div class="stat-row"><span class="sl">대기중</span><span class="sv" style="color:var(--yellow)">${qs.filter(q=>q.status==='pending').length}개</span></div>
+      <div class="stat-card" onclick="navigate('questions')" style="cursor:pointer;padding:12px">
+        <div class="s-label" style="font-size:12px">💬 질문</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:6px">답변 ${qs.filter(q=>q.status==='answered').length} · 대기 ${qs.filter(q=>q.status==='pending').length}</div>
       </div>
     </div>
     <div class="card">
@@ -1098,6 +1132,70 @@ async function doResetWrong(subId, aid){
   if(!confirm('틀린 문제 번호를 다시 입력할까요?\n(이미 올린 고친 사진도 초기화돼요)')) return;
   try{ await db.collection('submissions').doc(subId).update({wrongNos:null, corrections:{}}); await loadStudentData(); renderHomework(); }
   catch(e){ showToast('실패: '+e.message,'error'); }
+}
+
+// ================================================================
+// 🔁 복습 — 선생님이 정해준 문제를 다시 풀어 번호별 사진 업로드
+// ================================================================
+function getReviews(){
+  return S_REVIEWS.map(r=>{
+    const sub=S_REVIEWSUBS.find(s=>s.reviewId===r.id);
+    const nums=Array.isArray(r.nums)?r.nums:[];
+    const photos=(sub&&sub.photos)||{};
+    const doneCnt=nums.filter(n=>photos[n]).length;
+    return { ...r, nums, photos, subId:sub?sub.id:null, doneCnt, total:nums.length, done:nums.length>0&&doneCnt===nums.length, checked:!!(sub&&sub.checked) };
+  });
+}
+function renderReview(){
+  const revs=getReviews();
+  const todo=revs.filter(r=>!r.done);
+  const el=document.getElementById('reviewContent');
+  if(!revs.length){ el.innerHTML='<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">아직 복습 과제가 없어요 🎉<br><span style="font-size:12px">선생님이 다시 풀 문제를 정해주면 여기에 표시돼요</span></div>'; return; }
+  el.innerHTML=`
+    <div class="hero-banner">
+      <h2>🔁 다시 풀 복습이 ${todo.length}개 있어요</h2>
+      <p>정해진 번호를 다시 풀고, 번호별로 사진을 올리면 복습 완료예요!</p>
+    </div>
+    ${revs.map(r=>{
+      const dueOver=r.dueDate && r.dueDate < new Date().toISOString().slice(0,10) && !r.done;
+      return `<div class="card" style="border-left:4px solid ${r.done?'var(--green)':(dueOver?'var(--red)':'var(--primary)')};margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+          <div class="hw-title" style="margin:0">${r.title}</div>
+          ${r.done?(r.checked?'<span class="badge b-green">✅ 선생님 확인 완료</span>':'<span class="badge b-green">🎉 복습 완료</span>'):`<span class="badge b-orange">진행 ${r.doneCnt}/${r.total}</span>`}
+        </div>
+        ${r.textbook?`<div style="font-size:12px;color:var(--primary);font-weight:600;margin-bottom:4px">📘 ${r.textbook}</div>`:''}
+        ${r.note?`<div class="hw-body">${r.note}</div>`:''}
+        ${r.dueDate?`<div class="hw-due" style="${dueOver?'color:var(--red)':''}">📅 ${fmtDateFull(r.dueDate)} 까지</div>`:''}
+        <div style="font-size:13px;margin:10px 0;font-weight:700">✏️ 다시 풀 문제 ${r.total}개 — 번호별로 다시 푼 사진을 올려요 (${r.doneCnt}/${r.total})</div>
+        ${r.nums.map(n=>{ const done=!!r.photos[n];
+          return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border)">
+            <span style="width:46px;height:44px;flex:0 0 auto;border-radius:10px;background:${done?'var(--green-light)':'var(--primary-light)'};color:${done?'var(--green)':'var(--primary)'};font-weight:800;display:flex;align-items:center;justify-content:center">${n}번</span>
+            ${done
+              ? `<span style="flex:1;font-size:13px;color:var(--green);font-weight:700">✅ 다시 푼 사진 완료</span><button class="btn btn-outline btn-sm" onclick="window.open('${r.photos[n]}','_blank')">보기</button><input type="file" accept="image/*" id="rv-${r.id}-${n}" style="display:none" onchange="submitReviewPhoto('${r.id}',${n})"><button class="btn btn-outline btn-sm" onclick="document.getElementById('rv-${r.id}-${n}').click()">다시</button>`
+              : `<input type="file" accept="image/*" id="rv-${r.id}-${n}" style="display:none" onchange="submitReviewPhoto('${r.id}',${n})"><button class="btn btn-primary btn-sm" style="flex:1" onclick="document.getElementById('rv-${r.id}-${n}').click()">📷 다시 푼 사진 올리기</button>`}
+          </div>`; }).join('')}
+        ${r.done?`<div style="background:var(--green-light);border-radius:var(--radius-sm);padding:12px;text-align:center;color:var(--green);font-weight:800;margin-top:12px">🎉 복습 완료! 정말 잘했어요</div>`:''}
+      </div>`;
+    }).join('')}`;
+}
+async function submitReviewPhoto(rid, no){
+  const fi=document.getElementById('rv-'+rid+'-'+no);
+  if(!fi||!fi.files||!fi.files.length) return;
+  const r=S_REVIEWS.find(x=>x.id===rid);
+  try{
+    const urls=await uploadPhotos(fi.files,'reviews/'+rid);
+    const exist=S_REVIEWSUBS.find(s=>s.reviewId===rid);
+    const photos=Object.assign({}, exist&&exist.photos); photos[no]=urls[0];
+    const base={ photos, submittedAt:new Date().toLocaleString('ko-KR'), ts:Date.now() };
+    if(exist){ await db.collection('reviewSubs').doc(exist.id).update(base); }
+    else{ await db.collection('reviewSubs').add({ reviewId:rid, reviewTitle:r?r.title:'', classId:r?r.classId:'', className:r?r.className:'', studentId:STUDENT.id, studentName:STUDENT.name, checked:false, ...base }); }
+    await loadStudentData();
+    const nums=(r&&r.nums)||[];
+    const s2=S_REVIEWSUBS.find(s=>s.reviewId===rid);
+    const all=nums.length>0 && nums.every(n=>s2&&s2.photos&&s2.photos[n]);
+    if(all){ launchConfetti(); showToast('복습 완료! 정말 잘했어요 🎉','success'); } else showToast(no+'번 다시 푼 사진 등록 ✓','success');
+    renderReview();
+  }catch(e){ showToast('업로드 실패: '+e.message,'error'); }
 }
 function renderHomework() {
   const asgn = getAssignments();
