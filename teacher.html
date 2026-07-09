@@ -238,6 +238,10 @@
       <div class="page-header"><div class="page-title">숙제 관리</div></div>
       <div class="content-area" id="homeworkContent"></div>
     </div>
+    <div class="section" id="sec-wrong">
+      <div class="page-header"><div class="page-title">오답 관리</div></div>
+      <div class="content-area" id="wrongContent"></div>
+    </div>
     <div class="section" id="sec-review">
       <div class="page-header"><div class="page-title">복습 관리</div></div>
       <div class="content-area" id="reviewContent"></div>
@@ -643,12 +647,13 @@ const ICONS={
   report:_svg('<path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="7"/><rect x="12" y="7" width="3" height="11"/><rect x="17" y="4" width="3" height="14"/>'),
   home:_svg('<path d="M3 11l9-8 9 8"/><path d="M5 10v10a1 1 0 001 1h3v-6h6v6h3a1 1 0 001-1V10"/>'),
   review:_svg('<path d="M3 12a9 9 0 019-9 9 9 0 018 5"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 01-9 9 9 9 0 01-8-5"/><path d="M3 21v-5h5"/>'),
+  wrong:_svg('<circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/>'),
   teacher:_svg('<path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1.5 3 3 6 3s6-1.5 6-3v-5"/>')
 };
 const NAV=[
   {id:'dashboard',label:'대시보드'},{id:'students',label:'학생 관리'},
   {id:'classroom',label:'반별 관리'},
-  {id:'homework',label:'숙제 관리'},{id:'review',label:'복습 관리'},{id:'attendance',label:'출석 관리'},
+  {id:'homework',label:'숙제 관리'},{id:'wrong',label:'오답 관리'},{id:'review',label:'복습 관리'},{id:'attendance',label:'출석 관리'},
   {id:'grades',label:'성적 관리'},{id:'questions',label:'질문 관리'},
   {id:'videos',label:'수업 영상 관리'},{id:'materials',label:'자료실 관리'},
   {id:'schedule',label:'시간표 관리'},{id:'consultation',label:'상담 관리'},
@@ -671,7 +676,7 @@ function navigate(s){
   curSec=s;renderSection(s);window.scrollTo(0,0);closeMob();
 }
 function renderSection(s){
-  ({dashboard:rDashboard,students:rStudents,classroom:rClassroom,homework:rHomework,review:rReview,attendance:rAttendance,grades:rGrades,questions:rQuestions,videos:rVideos,materials:rMaterials,schedule:rSchedule,consultation:rConsultation,report:rReport})[s]?.();
+  ({dashboard:rDashboard,students:rStudents,classroom:rClassroom,homework:rHomework,wrong:rWrong,review:rReview,attendance:rAttendance,grades:rGrades,questions:rQuestions,videos:rVideos,materials:rMaterials,schedule:rSchedule,consultation:rConsultation,report:rReport})[s]?.();
 }
 function toggleMob(){document.getElementById('sidebar').classList.toggle('mob-open');document.getElementById('mobOverlay').classList.toggle('open');}
 function closeMob(){document.getElementById('sidebar').classList.remove('mob-open');document.getElementById('mobOverlay').classList.remove('open');}
@@ -1177,13 +1182,17 @@ function rHomework(){
       <div class="form-group"><label class="form-label">과제 제목 *</label><input class="form-input" id="hw-title" placeholder="예: 수학Ⅱ 3단원 연습문제" value="${editA?esc(editA.title):''}"></div>
       <div class="form-group"><label class="form-label">과제 내용</label><textarea class="form-textarea" id="hw-content" placeholder="교재 페이지, 문제 범위 등">${editA?(editA.content||''):''}</textarea></div>
       <div class="form-group" style="background:var(--primary-light);border-radius:10px;padding:12px">
-        <label class="form-label">🔢 문제 번호 범위 <span style="font-size:11px;color:var(--text-muted)">(입력하면 학생이 '틀린 번호만' 입력→오답 완료 방식으로 바뀌어요)</span></label>
-        <div style="display:flex;align-items:center;gap:8px">
-          <input class="form-input" id="hw-pstart" type="number" min="1" style="width:100px" placeholder="시작" value="${editA?(editA.probStart||''):''}">
+        <label class="form-label">🔢 오답 관리 범위 <span style="font-size:11px;color:var(--text-muted)">(입력하면 학생이 '틀린 문제만' 표시→오답 관리 방식으로 바뀌어요)</span></label>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <input class="form-input" id="hw-pstart" type="number" min="1" style="width:90px" placeholder="시작" value="${editA?(editA.probStart||''):''}">
           <span>~</span>
-          <input class="form-input" id="hw-pend" type="number" min="1" style="width:100px" placeholder="끝" value="${editA?(editA.probEnd||''):''}">
-          <span style="font-size:12px;color:var(--text-muted)">번 (예: 1 ~ 20)</span>
+          <input class="form-input" id="hw-pend" type="number" min="1" style="width:90px" placeholder="끝" value="${editA?(editA.probEnd||''):''}">
+          <span style="font-size:12px;color:var(--text-muted)">번 (예: 1 ~ 20 · 번호 그리드)</span>
         </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+          <input class="form-input" id="hw-plabel" style="flex:1;min-width:140px" placeholder="자유 범위 (예: 자이스토리 H30~I70)" value="${editA?esc(editA.probLabel||''):''}">
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:6px">· 깔끔한 정수 범위면 위(그리드), 자이스토리처럼 문자+숫자면 아래 자유 범위를 쓰세요. 둘 중 하나만 넣어도 오답 관리가 켜져요.</div>
       </div>
       <div class="form-group" style="max-width:180px"><label class="form-label">최대 사진 수 <span style="font-size:11px;color:var(--text-muted)">(범위 미입력 시)</span></label><input class="form-input" id="hw-photos" type="number" value="${editA?(editA.maxPhotos||30):30}" min="1" max="30"></div>
       <div class="btn-row">
@@ -1214,12 +1223,13 @@ function rHomework(){
       const overdue=a.dueDate && a.dueDate < _today;
       const retryPending=subs.filter(s=>s.needsRetry).length;
       const retryDone=subs.filter(s=>s.retryResolved && !s.needsRetry).length;
-      const isOap=!!(a.probStart&&a.probEnd);
+      const isOap=!!((a.probStart&&a.probEnd)||a.probLabel);
+      const oapRangeLabel=(a.probStart&&a.probEnd)?`${a.probStart}~${a.probEnd}번`:(a.probLabel||'');
       const oapDoneN=subs.filter(s=>{const o=oapStat(s);return o.entered&&o.done;}).length;
       const badge = missing===0 ? '<span class="badge b-green">전원 제출 ✓</span>'
                   : (overdue ? `<span class="badge b-red">마감 지남 · 미제출 ${missing}명</span>` : `<span class="badge b-orange">미제출 ${missing}명</span>`);
       const headBadges = isOap
-        ? `<span class="badge b-primary">🔢 ${a.probStart}~${a.probEnd}번</span> <span class="badge ${oapDoneN===sts.length&&sts.length?'b-green':'b-orange'}">오답완료 ${oapDoneN}/${sts.length}</span>`
+        ? `<span class="badge b-primary">🔢 ${oapRangeLabel}</span> <span class="badge ${oapDoneN===sts.length&&sts.length?'b-green':'b-orange'}">오답완료 ${oapDoneN}/${sts.length}</span>`
         : `${badge}${retryPending?` <span class="badge b-orange">✏️ 오답 미완료 ${retryPending}</span>`:''}${retryDone?` <span class="badge b-green">✅ 오답 완료 ${retryDone}</span>`:''}`;
       return `
         <div class="card" style="border-left:4px solid ${overdue&&missing>0?'var(--red)':'var(--primary)'};margin-bottom:12px">
@@ -1284,10 +1294,11 @@ async function deleteAssignment(id){ await db.collection('assignments').doc(id).
 // 🔢 오답 방식 숙제 — 학생별 상태
 function oapStat(sub){
   const entered = sub && Array.isArray(sub.wrongNos);
-  const wn = entered ? sub.wrongNos : [];
+  const wn = entered ? sub.wrongNos.map(String) : [];
   const corr = (sub && sub.corrections) || {};
-  const done = entered && (wn.length===0 || wn.every(n=>corr[n]));
-  return { entered, wrongNos:wn, corr, done, doneCnt:wn.filter(n=>corr[n]).length };
+  const redo = (sub && sub.oapRedo) || {};
+  const done = entered && (wn.length===0 || wn.every(n=>corr[n] && !redo[n]));
+  return { entered, wrongNos:wn, corr, done, doneCnt:wn.filter(n=>corr[n] && !redo[n]).length };
 }
 function showCorrPhotos(subId){
   const s=getSubmissions().find(x=>x.id===subId);
@@ -1312,7 +1323,7 @@ async function doSaveAsgn(){
   const classId=document.getElementById('hw-cls').value,title=document.getElementById('hw-title').value.trim();
   if(!classId||!title){showToast('반과 제목을 입력해주세요','error');return;}
   const cls=CLASSES.find(c=>c.id===classId);
-  const data={classId,className:cls?.name||'',title,content:document.getElementById('hw-content').value.trim(),textbook:document.getElementById('hw-textbook').value.trim(),startDate:document.getElementById('hw-start').value,dueDate:document.getElementById('hw-due').value,maxPhotos:parseInt(document.getElementById('hw-photos').value)||30,probStart:parseInt(document.getElementById('hw-pstart').value)||null,probEnd:parseInt(document.getElementById('hw-pend').value)||null};
+  const data={classId,className:cls?.name||'',title,content:document.getElementById('hw-content').value.trim(),textbook:document.getElementById('hw-textbook').value.trim(),startDate:document.getElementById('hw-start').value,dueDate:document.getElementById('hw-due').value,maxPhotos:parseInt(document.getElementById('hw-photos').value)||30,probStart:parseInt(document.getElementById('hw-pstart').value)||null,probEnd:parseInt(document.getElementById('hw-pend').value)||null,probLabel:(document.getElementById('hw-plabel').value||'').trim()||null};
   try{
     if(hwEditId){
       await updateAssignment(hwEditId,data); hwEditId=null;
@@ -1434,6 +1445,95 @@ async function doCheckReview(subId){
   const sub=REVIEWSUBS_CACHE.find(s=>s.id===subId); if(!sub) return;
   try{ await db.collection('reviewSubs').doc(subId).update({checked:!sub.checked}); await loadReviewSubs(); rReview(); }
   catch(e){ showToast('처리 실패: '+e.message,'error'); }
+}
+
+// ================================================================
+// 🔶 오답 관리 — 학생이 올린 재풀이 사진을 문제별로 확인(맞음)/재오답, 누락분 보완
+// ================================================================
+let wrongOnlyPending=false;
+function rWrong(){
+  const asgn=getAssignments().filter(a=>!!((a.probStart&&a.probEnd)||a.probLabel));
+  const groups=[]; let waitTotal=0, okTotal=0, redoTotal=0;
+  asgn.forEach(a=>{
+    const subs=getSubsByAssignment(a.id).filter(s=>Array.isArray(s.wrongNos)&&s.wrongNos.length>0);
+    if(!subs.length) return;
+    let gWait=0;
+    subs.forEach(s=>{ (s.wrongNos||[]).map(String).forEach(n=>{ const corr=(s.corrections||{})[n], ok=(s.oapOk||{})[n], redo=(s.oapRedo||{})[n];
+      if(ok) okTotal++; else if(redo) redoTotal++; else if(corr){ waitTotal++; gWait++; } }); });
+    groups.push({a,subs,gWait});
+  });
+  groups.sort((x,y)=>y.gWait-x.gWait);
+  const view = wrongOnlyPending ? groups.filter(g=>g.gWait>0) : groups;
+  const esc=s=>(s||'').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+  document.getElementById('wrongContent').innerHTML=`
+    <div class="card" style="padding:14px 16px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:15px;font-weight:800">🔶 오답 현황</span>
+        <span class="badge b-yellow">확인 대기 ${waitTotal}</span>
+        <span class="badge b-red">재오답 ${redoTotal}</span>
+        <span class="badge b-green">확인 완료 ${okTotal}</span>
+        <div style="flex:1"></div>
+        <button class="btn btn-sm" style="${wrongOnlyPending?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="wrongOnlyPending=!wrongOnlyPending;rWrong()">${wrongOnlyPending?'✓ 확인 대기만':'확인 대기만 보기'}</button>
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:8px">학생이 올린 재풀이 사진을 보고 <strong>맞음</strong>이면 확인, 또 틀렸으면 <strong>재오답</strong>을 누르면 학생이 다시 풀어 올려요. 학생이 빠뜨린 문제는 '보완'으로 추가할 수 있어요.</div>
+    </div>
+    ${view.length===0?`<div class="card" style="text-align:center;padding:30px;color:var(--text-muted)">${groups.length===0?'아직 등록된 오답이 없어요. 학생이 숙제에서 틀린 문제를 표시하면 여기 모여요.':'확인 대기 중인 오답이 없어요 🎉'}</div>`:''}
+    ${view.map(g=>{ const a=g.a; const range=(a.probStart&&a.probEnd)?`${a.probStart}~${a.probEnd}번`:(a.probLabel||'');
+      return `<div class="card" style="border-left:4px solid ${g.gWait>0?'var(--orange)':'var(--primary)'};margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:4px">
+          <div><span class="chip">${a.className}</span><strong style="margin-left:8px">${a.title}</strong> <span class="badge b-primary">🔢 ${range}</span>${g.gWait>0?` <span class="badge b-yellow">확인 대기 ${g.gWait}</span>`:''}</div>
+          ${a.textbook?`<span style="font-size:12px;color:var(--text-muted)">📘 ${a.textbook}</span>`:''}
+        </div>
+        ${g.subs.map(s=>{ const wn=(s.wrongNos||[]).map(String); const corr=s.corrections||{}, ok=s.oapOk||{}, redo=s.oapRedo||{};
+          return `<div style="padding:10px 0;border-top:1px solid var(--border)">
+            <div style="font-weight:700;margin-bottom:6px">${s.studentName||'학생'} <span style="font-size:12px;color:var(--text-muted);font-weight:400">· 오답 ${wn.length}개, 확인 ${wn.filter(n=>ok[n]).length}/${wn.length}</span></div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start">
+              ${wn.map(n=>{ const st = ok[n]?'ok':(redo[n]?'redo':(corr[n]?'wait':'todo'));
+                const bg={ok:'var(--green-light)',redo:'#FEE2E2',wait:'#FEF9C3',todo:'var(--bg)'}[st];
+                const fg={ok:'var(--green)',redo:'var(--red)',wait:'#854D0E',todo:'var(--text-muted)'}[st];
+                let actions='';
+                if(st==='wait') actions=`<button class="btn btn-outline btn-sm" style="padding:2px 6px" onclick='showPhotoModal(["${corr[n]}"])'>보기</button><button class="btn btn-green btn-sm" style="padding:2px 6px" onclick="doConfirmWrong('${s.id}','${esc(n)}')">✓맞음</button><button class="btn btn-red btn-sm" style="padding:2px 6px" onclick="doRedoWrong('${s.id}','${esc(n)}')">↻재오답</button>`;
+                else if(st==='ok') actions=`<button class="btn btn-outline btn-sm" style="padding:2px 6px" onclick="doUnconfirmWrong('${s.id}','${esc(n)}')">취소</button>`;
+                else if(st==='redo') actions=`<span style="font-size:11px;color:var(--red)">다시 풀는 중</span>`;
+                else actions=`<span style="font-size:11px;color:var(--text-muted)">사진 대기</span>`;
+                return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;border:1px solid var(--border);border-radius:10px;padding:6px 8px;min-width:58px">
+                  <span style="font-weight:800;padding:2px 8px;border-radius:7px;background:${bg};color:${fg}">${n}</span>
+                  <div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:center">${actions}</div>
+                </div>`; }).join('')}
+              <div style="display:flex;align-items:center;gap:4px;margin-left:4px">
+                <input class="form-input" id="addwrong-${s.id}" placeholder="보완: H45" style="width:90px;padding:5px 8px;font-size:12px">
+                <button class="btn btn-outline btn-sm" onclick="doAddWrong('${s.id}')">추가</button>
+              </div>
+            </div>
+          </div>`; }).join('')}
+      </div>`; }).join('')}`;
+}
+async function doConfirmWrong(subId,label){
+  const sub=SUBMISSIONS_CACHE.find(s=>s.id===subId); if(!sub) return;
+  const ok=Object.assign({},sub.oapOk); ok[label]=true; const redo=Object.assign({},sub.oapRedo); delete redo[label];
+  try{ await db.collection('submissions').doc(subId).update({oapOk:ok,oapRedo:redo}); await loadSubmissions(); rWrong(); }
+  catch(e){ showToast('처리 실패: '+e.message,'error'); }
+}
+async function doRedoWrong(subId,label){
+  const sub=SUBMISSIONS_CACHE.find(s=>s.id===subId); if(!sub) return;
+  const redo=Object.assign({},sub.oapRedo); redo[label]=true; const ok=Object.assign({},sub.oapOk); delete ok[label];
+  try{ await db.collection('submissions').doc(subId).update({oapRedo:redo,oapOk:ok}); await loadSubmissions(); rWrong(); showToast('재오답 표시 — 학생이 다시 풀어 올려요','warning'); }
+  catch(e){ showToast('처리 실패: '+e.message,'error'); }
+}
+async function doUnconfirmWrong(subId,label){
+  const sub=SUBMISSIONS_CACHE.find(s=>s.id===subId); if(!sub) return;
+  const ok=Object.assign({},sub.oapOk); delete ok[label];
+  try{ await db.collection('submissions').doc(subId).update({oapOk:ok}); await loadSubmissions(); rWrong(); }
+  catch(e){ showToast('처리 실패: '+e.message,'error'); }
+}
+async function doAddWrong(subId){
+  const inp=document.getElementById('addwrong-'+subId); const raw=inp?inp.value:'';
+  const labels=raw.split(/[,\s]+/).map(s=>s.trim()).filter(Boolean);
+  if(!labels.length){ showToast('추가할 문제 번호를 입력해주세요','warning'); return; }
+  const sub=SUBMISSIONS_CACHE.find(s=>s.id===subId); if(!sub) return;
+  const wn=[...new Set([...(sub.wrongNos||[]).map(String),...labels])];
+  try{ await db.collection('submissions').doc(subId).update({wrongNos:wn}); await loadSubmissions(); rWrong(); showToast(`오답 ${labels.length}개 보완 — 학생이 다시 풀어 올려요`,'success'); }
+  catch(e){ showToast('추가 실패: '+e.message,'error'); }
 }
 // ➕ 빠른 숙제 입력 (수업 끝나고 폰으로 바로)
 let qhwClassId=null;
