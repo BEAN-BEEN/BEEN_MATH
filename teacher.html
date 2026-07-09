@@ -337,7 +337,14 @@ async function loadStudents(){
   STUDENTS_CACHE=snap.docs.map(d=>({id:d.id, ...d.data()}));
 }
 function getStudents(){return STUDENTS_CACHE;}
-function getStudentsByClass(cid){return STUDENTS_CACHE.filter(s=>Array.isArray(s.classIds)?s.classIds.includes(cid):s.classId===cid);}
+// 재원 = 활성. 휴원·퇴원은 명단·출석·숙제·알림·통계에서 제외(기록은 보존)
+function studentStatus(s){ return (s&&s.status)||'재원'; }
+function isActiveStudent(s){ return studentStatus(s)==='재원'; }
+function getActiveStudents(){ return STUDENTS_CACHE.filter(isActiveStudent); }
+function getStudentsByClass(cid, includeInactive){
+  const inClass=STUDENTS_CACHE.filter(s=>Array.isArray(s.classIds)?s.classIds.includes(cid):s.classId===cid);
+  return includeInactive ? inClass : inClass.filter(isActiveStudent);
+}
 function classNamesOf(s){ return Array.isArray(s.classNames)&&s.classNames.length ? s.classNames : (s.className?[s.className]:[]); }
 
 // 학생 추가/삭제 → Firebase에 저장 (회원가입 없이 선생님이 직접 등록)
@@ -897,7 +904,7 @@ function rDashboard(){
 // ================================================================
 // STUDENTS
 // ================================================================
-let showAdd=false, stSearch='', editStudentId=null;
+let showAdd=false, stSearch='', editStudentId=null, stStatusFilter='재원';
 function renderEditCard(){
   const s=getStudents().find(x=>x.id===editStudentId); if(!s) return '';
   const ids=s.classIds||(s.classId?[s.classId]:[]);
@@ -916,6 +923,15 @@ function renderEditCard(){
     <div class="form-row-2">
       <div class="form-group"><label class="form-label">학교 <span style="color:var(--text-muted);font-weight:400">(내신 시험 일정 매칭용)</span></label><input class="form-input" id="es-school" value="${s.school||''}" placeholder="예: 송도고등학교"></div>
       <div class="form-group"><label class="form-label">학부모 연락처</label><input class="form-input" id="es-parent" value="${s.parentPhone||''}"></div>
+    </div>
+    <div class="form-group" style="background:var(--bg);border-radius:10px;padding:12px">
+      <label class="form-label">재원 상태 <span style="font-size:11px;color:var(--text-muted)">(휴원·퇴원은 명단/출석/알림에서 빠지고 기록은 보존돼요)</span></label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${['재원','휴원','퇴원'].map(v=>{const cur=studentStatus(s)===v;const col=v==='재원'?'var(--green)':(v==='휴원'?'var(--yellow)':'var(--red)');return `<button type="button" class="btn btn-sm es-status-btn" data-v="${v}" onclick="document.querySelectorAll('.es-status-btn').forEach(b=>{b.style.background='var(--surface)';b.style.color='var(--text-sub)'});this.style.background='${col}';this.style.color='#fff';document.getElementById('es-status').value='${v}'" style="${cur?`background:${col};color:#fff`:'background:var(--surface);color:var(--text-sub)'}">${v}</button>`;}).join('')}
+      </div>
+      <input type="hidden" id="es-status" value="${studentStatus(s)}">
+      <input class="form-input" id="es-statusmemo" value="${(s.statusMemo||'').replace(/"/g,'&quot;')}" placeholder="사유·메모 (예: 관양고 학원으로 이동)" style="margin-top:8px">
+      ${s.statusDate&&studentStatus(s)!=='재원'?`<div style="font-size:11px;color:var(--text-muted);margin-top:6px">📅 ${studentStatus(s)} 처리일: ${s.statusDate}</div>`:''}
     </div>
     <div style="background:var(--bg);border-radius:10px;padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <span style="font-size:13px">🔐 로그인 비밀번호: <strong>${s.pwHash?'설정됨':'아직 미설정'}</strong></span>
@@ -942,14 +958,24 @@ async function doSaveEdit(){
   const school=document.getElementById('es-school').value.trim();
   if(!name||!phone){showToast('이름과 핸드폰 번호를 입력해주세요','error');return;}
   const last4=phone.replace(/[^0-9]/g,'').slice(-4);
-  try{ await updateStudentFS(editStudentId,{name,phone,phoneLast4:last4,parentPhone,classIds,classNames,school}); editStudentId=null; showToast(`${name} 정보 수정 완료 ✓`,'success'); rStudents(); }
+  const status=(document.getElementById('es-status').value||'재원');
+  const statusMemo=(document.getElementById('es-statusmemo').value||'').trim();
+  const patch={name,phone,phoneLast4:last4,parentPhone,classIds,classNames,school,status,statusMemo};
+  // 휴원/퇴원으로 바뀌면 처리일 자동 기록, 재원 복귀 시 처리일 제거
+  const wasStatus=studentStatus(s);
+  if(status!=='재원'){ if(wasStatus!==status || !s.statusDate) patch.statusDate=new Date().toISOString().slice(0,10); }
+  else { patch.statusDate=''; }
+  try{ await updateStudentFS(editStudentId,patch); editStudentId=null; showToast(`${name} 정보 수정 완료 ✓${status!=='재원'?' · '+status+' 처리됨':''}`,'success'); rStudents(); }
   catch(e){ showToast('수정 실패: '+e.message,'error'); }
 }
 function rStudents(){
   document.getElementById('studentsContent').innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
       <input class="form-input" id="stSearchInput" style="max-width:260px" placeholder="🔍 학생 이름 검색" value="${stSearch}" oninput="stSearch=this.value;renderStudentRows()">
       <button class="btn btn-primary" onclick="showAdd=!showAdd;rStudents()">➕ 학생 추가</button>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
+      ${[['재원','재원생'],['휴원','휴원'],['퇴원','퇴원'],['전체','전체']].map(([v,lbl])=>{const cnt=v==='전체'?STUDENTS_CACHE.length:STUDENTS_CACHE.filter(s=>studentStatus(s)===v).length;return `<button class="btn btn-sm" style="${stStatusFilter===v?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="stStatusFilter='${v}';rStudents()">${lbl} ${cnt}</button>`;}).join('')}
     </div>
     ${showAdd?`
       <div class="card" id="addCard">
@@ -979,24 +1005,26 @@ function rStudents(){
     <div id="stDetailArea"></div>`;
   renderStudentRows();
 }
+function statusBadge(v){ const m={'재원':'b-green','휴원':'b-yellow','퇴원':'b-red'}; return `<span class="badge ${m[v]||'b-gray'}">${v}</span>`; }
 function renderStudentRows(){
   const q=(stSearch||'').trim();
-  const sts=getStudents().filter(s=> !q || (s.name||'').includes(q));
+  const sts=getStudents().filter(s=> (stStatusFilter==='전체'||studentStatus(s)===stStatusFilter) && (!q || (s.name||'').includes(q)));
   const el=document.getElementById('studentList'); if(!el) return;
   el.innerHTML = sts.length===0
-    ? `<div style="text-align:center;padding:40px;color:var(--text-muted)">${q?'🔍 검색 결과가 없어요':'아직 등록된 학생이 없어요. ➕ 학생 추가로 등록하세요!'}</div>`
+    ? `<div style="text-align:center;padding:40px;color:var(--text-muted)">${q?'🔍 검색 결과가 없어요':(stStatusFilter==='재원'?'재원생이 없어요. 위 필터로 휴원·퇴원도 볼 수 있어요.':'해당 상태의 학생이 없어요')}</div>`
     : `<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">총 ${sts.length}명</div>
       <div class="table-wrap"><table>
-        <thead><tr><th>이름</th><th>반</th><th>연락처</th><th>학부모 연락처</th><th>로그인 번호</th><th>관리</th></tr></thead>
-        <tbody>${sts.map(s=>`
-          <tr>
+        <thead><tr><th>이름</th><th>상태</th><th>반</th><th>연락처</th><th>학부모 연락처</th><th>로그인 번호</th><th>관리</th></tr></thead>
+        <tbody>${sts.map(s=>{const st=studentStatus(s);return `
+          <tr${st!=='재원'?' style="opacity:.62"':''}>
             <td><strong>${s.name}</strong>${s.memo?' <span title="메모 있음">📝</span>':''}</td>
+            <td>${statusBadge(st)}${st!=='재원'&&s.statusMemo?`<div style="font-size:11px;color:var(--text-muted);margin-top:2px">${s.statusMemo}</div>`:''}</td>
             <td>${classNamesOf(s).map(n=>`<span class="chip" style="margin:1px 2px">${n}</span>`).join('')||'-'}</td>
             <td>${s.phone||'-'}</td>
             <td>${s.parentPhone||'-'}</td>
             <td><span class="badge b-primary">${s.phoneLast4||'-'}</span></td>
             <td><div class="btn-row"><button class="btn btn-outline btn-sm" onclick="showStDetail('${s.id}')">상세</button><button class="btn btn-outline btn-sm" onclick="editStudentId='${s.id}';showAdd=false;rStudents();window.scrollTo(0,0)">수정</button><button class="btn btn-red btn-sm" onclick="doDelSt('${s.id}','${s.name}')">삭제</button></div></td>
-          </tr>`).join('')}
+          </tr>`;}).join('')}
         </tbody>
       </table></div>`;
 }
@@ -1011,7 +1039,7 @@ async function doAddSt(){
   const last4=phone.replace(/[^0-9]/g,'').slice(-4);
   if(last4.length<4){showToast('핸드폰 번호를 정확히 입력해주세요','error');return;}
   try{
-    await addStudentFS({ name, phone, phoneLast4:last4, classIds, classNames, parentPhone, school, enrollDate:new Date().toISOString().slice(0,10) });
+    await addStudentFS({ name, phone, phoneLast4:last4, classIds, classNames, parentPhone, school, status:'재원', enrollDate:new Date().toISOString().slice(0,10) });
     showAdd=false;
     showToast(`${name} 학생 등록 완료! 로그인: 이름 + ${last4}`,'success');
     rStudents();
@@ -1655,7 +1683,7 @@ function openSubPhotos(subId){
 // 특정 반 학생들의 푸시 토큰 모으기 (알림 켠 학생만)
 function classTokens(classId){
   const tk=[];
-  getStudents().forEach(s=>{ const ids=s.classIds||(s.classId?[s.classId]:[]); if(ids.includes(classId)&&Array.isArray(s.fcmTokens)) s.fcmTokens.forEach(t=>{ if(t&&!tk.includes(t)) tk.push(t); }); });
+  getStudents().forEach(s=>{ if(!isActiveStudent(s)) return; const ids=s.classIds||(s.classId?[s.classId]:[]); if(ids.includes(classId)&&Array.isArray(s.fcmTokens)) s.fcmTokens.forEach(t=>{ if(t&&!tk.includes(t)) tk.push(t); }); });
   return tk;
 }
 // 미제출 독촉 푸시
@@ -1777,7 +1805,7 @@ let naesinSubject='공통수학1', naesinTerm='중간', naesinClassId='';
 const NAESIN_SUBJECTS=['공통수학1','공통수학2','대수','미적분Ⅰ','확률과통계','기하'];
 function naesinStudents(){
   if(naesinClassId) return getStudentsByClass(naesinClassId);
-  return getStudents().slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  return getActiveStudents().slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
 }
 function naesinRosterHtml(){
   const sts=naesinStudents();
@@ -2588,6 +2616,18 @@ async function pruneOldFirebase(){
       const snap=await db.collection(col).where('ts','<',cutoff).get();
       for(const d of snap.docs){ await d.ref.delete(); }
     }
+    // 🚪 퇴원 6개월(183일) 경과 학생 자동 정리 — 학생 문서 + studentId로 연결된 기록/사진 삭제
+    const leaveCut=new Date(Date.now()-183*24*60*60*1000).toISOString().slice(0,10);
+    for(const s of STUDENTS_CACHE){
+      if(studentStatus(s)!=='퇴원' || !s.statusDate || s.statusDate>leaveCut) continue;
+      for(const col of ['submissions','examSubs','reviewSubs','naesin','questions','mockSubs']){
+        try{ const snap=await db.collection(col).where('studentId','==',s.id).get();
+          for(const d of snap.docs){ const dt=d.data(); await delPhotos(dt.photos); await delPhotos(dt.retryPhotos); await d.ref.delete(); } }
+        catch(e){}
+      }
+      try{ await db.collection('students').doc(s.id).delete(); }catch(e){}
+    }
+    await loadStudents();
     localStorage.setItem('bm_lastPrune', today);
   }catch(e){ /* 색인 준비 전이면 조용히 패스 */ }
 }

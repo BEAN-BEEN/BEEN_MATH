@@ -251,6 +251,7 @@
     showToast('비밀번호가 틀렸어요. 기억나지 않으면 선생님께 초기화를 요청하세요','error');
   }
   function enterStudent(stu){
+    if((stu.status||'재원')==='퇴원'){ showToast('퇴원 처리된 계정이에요. 선생님께 문의해주세요','error'); return; }
     const classIds = Array.isArray(stu.classIds) ? stu.classIds : (stu.classId ? [stu.classId] : []);
     const classNames = Array.isArray(stu.classNames) ? stu.classNames : (stu.className ? [stu.className] : []);
     localStorage.setItem('bm_role','student');
