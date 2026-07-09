@@ -361,6 +361,19 @@ function subCompletion(sub){
 async function saveAssignment(d){ d.createdAt=new Date().toISOString().slice(0,10); await db.collection('assignments').add(d); await loadAssignments(); }
 async function updateSub(sid,u){ await db.collection('submissions').doc(sid).update(u); await loadSubmissions(); }
 
+// ===== 내신 성적 = Firebase 공유 (학생별 과목·시험(중간/기말)별 점수·등급, 값은 텍스트 그대로) =====
+let NAESIN_CACHE=[];
+async function loadNaesin(){ const s=await db.collection('naesin').get(); NAESIN_CACHE=s.docs.map(d=>({id:d.id,...d.data()})); }
+function getNaesin(studentId,subject,term){ return NAESIN_CACHE.find(n=>n.studentId===studentId && n.subject===subject && n.term===term); }
+async function upsertNaesin(student, subject, term, fields){
+  const exist=getNaesin(student.id,subject,term);
+  const base={ score:(fields.score||'').trim(), grade:(fields.grade||'').trim(), note:(fields.note||'').trim(), updatedAt:new Date().toLocaleString('ko-KR'), ts:Date.now() };
+  if(exist){ await db.collection('naesin').doc(exist.id).update(base); }
+  else{ await db.collection('naesin').add({ studentId:student.id, studentName:student.name, school:student.school||'', className:(classNamesOf?classNamesOf(student).join(','):''), subject, term, createdAt:new Date().toISOString().slice(0,10), ...base }); }
+  await loadNaesin();
+}
+async function deleteNaesin(id){ await db.collection('naesin').doc(id).delete(); await loadNaesin(); }
+
 // ===== 복습(리뷰)·복습 제출 = Firebase 공유 (선생님이 번호 지정 → 학생 재풀이 사진 → 확인) =====
 let REVIEWS_CACHE=[], REVIEWSUBS_CACHE=[];
 async function loadReviews(){ const s=await db.collection('reviews').get(); REVIEWS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')); }
@@ -1759,10 +1772,82 @@ function studentGradeDash(stId){
     ${rows.filter(r=>r.comment).length?`<div style="font-size:13px;font-weight:700;margin:14px 0 6px">💬 최근 총평</div>
     ${rows.slice().reverse().filter(r=>r.comment).slice(0,3).map(r=>`<div style="font-size:12px;color:var(--text-sub);background:var(--bg);border-radius:8px;padding:7px 10px;margin-bottom:5px"><strong>${r.title}</strong> · ${r.comment}</div>`).join('')}`:''}`;
 }
+// ===== 🏫 내신 성적 입력 (2분할: 왼쪽 고정 컨트롤 · 오른쪽 스크롤 명단) =====
+let naesinSubject='공통수학1', naesinTerm='중간', naesinClassId='';
+const NAESIN_SUBJECTS=['공통수학1','공통수학2','대수','미적분Ⅰ','확률과통계','기하'];
+function naesinStudents(){
+  if(naesinClassId) return getStudentsByClass(naesinClassId);
+  return getStudents().slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+}
+function naesinRosterHtml(){
+  const sts=naesinStudents();
+  if(!sts.length) return '<div style="color:var(--text-muted);padding:16px">학생이 없어요. 왼쪽에서 반을 바꿔보세요.</div>';
+  return `<table style="width:100%"><thead><tr style="position:sticky;top:0;background:var(--surface);z-index:1">
+      <th style="text-align:left">학생</th><th style="width:96px">점수</th><th style="width:66px">등급</th><th>비고</th></tr></thead>
+    <tbody>${sts.map(st=>{ const n=getNaesin(st.id,naesinSubject,naesinTerm)||{};
+      return `<tr>
+        <td><strong>${st.name}</strong>${st.school?`<span style="font-size:11px;color:var(--text-muted)"> · ${st.school}</span>`:''}</td>
+        <td><input class="form-input" style="width:88px;padding:5px 7px" id="ns-sc-${st.id}" value="${(n.score||'').replace(/"/g,'&quot;')}" placeholder="예: 85.5"></td>
+        <td><input class="form-input" style="width:58px;padding:5px 7px" id="ns-gr-${st.id}" value="${(n.grade||'').replace(/"/g,'&quot;')}" placeholder="등급"></td>
+        <td><input class="form-input" style="padding:5px 7px" id="ns-nt-${st.id}" value="${(n.note||'').replace(/"/g,'&quot;')}" placeholder="예상 컷·메모(선택)"></td>
+      </tr>`;}).join('')}</tbody></table>`;
+}
+function naesinFilledCount(){ const sts=naesinStudents(); const done=sts.filter(st=>{const n=getNaesin(st.id,naesinSubject,naesinTerm);return n&&(n.score||'').trim();}).length; return {done,total:sts.length}; }
+function naesinPanelHtml(){
+  const f=naesinFilledCount();
+  return `<div class="card" style="border-left:4px solid var(--purple)">
+    <div class="card-title">🏫 내신 성적 입력 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(중간/기말 · 값은 적힌 그대로 저장돼요)</span></div>
+    <div style="display:flex;gap:14px;align-items:stretch;height:70vh;min-height:420px">
+      <div style="flex:0 0 230px;display:flex;flex-direction:column;gap:12px;overflow:auto;padding-right:6px;border-right:1px solid var(--border)">
+        <div class="form-group" style="margin:0"><label class="form-label">과목</label>
+          <select class="form-select" id="ns-subject" onchange="naesinSubject=this.value;renderNaesinRoster()">${NAESIN_SUBJECTS.map(s=>`<option ${s===naesinSubject?'selected':''}>${s}</option>`).join('')}</select></div>
+        <div class="form-group" style="margin:0"><label class="form-label">시험</label>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-sm" style="flex:1;${naesinTerm==='중간'?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="naesinTerm='중간';renderNaesinRoster()">중간</button>
+            <button class="btn btn-sm" style="flex:1;${naesinTerm==='기말'?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="naesinTerm='기말';renderNaesinRoster()">기말</button>
+          </div></div>
+        <div class="form-group" style="margin:0"><label class="form-label">반</label>
+          <select class="form-select" id="ns-class" onchange="naesinClassId=this.value;renderNaesinRoster()">
+            <option value="" ${naesinClassId===''?'selected':''}>전체 학생</option>
+            ${CLASSES.map(c=>`<option value="${c.id}" ${naesinClassId===c.id?'selected':''}>${c.name}</option>`).join('')}
+          </select></div>
+        <div style="background:var(--bg);border-radius:10px;padding:10px 12px">
+          <div style="font-size:12px;color:var(--text-muted)">입력 현황</div>
+          <div id="ns-summary" style="font-size:18px;font-weight:800;color:var(--primary)">${f.done} / ${f.total}명</div>
+          <div style="font-size:11px;color:var(--text-muted)">${naesinSubject} · ${naesinTerm}고사</div>
+        </div>
+        <button class="btn btn-primary" onclick="doSaveAllNaesin()">💾 전체 저장</button>
+        <div style="font-size:11px;color:var(--text-muted);line-height:1.5">· 점수는 <strong>94+, 40점대</strong>처럼 그대로 적어도 돼요.<br>· 오른쪽 명단은 따로 스크롤돼요.<br>· 빈 점수는 저장하지 않아요.</div>
+      </div>
+      <div id="naesinRoster" style="flex:1;overflow-y:auto;overflow-x:auto;padding-left:6px">${naesinRosterHtml()}</div>
+    </div>
+  </div>`;
+}
+function renderNaesinRoster(){
+  const el=document.getElementById('naesinRoster'); if(el) el.innerHTML=naesinRosterHtml();
+  const sm=document.getElementById('ns-summary'); if(sm){ const f=naesinFilledCount(); sm.textContent=`${f.done} / ${f.total}명`; }
+}
+async function doSaveAllNaesin(){
+  const sts=naesinStudents(); let n=0;
+  try{
+    for(const st of sts){
+      const sc=(document.getElementById('ns-sc-'+st.id)||{}).value||'';
+      const gr=(document.getElementById('ns-gr-'+st.id)||{}).value||'';
+      const nt=(document.getElementById('ns-nt-'+st.id)||{}).value||'';
+      const exist=getNaesin(st.id,naesinSubject,naesinTerm);
+      if(!sc.trim() && !gr.trim() && !nt.trim() && !exist) continue;      // 빈 신규는 건너뜀
+      if(!sc.trim() && !gr.trim() && !nt.trim() && exist){ await deleteNaesin(exist.id); continue; }  // 다 지웠으면 삭제
+      await upsertNaesin(st, naesinSubject, naesinTerm, {score:sc, grade:gr, note:nt}); n++;
+    }
+    showToast(`${naesinTerm}고사 내신 ${n}명 저장 완료 🏫`,'success'); renderNaesinRoster();
+  }catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+
 function rGrades(){
   const exams=getExams(),esubs=getExamSubs(),pendSubs=esubs.filter(s=>s.score===null||s.score===undefined);
   const editE=exEditId?exams.find(e=>e.id===exEditId):null;
   document.getElementById('gradesContent').innerHTML=`
+    ${naesinPanelHtml()}
     ${schoolExamCardHtml()}
     ${mockExamCardHtml()}
     <div class="card" style="border-left:4px solid var(--purple)">
@@ -2523,6 +2608,7 @@ async function init(){
     await loadAttendance();      // 출석
     await loadExams();           // 시험
     await loadExamSubs();        // 답안지/점수
+    await loadNaesin();          // 내신 성적(중간/기말)
     await loadQuestions();       // 질문
     await loadVideos();          // 수업 영상
     await loadMaterials();       // 자료실
