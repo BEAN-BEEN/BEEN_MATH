@@ -622,11 +622,21 @@ function getAssignments(){
   const today = new Date().toISOString().slice(0,10);
   return S_ASSIGNMENTS.map(a=>{
     const sub = S_SUBMISSIONS.find(s=>s.assignmentId===a.id);
+    // 🔢 문제 범위가 있는 숙제 = 오답 방식
+    const isOap = !!(a.probStart && a.probEnd);
+    const wrongNos = sub && Array.isArray(sub.wrongNos) ? sub.wrongNos : null;
+    const corrections = (sub && sub.corrections) || {};
+    const oapEntered = Array.isArray(wrongNos);
+    const oapDone = isOap && oapEntered && (wrongNos.length===0 || wrongNos.every(n=>corrections[n]));
     let status;
-    if(sub && sub.rejected) status='rejected';
+    if(isOap){
+      if(!oapEntered) status=(a.dueDate && a.dueDate < today) ? 'late' : 'pending';
+      else if(oapDone) status='submitted';
+      else status='pending'; // 오답 입력했지만 고친 사진 미완료 → 계속 챙길 것
+    } else if(sub && sub.rejected) status='rejected';
     else if(sub) status='submitted';
     else status=(a.dueDate && a.dueDate < today) ? 'late' : 'pending';
-    return { ...a, status, submittedAt:sub?sub.submittedAt:null, teacherChecked:sub?!!sub.checked:false, needsRetry:sub?!!sub.needsRetry:false, offline:sub?!!sub.offline:false, late:sub?!!sub.late:false, retryDone:sub?!!sub.retryDone:false, rejected:sub?!!sub.rejected:false, rejectReason:sub?(sub.rejectReason||''):'', evalPct:sub?(sub.evalPct||''):'', evalTag:sub?(sub.evalTag||''):'', subId:sub?sub.id:null };
+    return { ...a, status, isOap, wrongNos, corrections, oapEntered, oapDone, submittedAt:sub?sub.submittedAt:null, teacherChecked:sub?!!sub.checked:false, needsRetry:sub?!!sub.needsRetry:false, offline:sub?!!sub.offline:false, late:sub?!!sub.late:false, retryDone:sub?!!sub.retryDone:false, rejected:sub?!!sub.rejected:false, rejectReason:sub?(sub.rejectReason||''):'', evalPct:sub?(sub.evalPct||''):'', evalTag:sub?(sub.evalTag||''):'', subId:sub?sub.id:null };
   });
 }
 function getAttendance()  { return S_ATTENDANCE; }
@@ -1006,6 +1016,89 @@ function renderHome() {
 // ================================================================
 // HOMEWORK
 // ================================================================
+// 🔢 오답 방식 숙제 카드
+function renderOapCard(a){
+  const sub = a.subId ? S_SUBMISSIONS.find(s=>s.id===a.subId) : null;
+  const wrongNos = a.wrongNos; const corrections = a.corrections||{};
+  const badge = a.oapDone ? '<span class="badge b-green">오답 완료 ✅</span>' : (a.oapEntered ? '<span class="badge b-orange">오답 진행중</span>' : '<span class="badge b-primary">틀린문제 입력</span>');
+  let bodyHtml='';
+  if(!a.oapEntered){
+    let nums='';
+    for(let n=a.probStart; n<=a.probEnd; n++){
+      nums+=`<button type="button" class="oapnum" data-no="${n}" onclick="this.classList.toggle('on');var on=this.classList.contains('on');this.style.background=on?'var(--red)':'#fff';this.style.color=on?'#fff':'var(--text)'" style="width:44px;height:40px;border:1.5px solid var(--border);border-radius:8px;font-weight:700;cursor:pointer;font-family:inherit;background:#fff">${n}</button>`;
+    }
+    bodyHtml=`
+      <div style="font-size:13px;color:var(--text-sub);margin:8px 0"><strong>${a.probStart}~${a.probEnd}번</strong> 중 <strong style="color:var(--red)">틀린 문제</strong>를 눌러주세요</div>
+      <div id="oapnums-${a.id}" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">${nums}</div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="doSaveWrong('${a.id}')">틀린 문제 등록 ✓</button>
+        <button class="btn btn-outline" onclick="doAllCorrect('${a.id}')">😎 다 맞았어요</button>
+      </div>`;
+  } else if(wrongNos.length===0){
+    bodyHtml=`<div style="background:var(--green-light);border-radius:var(--radius-sm);padding:16px;text-align:center;color:var(--green);font-weight:800;margin-top:10px">😎 다 맞았어요! 오답 없음 ✅</div>
+      <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="doResetWrong('${a.subId}','${a.id}')">틀린 문제 다시 입력</button>`;
+  } else {
+    const doneCount = wrongNos.filter(n=>corrections[n]).length;
+    bodyHtml=`
+      <div style="font-size:13px;margin:10px 0;font-weight:700">✏️ 오답 ${wrongNos.length}개 — 고친 사진을 올리면 완료 (${doneCount}/${wrongNos.length})</div>
+      ${wrongNos.map(n=>{ const done=!!corrections[n];
+        return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border)">
+          <span style="width:46px;height:44px;flex:0 0 auto;border-radius:10px;background:${done?'var(--green-light)':'#FEE2E2'};color:${done?'var(--green)':'var(--red)'};font-weight:800;display:flex;align-items:center;justify-content:center">${n}번</span>
+          ${done
+            ? `<span style="flex:1;font-size:13px;color:var(--green);font-weight:700">✅ 고친 사진 완료</span><button class="btn btn-outline btn-sm" onclick="window.open('${corrections[n]}','_blank')">보기</button>`
+            : `<input type="file" accept="image/*" id="corr-${a.id}-${n}" style="display:none" onchange="doUploadCorrection('${a.subId}','${a.id}',${n})"><button class="btn btn-orange btn-sm" style="flex:1" onclick="document.getElementById('corr-${a.id}-${n}').click()">📷 고친 사진 올리기</button>`}
+        </div>`; }).join('')}
+      ${a.oapDone?`<div style="background:var(--green-light);border-radius:var(--radius-sm);padding:12px;text-align:center;color:var(--green);font-weight:800;margin-top:12px">🎉 오답 완료! 정말 잘했어요</div>`
+        :`<button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="doResetWrong('${a.subId}','${a.id}')">틀린 문제 수정</button>`}`;
+  }
+  return `<div class="hw-card ${a.oapDone?'submitted':a.status}" id="hwcard-${a.id}">
+    <div class="hw-head"><div><span class="chip">${a.className}</span><span style="margin-left:8px">${badge}</span></div></div>
+    <div class="hw-title" style="margin-bottom:6px">${a.title}</div>
+    ${a.textbook?`<div style="font-size:12px;color:var(--primary);font-weight:600;margin-bottom:4px">📘 ${a.textbook}</div>`:''}
+    ${a.content?`<div class="hw-body">${a.content}</div>`:''}
+    ${a.dueDate?`<div class="hw-due">📅 ${fmtDateFull(a.dueDate)} 까지</div>`:''}
+    ${bodyHtml}
+  </div>`;
+}
+async function saveWrongNos(aid, nos){
+  const a=S_ASSIGNMENTS.find(x=>x.id===aid);
+  const exist=S_SUBMISSIONS.find(s=>s.assignmentId===aid);
+  const base={ wrongNos:nos, oapType:true, corrections:(exist&&exist.corrections)||{}, submittedAt:new Date().toLocaleString('ko-KR'), ts:Date.now() };
+  if(exist){ await db.collection('submissions').doc(exist.id).update(base); }
+  else{ await db.collection('submissions').add({ assignmentId:aid, assignmentTitle:a?a.title:'', classId:a?a.classId:'', className:a?a.className:'', studentId:STUDENT.id, studentName:STUDENT.name, ...base }); }
+  await loadStudentData();
+}
+async function doSaveWrong(aid){
+  const nos=[...document.querySelectorAll('#oapnums-'+aid+' .oapnum.on')].map(b=>parseInt(b.dataset.no)).sort((x,y)=>x-y);
+  if(!nos.length){ showToast('틀린 문제를 누르거나, 다 맞았으면 "다 맞았어요"를 눌러주세요','warning'); return; }
+  try{ await saveWrongNos(aid,nos); showToast('틀린 문제 '+nos.length+'개 등록! 고친 사진을 올려 완료하세요 ✏️','success'); renderHomework(); }
+  catch(e){ showToast('등록 실패: '+e.message,'error'); }
+}
+async function doAllCorrect(aid){
+  if(!confirm('다 맞았다고 등록할까요? (오답 없음)')) return;
+  try{ await saveWrongNos(aid,[]); launchConfetti(); showToast('다 맞았어요! 대단해요 😎','success'); renderHomework(); }
+  catch(e){ showToast('실패: '+e.message,'error'); }
+}
+async function doUploadCorrection(subId, aid, no){
+  const fi=document.getElementById('corr-'+aid+'-'+no);
+  if(!fi||!fi.files||!fi.files.length) return;
+  try{
+    const urls=await uploadPhotos(fi.files,'corrections/'+aid);
+    const sub=S_SUBMISSIONS.find(s=>s.id===subId);
+    const corr=Object.assign({}, sub&&sub.corrections); corr[no]=urls[0];
+    await db.collection('submissions').doc(subId).update({corrections:corr});
+    await loadStudentData();
+    const s2=S_SUBMISSIONS.find(s=>s.id===subId);
+    const all=(s2.wrongNos||[]).every(n=>s2.corrections&&s2.corrections[n]);
+    if(all){ launchConfetti(); showToast('오답 완료! 정말 잘했어요 🎉','success'); } else showToast(no+'번 고친 사진 등록 ✓','success');
+    renderHomework();
+  }catch(e){ showToast('업로드 실패: '+e.message,'error'); }
+}
+async function doResetWrong(subId, aid){
+  if(!confirm('틀린 문제 번호를 다시 입력할까요?\n(이미 올린 고친 사진도 초기화돼요)')) return;
+  try{ await db.collection('submissions').doc(subId).update({wrongNos:null, corrections:{}}); await loadStudentData(); renderHomework(); }
+  catch(e){ showToast('실패: '+e.message,'error'); }
+}
 function renderHomework() {
   const asgn = getAssignments();
   const pending = asgn.filter(a => a.status==='pending');
@@ -1013,6 +1106,7 @@ function renderHomework() {
   const submitted = asgn.filter(a => a.status==='submitted');
 
   function card(a) {
+    if(a.isOap) return renderOapCard(a);   // 🔢 문제범위 숙제 = 오답 방식
     const isPending = ['pending','late','rejected'].includes(a.status);
     // 선생님이 아직 확인(평가)하기 전이면 학생이 스스로 다시 올리거나 취소할 수 있어요
     const canEdit = a.status==='submitted' && !a.teacherChecked && !a.needsRetry && !a.evalPct && !a.evalTag;

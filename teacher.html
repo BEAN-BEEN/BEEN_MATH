@@ -1154,7 +1154,16 @@ function rHomework(){
       </div>
       <div class="form-group"><label class="form-label">과제 제목 *</label><input class="form-input" id="hw-title" placeholder="예: 수학Ⅱ 3단원 연습문제" value="${editA?esc(editA.title):''}"></div>
       <div class="form-group"><label class="form-label">과제 내용</label><textarea class="form-textarea" id="hw-content" placeholder="교재 페이지, 문제 범위 등">${editA?(editA.content||''):''}</textarea></div>
-      <div class="form-group" style="max-width:180px"><label class="form-label">최대 사진 수</label><input class="form-input" id="hw-photos" type="number" value="${editA?(editA.maxPhotos||30):30}" min="1" max="30"></div>
+      <div class="form-group" style="background:var(--primary-light);border-radius:10px;padding:12px">
+        <label class="form-label">🔢 문제 번호 범위 <span style="font-size:11px;color:var(--text-muted)">(입력하면 학생이 '틀린 번호만' 입력→오답 완료 방식으로 바뀌어요)</span></label>
+        <div style="display:flex;align-items:center;gap:8px">
+          <input class="form-input" id="hw-pstart" type="number" min="1" style="width:100px" placeholder="시작" value="${editA?(editA.probStart||''):''}">
+          <span>~</span>
+          <input class="form-input" id="hw-pend" type="number" min="1" style="width:100px" placeholder="끝" value="${editA?(editA.probEnd||''):''}">
+          <span style="font-size:12px;color:var(--text-muted)">번 (예: 1 ~ 20)</span>
+        </div>
+      </div>
+      <div class="form-group" style="max-width:180px"><label class="form-label">최대 사진 수 <span style="font-size:11px;color:var(--text-muted)">(범위 미입력 시)</span></label><input class="form-input" id="hw-photos" type="number" value="${editA?(editA.maxPhotos||30):30}" min="1" max="30"></div>
       <div class="btn-row">
         <button class="btn btn-primary" onclick="doSaveAsgn()">${editA?'수정 저장 💾':'과제 저장하기'}</button>
         ${editA?`<button class="btn btn-outline" onclick="hwEditId=null;rHomework()">취소</button>`:''}
@@ -1183,12 +1192,17 @@ function rHomework(){
       const overdue=a.dueDate && a.dueDate < _today;
       const retryPending=subs.filter(s=>s.needsRetry).length;
       const retryDone=subs.filter(s=>s.retryResolved && !s.needsRetry).length;
+      const isOap=!!(a.probStart&&a.probEnd);
+      const oapDoneN=subs.filter(s=>{const o=oapStat(s);return o.entered&&o.done;}).length;
       const badge = missing===0 ? '<span class="badge b-green">전원 제출 ✓</span>'
                   : (overdue ? `<span class="badge b-red">마감 지남 · 미제출 ${missing}명</span>` : `<span class="badge b-orange">미제출 ${missing}명</span>`);
+      const headBadges = isOap
+        ? `<span class="badge b-primary">🔢 ${a.probStart}~${a.probEnd}번</span> <span class="badge ${oapDoneN===sts.length&&sts.length?'b-green':'b-orange'}">오답완료 ${oapDoneN}/${sts.length}</span>`
+        : `${badge}${retryPending?` <span class="badge b-orange">✏️ 오답 미완료 ${retryPending}</span>`:''}${retryDone?` <span class="badge b-green">✅ 오답 완료 ${retryDone}</span>`:''}`;
       return `
         <div class="card" style="border-left:4px solid ${overdue&&missing>0?'var(--red)':'var(--primary)'};margin-bottom:12px">
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-            <div><span class="chip">${a.className}</span><strong style="margin-left:8px">${a.title}</strong> ${badge}${retryPending?` <span class="badge b-orange">✏️ 오답 미완료 ${retryPending}</span>`:''}${retryDone?` <span class="badge b-green">✅ 오답 완료 ${retryDone}</span>`:''}${a.textbook?`<span style="margin-left:8px;font-size:12px;color:var(--text-muted)">📘 ${a.textbook}</span>`:''}</div>
+            <div><span class="chip">${a.className}</span><strong style="margin-left:8px">${a.title}</strong> ${headBadges}${a.textbook?`<span style="margin-left:8px;font-size:12px;color:var(--text-muted)">📘 ${a.textbook}</span>`:''}</div>
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
               <span style="font-size:12px;color:var(--text-muted)">제출 ${subs.length}/${sts.length} · 기간 ${a.startDate||'?'}~${a.dueDate||'-'}</span>
               ${missing>0?`<button class="btn btn-orange btn-sm" onclick="doRemind('${a.classId}','${(a.title||'').replace(/'/g,'')}')">🔔 독촉 알림</button>`:''}
@@ -1197,7 +1211,7 @@ function rHomework(){
               <button class="btn btn-red btn-sm" onclick="doDelAsgn('${a.id}','${(a.title||'').replace(/'/g,'')}')">삭제</button>
             </div>
           </div>
-          ${isOpen?`
+          ${isOpen?(isOap?oapRosterHtml(a,subs,sts):`
             <div style="margin-top:14px"><div class="table-wrap"><table>
               <thead><tr><th>학생</th><th>제출</th><th>제출 시간</th><th>사진</th><th>확인</th><th>평가</th><th>오답</th></tr></thead>
               <tbody>${sts.map(st=>{const sub=subs.find(s=>s.studentId===st.id);return`<tr>
@@ -1232,7 +1246,7 @@ function rHomework(){
                       ? `<div style="font-size:11px;color:var(--green);margin-bottom:3px">✅ 오답 완료</div><button class="btn btn-outline btn-sm" onclick="doRetry('${sub.id}',true)">다시 표시</button>`
                       : `<button class="btn btn-outline btn-sm" onclick="doRetry('${sub.id}',true)">오답 표시</button>`)):'-'}</td>
               </tr>`;}).join('')}</tbody>
-            </table></div></div>`:``}
+            </table></div></div>`):``}
         </div>`;})(a);});return _o;})()}`;
   // 수정 모드면 대상 반 셀렉트를 해당 반으로 맞춤
   if(hwEditId){ const a=asgn.find(x=>x.id===hwEditId); const cs=document.getElementById('hw-cls'); if(a&&cs) cs.value=a.classId; }
@@ -1245,11 +1259,38 @@ function pickTextbook(t){
 }
 async function updateAssignment(id,d){ await db.collection('assignments').doc(id).update(d); await loadAssignments(); }
 async function deleteAssignment(id){ await db.collection('assignments').doc(id).delete(); await loadAssignments(); }
+// 🔢 오답 방식 숙제 — 학생별 상태
+function oapStat(sub){
+  const entered = sub && Array.isArray(sub.wrongNos);
+  const wn = entered ? sub.wrongNos : [];
+  const corr = (sub && sub.corrections) || {};
+  const done = entered && (wn.length===0 || wn.every(n=>corr[n]));
+  return { entered, wrongNos:wn, corr, done, doneCnt:wn.filter(n=>corr[n]).length };
+}
+function showCorrPhotos(subId){
+  const s=getSubmissions().find(x=>x.id===subId);
+  const urls = s&&s.corrections ? Object.keys(s.corrections).sort((a,b)=>a-b).map(k=>s.corrections[k]).filter(Boolean) : [];
+  showPhotoModal(urls);
+}
+function oapRosterHtml(a, subs, sts){
+  return `<div style="margin-top:14px"><div class="table-wrap"><table>
+    <thead><tr><th>학생</th><th>상태</th><th>틀린 문제</th><th>오답 완료</th><th>고친 사진</th></tr></thead>
+    <tbody>${sts.map(st=>{ const sub=subs.find(s=>s.studentId===st.id); const o=oapStat(sub);
+      const statusCell = (!sub||!o.entered) ? '<span class="badge b-red">미입력</span>'
+        : (o.wrongNos.length===0 ? '<span class="badge b-green">😎 다 맞음</span>'
+        : (o.done ? '<span class="badge b-green">✅ 오답완료</span>' : '<span class="badge b-orange">진행중</span>'));
+      const wrongCell = !o.entered ? '-' : (o.wrongNos.length===0 ? '없음' : o.wrongNos.join(', ')+` <span style="color:var(--text-muted)">(${o.wrongNos.length})</span>`);
+      const doneCell = (!o.entered||o.wrongNos.length===0) ? '-' : `${o.doneCnt}/${o.wrongNos.length}`;
+      const photoCell = (o.entered && o.doneCnt>0) ? `<button class="btn btn-outline btn-sm" onclick="showCorrPhotos('${sub.id}')">📷 ${o.doneCnt}</button>` : '-';
+      return `<tr><td><strong>${st.name}</strong></td><td>${statusCell}</td><td style="font-size:12px">${wrongCell}</td><td>${doneCell}</td><td>${photoCell}</td></tr>`;
+    }).join('')}</tbody>
+  </table></div></div>`;
+}
 async function doSaveAsgn(){
   const classId=document.getElementById('hw-cls').value,title=document.getElementById('hw-title').value.trim();
   if(!classId||!title){showToast('반과 제목을 입력해주세요','error');return;}
   const cls=CLASSES.find(c=>c.id===classId);
-  const data={classId,className:cls?.name||'',title,content:document.getElementById('hw-content').value.trim(),textbook:document.getElementById('hw-textbook').value.trim(),startDate:document.getElementById('hw-start').value,dueDate:document.getElementById('hw-due').value,maxPhotos:parseInt(document.getElementById('hw-photos').value)||30};
+  const data={classId,className:cls?.name||'',title,content:document.getElementById('hw-content').value.trim(),textbook:document.getElementById('hw-textbook').value.trim(),startDate:document.getElementById('hw-start').value,dueDate:document.getElementById('hw-due').value,maxPhotos:parseInt(document.getElementById('hw-photos').value)||30,probStart:parseInt(document.getElementById('hw-pstart').value)||null,probEnd:parseInt(document.getElementById('hw-pend').value)||null};
   try{
     if(hwEditId){
       await updateAssignment(hwEditId,data); hwEditId=null;
