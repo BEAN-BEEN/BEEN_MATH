@@ -1831,7 +1831,7 @@ function naesinRosterHtml(){
 function naesinFilledCount(){ const sts=naesinStudents(); const done=sts.filter(st=>{const n=getNaesin(st.id,naesinSubject,naesinTerm);return n&&(n.score||'').trim();}).length; return {done,total:sts.length}; }
 
 // ===== 📈 내신 성적 변화 추이 (중간→기말) + 휴원·퇴원생 성적 조회 =====
-let trendSubject='공통수학1', trendStatus='재원';
+let trendSubject='공통수학1', trendStatus='재원', gradeView='입력';  // 성적관리 상단 서브탭
 function numFromScore(s){ const m=String(s==null?'':s).match(/-?\d+(\.\d+)?/); return m?parseFloat(m[0]):null; }  // "94+"→94, "40점대"→40
 function naesinTrendRows(){
   const sts = trendStatus==='전체' ? STUDENTS_CACHE.slice() : STUDENTS_CACHE.filter(s=>studentStatus(s)===trendStatus);
@@ -1932,8 +1932,13 @@ function rGrades(){
   const exams=getExams(),esubs=getExamSubs(),pendSubs=esubs.filter(s=>s.score===null||s.score===undefined);
   const editE=exEditId?exams.find(e=>e.id===exEditId):null;
   document.getElementById('gradesContent').innerHTML=`
-    ${naesinPanelHtml()}
-    ${naesinTrendHtml()}
+    <div class="card" style="padding:10px 14px;margin-bottom:12px">
+      <div style="display:inline-flex;background:var(--bg);border-radius:11px;padding:4px;gap:4px;flex-wrap:wrap">
+        <button class="btn btn-sm" style="${gradeView==='입력'?'background:var(--primary);color:#fff':'background:transparent;color:var(--text-muted)'}" onclick="gradeView='입력';rGrades()">🏫 내신 입력</button>
+        <button class="btn btn-sm" style="${gradeView==='추이'?'background:var(--primary);color:#fff':'background:transparent;color:var(--text-muted)'}" onclick="gradeView='추이';rGrades()">📈 변화 추이 · 퇴원생 성적</button>
+      </div>
+    </div>
+    ${gradeView==='추이'?naesinTrendHtml():naesinPanelHtml()}
     ${schoolExamCardHtml()}
     ${mockExamCardHtml()}
     <div class="card" style="border-left:4px solid var(--purple)">
