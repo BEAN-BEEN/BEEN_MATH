@@ -711,6 +711,8 @@ function rHomeworkHub(){
   ['homework','wrong','review'].forEach(k=>{ const c=document.getElementById(k+'Content'); if(c) c.style.display=hwTab===k?'':'none'; });
   ({homework:rHomework,wrong:rWrong,review:rReview})[hwTab]?.();
 }
+// 대시보드 → 숙제 관리의 특정 하위탭으로 바로 이동
+function goHw(tab){ hwTab=tab||'homework'; navigate('homework'); }
 function toggleMob(){document.getElementById('sidebar').classList.toggle('mob-open');document.getElementById('mobOverlay').classList.toggle('open');}
 function closeMob(){document.getElementById('sidebar').classList.remove('mob-open');document.getElementById('mobOverlay').classList.remove('open');}
 
@@ -807,6 +809,9 @@ function rDashboard(){
   const retryPending=retryPendingSubs.length;
   const retryDoneCount=subs.filter(s=>s.retryResolved && !s.needsRetry).length;
   const todayDue=getAssignments().filter(a=>a.dueDate===today.toISOString().slice(0,10)).length;
+  // 복습 집계 — 학생이 다 풀어 올렸지만(done) 선생님 확인 전(!checked)
+  let reviewWaiting=0, reviewOngoing=0;
+  getReviews().forEach(r=>{ const rsubs=getReviewSubs(r.id); getStudentsByClass(r.classId).forEach(st=>{ const stt=revStat(r, rsubs.find(x=>x.studentId===st.id)); if(stt.done&&!stt.checked) reviewWaiting++; else if(stt.started&&!stt.done) reviewOngoing++; }); });
 
   // 최근 결석/지각 모으기 (챙길 것)
   const flagged=[];
@@ -821,23 +826,23 @@ function rDashboard(){
     <div class="stats-grid">
       <div class="stat-card" onclick="navigate('manage')"><div class="stat-icon">👥</div><div class="stat-value" style="color:var(--primary)">${sts.length}</div><div class="stat-label">전체 학생 수</div></div>
       <div class="stat-card" onclick="navigate('schedule')"><div class="stat-icon">📚</div><div class="stat-value" style="color:var(--green)">${todayCls.length}</div><div class="stat-label">오늘 수업 반 수</div></div>
-      <div class="stat-card" onclick="navigate('homework')"><div class="stat-icon">📝</div><div class="stat-value" style="color:var(--orange)">${unchecked}</div><div class="stat-label">미확인 숙제</div></div>
-      <div class="stat-card" onclick="navigate('grades')"><div class="stat-icon">🏆</div><div class="stat-value" style="color:var(--primary)">${getExams().length}</div><div class="stat-label">등록 시험</div></div>
     </div>
     <div class="card" style="border:2px solid var(--primary);background:linear-gradient(180deg,var(--primary-light),var(--surface))">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px">
-        <div class="card-title" style="margin:0;font-size:17px">📝 숙제 &amp; 오답 관리 <span style="font-size:12px;color:var(--text-muted);font-weight:400">— 빠짐없이 끝까지 챙겨요</span></div>
-        <button class="btn btn-primary btn-sm" onclick="navigate('homework')">숙제 관리로 →</button>
+        <div class="card-title" style="margin:0;font-size:17px">📚 숙제 · 오답 · 복습 <span style="font-size:12px;color:var(--text-muted);font-weight:400">— 빠짐없이 끝까지 챙겨요</span></div>
+        <button class="btn btn-primary btn-sm" onclick="goHw('homework')">숙제 관리로 →</button>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px" id="hwHeroGrid">
-        <div onclick="navigate('homework')" style="cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center">
-          <div style="font-size:30px;font-weight:800;color:var(--orange)">${unchecked}</div><div style="font-size:12px;color:var(--text-sub);margin-top:2px">미확인 숙제</div></div>
-        <div onclick="navigate('homework')" style="cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center">
-          <div style="font-size:30px;font-weight:800;color:var(--red)">${retryPending}</div><div style="font-size:12px;color:var(--text-sub);margin-top:2px">✏️ 오답 미완료</div></div>
-        <div onclick="navigate('homework')" style="cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px" id="hwHeroGrid">
+        <div onclick="goHw('homework')" style="cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center">
+          <div style="font-size:30px;font-weight:800;color:var(--orange)">${unchecked}</div><div style="font-size:12px;color:var(--text-sub);margin-top:2px">📝 미확인 숙제</div></div>
+        <div onclick="goHw('wrong')" style="cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center">
+          <div style="font-size:30px;font-weight:800;color:var(--red)">${retryPending}</div><div style="font-size:12px;color:var(--text-sub);margin-top:2px">❌ 오답 미완료</div></div>
+        <div onclick="goHw('wrong')" style="cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center">
           <div style="font-size:30px;font-weight:800;color:var(--green)">${retryDoneCount}</div><div style="font-size:12px;color:var(--text-sub);margin-top:2px">✅ 오답 완료</div></div>
-        <div onclick="navigate('homework')" style="cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center">
-          <div style="font-size:30px;font-weight:800;color:var(--primary)">${todayDue}</div><div style="font-size:12px;color:var(--text-sub);margin-top:2px">오늘 마감</div></div>
+        <div onclick="goHw('review')" style="cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center">
+          <div style="font-size:30px;font-weight:800;color:#8B5CF6">${reviewWaiting}</div><div style="font-size:12px;color:var(--text-sub);margin-top:2px">🔁 복습 확인 대기</div></div>
+        <div onclick="goHw('review')" style="cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center">
+          <div style="font-size:30px;font-weight:800;color:var(--primary)">${reviewOngoing}</div><div style="font-size:12px;color:var(--text-sub);margin-top:2px">🔁 복습 진행중</div></div>
       </div>
       ${retryPendingSubs.length?`
         <div style="margin-top:14px;background:var(--surface);border-radius:12px;padding:6px 14px">
