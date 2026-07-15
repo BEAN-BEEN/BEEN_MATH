@@ -1829,6 +1829,55 @@ function naesinRosterHtml(){
       </tr>`;}).join('')}</tbody></table>`;
 }
 function naesinFilledCount(){ const sts=naesinStudents(); const done=sts.filter(st=>{const n=getNaesin(st.id,naesinSubject,naesinTerm);return n&&(n.score||'').trim();}).length; return {done,total:sts.length}; }
+
+// ===== 📈 내신 성적 변화 추이 (중간→기말) + 휴원·퇴원생 성적 조회 =====
+let trendSubject='공통수학1', trendStatus='재원';
+function numFromScore(s){ const m=String(s==null?'':s).match(/-?\d+(\.\d+)?/); return m?parseFloat(m[0]):null; }  // "94+"→94, "40점대"→40
+function naesinTrendRows(){
+  const sts = trendStatus==='전체' ? STUDENTS_CACHE.slice() : STUDENTS_CACHE.filter(s=>studentStatus(s)===trendStatus);
+  const rows=sts.map(st=>{ const mid=getNaesin(st.id,trendSubject,'중간'), fin=getNaesin(st.id,trendSubject,'기말'); if(!mid&&!fin) return null;
+    const mv=numFromScore(mid&&mid.score), fv=numFromScore(fin&&fin.score); const delta=(mv!=null&&fv!=null)?+(fv-mv).toFixed(1):null; return {st,mid,fin,delta}; }).filter(Boolean);
+  rows.sort((a,b)=>{ if(a.delta==null&&b.delta==null) return (a.st.name||'').localeCompare(b.st.name||''); if(a.delta==null) return 1; if(b.delta==null) return -1; return b.delta-a.delta; });
+  return rows;
+}
+function naesinTrendHtml(){
+  const rows=naesinTrendRows();
+  const up=rows.filter(r=>r.delta>0).length, down=rows.filter(r=>r.delta<0).length, same=rows.filter(r=>r.delta===0).length;
+  const ds=rows.filter(r=>r.delta!=null).map(r=>r.delta); const avg=ds.length?+(ds.reduce((a,b)=>a+b,0)/ds.length).toFixed(1):null;
+  const border=trendStatus==='퇴원'?'var(--red)':(trendStatus==='휴원'?'var(--yellow)':'var(--purple)');
+  const dcell=r=> r.delta==null?'<span style="color:var(--text-muted)">-</span>'
+    : r.delta>0?`<span style="color:var(--green);font-weight:800">▲ ${r.delta}</span>`
+    : r.delta<0?`<span style="color:var(--red);font-weight:800">▼ ${Math.abs(r.delta)}</span>`
+    : '<span style="color:var(--text-muted)">– 0</span>';
+  return `<div class="card" id="naesinTrendCard" style="border-left:4px solid ${border}">
+    <div class="card-title">📈 내신 성적 변화 추이 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(중간 → 기말 · 얼마나 올랐는지)</span></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+      <select class="form-select" style="max-width:170px" onchange="trendSubject=this.value;renderNaesinTrend()">${NAESIN_SUBJECTS.map(s=>`<option ${s===trendSubject?'selected':''}>${s}</option>`).join('')}</select>
+      <div style="display:inline-flex;background:var(--bg);border-radius:9px;padding:3px;flex-wrap:wrap">
+        ${['재원','휴원','퇴원','전체'].map(v=>`<button class="btn btn-sm" style="${trendStatus===v?'background:var(--primary);color:#fff':'background:transparent;color:var(--text-muted)'}" onclick="trendStatus='${v}';renderNaesinTrend()">${v}</button>`).join('')}
+      </div>
+      ${trendStatus!=='재원'&&trendStatus!=='전체'?`<span style="font-size:12px;color:var(--text-muted)">· ${trendStatus}생 성적 보관함</span>`:''}
+    </div>
+    ${rows.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+      <span class="badge b-green">▲ 상승 ${up}명</span><span class="badge b-red">▼ 하락 ${down}명</span><span class="badge b-gray">유지 ${same}명</span>
+      ${avg!=null?`<span style="font-size:13px;color:var(--text-sub);margin-left:4px">평균 변화 <strong style="color:${avg>0?'var(--green)':(avg<0?'var(--red)':'var(--text-sub)')}">${avg>0?'+':''}${avg}점</strong></span>`:''}
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>학생</th>${trendStatus==='전체'?'<th>상태</th>':''}<th>중간</th><th>기말</th><th>변화</th></tr></thead>
+      <tbody>${rows.map(r=>`<tr>
+        <td><strong>${r.st.name}</strong>${r.st.school?`<span style="font-size:11px;color:var(--text-muted)"> · ${r.st.school}</span>`:''}</td>
+        ${trendStatus==='전체'?`<td>${statusBadge(studentStatus(r.st))}</td>`:''}
+        <td>${r.mid&&r.mid.score?r.mid.score:'<span style="color:var(--text-muted)">-</span>'}</td>
+        <td>${r.fin&&r.fin.score?r.fin.score:'<span style="color:var(--text-muted)">-</span>'}</td>
+        <td>${dcell(r)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+    <div style="font-size:11px;color:var(--text-muted);margin-top:8px">· 변화량은 점수의 숫자만 뽑아 계산해요(94+ → 94, 40점대 → 40). 숫자가 없으면 '-'.</div>`
+    :`<div style="text-align:center;padding:24px;color:var(--text-muted)">${trendStatus==='전체'?'전체':trendStatus+'생'} 중 <strong>${trendSubject}</strong> 내신이 입력된 학생이 없어요.</div>`}
+  </div>`;
+}
+function renderNaesinTrend(){ const el=document.getElementById('naesinTrendCard'); if(el) el.outerHTML=naesinTrendHtml(); }
+
 function naesinPanelHtml(){
   const f=naesinFilledCount();
   return `<div class="card" style="border-left:4px solid var(--purple)">
@@ -1884,6 +1933,7 @@ function rGrades(){
   const editE=exEditId?exams.find(e=>e.id===exEditId):null;
   document.getElementById('gradesContent').innerHTML=`
     ${naesinPanelHtml()}
+    ${naesinTrendHtml()}
     ${schoolExamCardHtml()}
     ${mockExamCardHtml()}
     <div class="card" style="border-left:4px solid var(--purple)">
