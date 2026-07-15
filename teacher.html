@@ -234,10 +234,14 @@
     </div>
     <div class="section" id="sec-homework">
       <div class="page-header"><div class="page-title">숙제 관리</div></div>
-      <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap" id="hwTabs"></div>
-      <div class="content-area" id="homeworkContent"></div>
-      <div class="content-area" id="wrongContent" style="display:none"></div>
-      <div class="content-area" id="reviewContent" style="display:none"></div>
+      <div style="display:flex;gap:14px;align-items:stretch;height:80vh;min-height:460px">
+        <div id="hwTabs" style="flex:0 0 152px;display:flex;flex-direction:column;gap:8px;overflow:auto;border-right:1px solid var(--border);padding-right:12px"></div>
+        <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:auto;padding-right:4px">
+          <div class="content-area" id="homeworkContent"></div>
+          <div class="content-area" id="wrongContent" style="display:none"></div>
+          <div class="content-area" id="reviewContent" style="display:none"></div>
+        </div>
+      </div>
     </div>
     <div class="section" id="sec-attendance">
       <div class="page-header"><div class="page-title">출석 관리</div></div>
@@ -707,7 +711,7 @@ function rManage(){
 let hwTab='homework';
 function rHomeworkHub(){
   const tabs=[['homework','📝 숙제'],['wrong','❌ 오답'],['review','🔁 복습']];
-  const el=document.getElementById('hwTabs'); if(el) el.innerHTML=tabs.map(([k,l])=>`<button class="btn ${hwTab===k?'btn-primary':'btn-outline'} btn-sm" onclick="hwTab='${k}';rHomeworkHub()">${l}</button>`).join('');
+  const el=document.getElementById('hwTabs'); if(el) el.innerHTML=tabs.map(([k,l])=>`<button class="btn ${hwTab===k?'btn-primary':'btn-outline'}" style="width:100%;justify-content:flex-start;text-align:left;padding:11px 12px;font-weight:700" onclick="hwTab='${k}';rHomeworkHub()">${l}</button>`).join('');
   // 활성 하위탭에 맞춰 제목 변경 (오답/복습인데 '숙제 관리'로 남던 문제 해결)
   const th=document.querySelector('#sec-homework .page-title'); if(th) th.textContent={homework:'숙제 관리',wrong:'오답 관리',review:'복습 관리'}[hwTab]||'숙제 관리';
   ['homework','wrong','review'].forEach(k=>{ const c=document.getElementById(k+'Content'); if(c) c.style.display=hwTab===k?'':'none'; });
