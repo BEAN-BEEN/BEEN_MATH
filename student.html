@@ -537,6 +537,10 @@ const REPORT = {
   gradeReport:{ labels:[], scores:[] }
 };
 const WD_LABEL={mon:'월',tue:'화',wed:'수',thu:'목',fri:'금',sat:'토',sun:'일'};
+// 반 요일 — 여러 요일(수·금 특강 등) 지원. 신규 weekdays 배열 / 구버전 weekday 문자열 자동 호환
+function clsDays(c){ if(c&&Array.isArray(c.weekdays)&&c.weekdays.length) return c.weekdays.filter(w=>WD_LABEL[w]); return (c&&c.weekday)?[c.weekday]:[]; }
+function clsHasDay(c,wd){ return clsDays(c).indexOf(wd)>=0; }
+function clsDayLabel(c){ return clsDays(c).map(w=>WD_LABEL[w]).filter(Boolean).join('·'); }
 
 // ===== Firebase에서 내 반·숙제·제출·출석·성적 불러오기 =====
 let S_CLASSES=[], ALL_CLASSES=[], S_ASSIGNMENTS=[], S_SUBMISSIONS=[], S_ATTENDANCE=[], S_EXAMS=[], S_EXAMSUBS=[], S_QUESTIONS=[], S_NOTICES=[], S_REVIEWS=[], S_REVIEWSUBS=[];
@@ -1925,7 +1929,7 @@ function studentCalendarHtml(){
   function dayCell(d){
     const dow=new Date(sCalY,sCalM,d).getDay();
     const dateStr=`${sCalY}-${p(sCalM+1)}-${p(d)}`;
-    const cls=all?[]:S_CLASSES.filter(c=>c.weekday===wdKeys[dow]&&isClassActive(c));
+    const cls=all?[]:S_CLASSES.filter(c=>clsHasDay(c,wdKeys[dow])&&isClassActive(c));
     const mks=mkData.filter(m=>m.date===dateStr);
     const inExam=exData.some(e=>e.startDate&&e.endDate&&dateStr>=e.startDate&&dateStr<=e.endDate);
     const mathToday=[]; exData.forEach(e=>mathOf(e).forEach(m=>{ if(m.date===dateStr) mathToday.push(all?((e.school||'').slice(0,4)+' '+(m.label||'수학')):(m.label||'수학')); }));
@@ -1976,7 +1980,7 @@ function renderSchedule() {
   document.getElementById('scheduleContent').innerHTML = `
     <div class="sched-grid">
       ${days.map(d=>{
-        const list=S_CLASSES.filter(c=>c.weekday===d && isClassActive(c));
+        const list=S_CLASSES.filter(c=>clsHasDay(c,d) && isClassActive(c));
         const wkDate=weekDateOf(d);
         const mks=(S_MAKEUPS||[]).filter(m=>m.date===wkDate);
         const isToday=d===todayKey;
@@ -1999,7 +2003,7 @@ function renderSchedule() {
     </div>
     ${studentCalendarHtml()}
     <div style="margin-top:16px"><div class="card-title" style="margin-bottom:10px">📚 내 수강 반 (${S_CLASSES.length})</div>
-      ${S_CLASSES.map(c=>`<div class="att-record"><div class="att-date">${WD_LABEL[c.weekday]||''}요일 ${c.slot||''}</div><div class="att-class">${c.name} · ${c.subject||''}</div></div>`).join('')}
+      ${S_CLASSES.map(c=>`<div class="att-record"><div class="att-date">${clsDayLabel(c)||''}요일 ${c.slot||''}</div><div class="att-class">${c.name} · ${c.subject||''}</div></div>`).join('')}
     </div>`;
 }
 
@@ -2061,7 +2065,7 @@ function renderTeacher() {
         if(!ALL_CLASSES.length) return '<div style="text-align:center;color:var(--text-muted);padding:16px">등록된 반이 없어요</div>';
         const mine=id=>S_CLASSES.some(c=>c.id===id);
         return `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px;padding:0 4px"><div style="display:grid;grid-template-columns:repeat(7,minmax(102px,1fr));gap:8px;min-width:740px">${days.map(d=>{
-          const list=ALL_CLASSES.filter(c=>c.weekday===d && isClassActive(c)).sort((a,b)=>(a.slot||'').localeCompare(b.slot||''));
+          const list=ALL_CLASSES.filter(c=>clsHasDay(c,d) && isClassActive(c)).sort((a,b)=>(a.slot||'').localeCompare(b.slot||''));
           const isToday=d===todayKey;
           return `<div class="day-card ${list.length?'has-class':''} ${isToday?'today':''}">
             <div class="day-lbl">${dayLabels[d]}${isToday?' ·오늘':''}</div>

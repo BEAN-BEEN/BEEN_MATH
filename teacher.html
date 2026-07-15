@@ -291,6 +291,10 @@ function saveData(k,v){try{localStorage.setItem('tbm_'+k,JSON.stringify(v));}cat
 // ===== 반(수업) 목록: Firebase에서 불러옴. 비어있으면 시간표 기준 13개로 자동 생성 =====
 const WD_ORDER=['mon','tue','wed','thu','fri','sat','sun'];
 const WD_LABEL={mon:'월',tue:'화',wed:'수',thu:'목',fri:'금',sat:'토',sun:'일'};
+// 반 요일 — 여러 요일(수·금 특강 등) 지원. 신규는 weekdays 배열, 구버전 문서는 weekday 문자열 → 자동 호환
+function clsDays(c){ if(c&&Array.isArray(c.weekdays)&&c.weekdays.length) return c.weekdays.filter(w=>WD_LABEL[w]); return (c&&c.weekday)?[c.weekday]:[]; }
+function clsHasDay(c,wd){ return clsDays(c).indexOf(wd)>=0; }
+function clsDayLabel(c){ return clsDays(c).map(w=>WD_LABEL[w]).filter(Boolean).join('·'); }
 const DEFAULT_CLASSES=[
   {id:'c1', name:'고1T Z2', subject:'공통수학1 유형편',      weekday:'tue', slot:'1부'},
   {id:'c2', name:'고1T B2', subject:'공통수학1 기출편',      weekday:'tue', slot:'2부'},
@@ -312,7 +316,7 @@ async function loadClasses(){
   if(snap.empty){
     const batch=db.batch();
     DEFAULT_CLASSES.forEach((c,i)=>{
-      batch.set(db.collection('classes').doc(c.id),{name:c.name,subject:c.subject,weekday:c.weekday,slot:c.slot,startTime:'',endTime:'',type:'정규',order:i});
+      batch.set(db.collection('classes').doc(c.id),{name:c.name,subject:c.subject,weekday:c.weekday,weekdays:[c.weekday],slot:c.slot,startTime:'',endTime:'',type:'정규',order:i});
     });
     await batch.commit();
     snap=await db.collection('classes').get();
@@ -360,6 +364,77 @@ function subCompletion(sub){
 }
 async function saveAssignment(d){ d.createdAt=new Date().toISOString().slice(0,10); await db.collection('assignments').add(d); await loadAssignments(); }
 async function updateSub(sid,u){ await db.collection('submissions').doc(sid).update(u); await loadSubmissions(); }
+
+// ===== 📚 교재 서랍 = 자주 내는 숙제 프리셋(교재+범위) — 드래그로 반에 뿌리기 =====
+let HWPRESETS_CACHE=[];
+async function loadHwPresets(){ try{ const s=await db.collection('hwPresets').get(); HWPRESETS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')); }catch(e){ HWPRESETS_CACHE=[]; } }
+function getHwPresets(){ return HWPRESETS_CACHE; }
+async function saveHwPreset(d){ d.createdAt=new Date().toISOString(); await db.collection('hwPresets').add(d); await loadHwPresets(); }
+async function deleteHwPreset(id){ await db.collection('hwPresets').doc(id).delete(); await loadHwPresets(); }
+function hwPresetRange(p){ if(p.probStart&&p.probEnd) return `${p.probStart}~${p.probEnd}번`; if(p.probLabel) return p.probLabel; return '범위 없음'; }
+function hwPresetDrawerHtml(){
+  const ps=getHwPresets();
+  const esc=s=>(s||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  const tbChips=(typeof allTextbooks==='function')?allTextbooks():[];
+  return `<div class="card" style="border-left:4px solid var(--primary)">
+    <div class="card-title">📚 교재 서랍 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(자주 내는 숙제를 미리 저장 → 카드를 아래 반으로 끌어다 놓으면 그 반 새 과제로 자동 입력)</span></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
+      <div class="form-group" style="margin:0;flex:1;min-width:150px"><label class="form-label">교재 *</label>
+        <input class="form-input" id="hp-textbook" list="hp-tblist" placeholder="예: 쎈 공통수학1"><datalist id="hp-tblist">${tbChips.map(t=>`<option value="${esc(t)}">`).join('')}</datalist></div>
+      <div class="form-group" style="margin:0;flex:1;min-width:130px"><label class="form-label">제목(선택)</label>
+        <input class="form-input" id="hp-title" placeholder="예: 3단원 연습문제"></div>
+      <div class="form-group" style="margin:0;width:78px"><label class="form-label">시작</label><input class="form-input" id="hp-pstart" type="number" min="1" placeholder="1"></div>
+      <div class="form-group" style="margin:0;width:78px"><label class="form-label">끝</label><input class="form-input" id="hp-pend" type="number" min="1" placeholder="20"></div>
+      <div class="form-group" style="margin:0;flex:1;min-width:150px"><label class="form-label">자유 범위(선택)</label><input class="form-input" id="hp-plabel" placeholder="예: 자이스토리 H30~I70"></div>
+      <button class="btn btn-primary" onclick="doSaveHwPreset()">＋ 서랍에 저장</button>
+    </div>
+    ${ps.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+      ${ps.map(p=>`<div draggable="true" ondragstart="hwDragPreset(event,'${p.id}')" onclick="applyPreset('${p.id}','')" title="드래그해서 아래 반에 놓거나, 클릭하면 폼에 채워져요"
+        style="cursor:grab;border:1.5px solid var(--border);border-radius:12px;padding:9px 12px;background:var(--surface);display:flex;flex-direction:column;gap:2px;min-width:150px">
+        <div style="font-weight:800;font-size:13px">📘 ${esc(p.textbook)}</div>
+        <div style="font-size:12px;color:var(--text-sub)">${p.title?esc(p.title)+' · ':''}<span style="color:var(--primary);font-weight:700">${hwPresetRange(p)}</span></div>
+        <button class="btn btn-outline btn-sm" style="align-self:flex-end;margin-top:4px;padding:2px 8px" onclick="event.stopPropagation();doDelHwPreset('${p.id}')">✕</button>
+      </div>`).join('')}
+    </div>`:'<div style="font-size:13px;color:var(--text-muted);margin-bottom:14px">아직 저장된 교재가 없어요. 위에서 교재·범위를 넣고 저장하면 카드가 생겨요.</div>'}
+    <div style="font-size:12px;font-weight:700;color:var(--text-sub);margin-bottom:6px">🏫 여기 반으로 끌어다 놓기 <span style="font-weight:400;color:var(--text-muted)">(모바일은 카드를 탭하면 폼에 채워져요)</span></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${CLASSES.map(c=>`<div ondragover="hwAllowDrop(event)" ondrop="hwDropOnClass(event,'${c.id}')"
+        ondragenter="this.style.borderColor='var(--primary)';this.style.color='var(--primary)'" ondragleave="this.style.borderColor='';this.style.color=''"
+        style="border:2px dashed var(--border);border-radius:10px;padding:10px 14px;font-size:13px;font-weight:700;color:var(--text-sub);background:var(--bg)">${esc(c.name)}</div>`).join('')}
+    </div>
+  </div>`;
+}
+let _hwDragPid=null;
+function hwDragPreset(ev,pid){ _hwDragPid=pid; try{ ev.dataTransfer.setData('text/plain',pid); ev.dataTransfer.effectAllowed='copy'; }catch(e){} }
+function hwAllowDrop(ev){ ev.preventDefault(); try{ ev.dataTransfer.dropEffect='copy'; }catch(e){} }
+function hwDropOnClass(ev,classId){ ev.preventDefault(); let pid=''; try{ pid=ev.dataTransfer.getData('text/plain'); }catch(e){} pid=pid||_hwDragPid; if(ev.currentTarget){ ev.currentTarget.style.borderColor=''; ev.currentTarget.style.color=''; } applyPreset(pid,classId); }
+function applyPreset(pid,classId){
+  const p=getHwPresets().find(x=>x.id===pid); if(!p){ showToast('프리셋을 찾을 수 없어요','error'); return; }
+  if(hwEditId){ hwEditId=null; rHomework(); }   // 수정 모드였으면 새 과제 폼으로 되돌린 뒤 채움
+  const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=(v==null?'':v); };
+  set('hw-textbook',p.textbook); set('hw-title', p.title||p.textbook); set('hw-content', p.content||'');
+  set('hw-pstart', p.probStart||''); set('hw-pend', p.probEnd||''); set('hw-plabel', p.probLabel||''); set('hw-photos', p.maxPhotos||30);
+  const st=document.getElementById('hw-start'); if(st && !st.value) st.value=new Date().toISOString().slice(0,10);
+  const cls=CLASSES.find(c=>c.id===classId);
+  if(classId){ const cs=document.getElementById('hw-cls'); if(cs) cs.value=classId; }
+  const anchor=document.getElementById('hw-cls'); if(anchor&&anchor.scrollIntoView) anchor.scrollIntoView({behavior:'smooth',block:'center'});
+  showToast(`${cls?cls.name+' · ':''}${p.textbook} 준비됨 — 마감일 정하고 저장하세요`,'success');
+}
+async function doSaveHwPreset(){
+  const textbook=(document.getElementById('hp-textbook').value||'').trim();
+  if(!textbook){ showToast('교재명을 입력해주세요','error'); return; }
+  const data={ textbook, title:(document.getElementById('hp-title').value||'').trim(),
+    probStart:parseInt(document.getElementById('hp-pstart').value)||null, probEnd:parseInt(document.getElementById('hp-pend').value)||null,
+    probLabel:(document.getElementById('hp-plabel').value||'').trim()||null, content:'', maxPhotos:30 };
+  try{ await saveHwPreset(data); showToast(`📚 "${textbook}" 서랍에 저장`,'success'); rHomework(); }
+  catch(e){ showToast('저장 실패(규칙 확인 필요): '+e.message,'error'); }
+}
+async function doDelHwPreset(id){
+  const p=getHwPresets().find(x=>x.id===id);
+  if(!confirm(`"${p?p.textbook:''}" 프리셋을 서랍에서 뺄까요?`)) return;
+  try{ await deleteHwPreset(id); showToast('서랍에서 뺐어요','warning'); rHomework(); }
+  catch(e){ showToast('삭제 실패: '+e.message,'error'); }
+}
 
 // ===== 내신 성적 = Firebase 공유 (학생별 과목·시험(중간/기말)별 점수·등급, 값은 텍스트 그대로) =====
 let NAESIN_CACHE=[];
@@ -727,7 +802,7 @@ function showToast(msg,type=''){
 }
 
 function classSelect(id='',all=false){
-  return `<select class="form-select" id="${id}"><option value="">${all?'전체 반':'반 선택'}</option>${CLASSES.map(c=>`<option value="${c.id}">${c.name}${c.weekday?(' · '+(WD_LABEL[c.weekday]||'')+(c.slot||'')):''}</option>`).join('')}</select>`;
+  return `<select class="form-select" id="${id}"><option value="">${all?'전체 반':'반 선택'}</option>${CLASSES.map(c=>`<option value="${c.id}">${c.name}${clsDays(c).length?(' · '+clsDayLabel(c)+(c.slot||'')):''}</option>`).join('')}</select>`;
 }
 
 // ===== AI 시험지 분석 (사진 → 단원·능력·난이도) =====
@@ -802,7 +877,7 @@ function rDashboard(){
   const today=new Date();
   document.getElementById('todayDate').textContent=today.toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
   const dayKey=['sun','mon','tue','wed','thu','fri','sat'][today.getDay()];
-  const todayCls=CLASSES.filter(c=>c.weekday===dayKey && isClassActive(c));
+  const todayCls=CLASSES.filter(c=>clsHasDay(c,dayKey) && isClassActive(c));
   const unchecked=subs.filter(s=>!s.checked && !s.rejected).length;
   const pending=qs.filter(q=>q.status==='pending').length;
   const pushOn=sts.filter(s=>Array.isArray(s.fcmTokens)&&s.fcmTokens.length).length;
@@ -927,7 +1002,7 @@ function renderEditCard(){
     <div class="form-group">
       <label class="form-label">반 배정 <span style="color:var(--text-muted);font-weight:400">(반 이동 시 체크 변경 — 지난 기록은 유지돼요)</span></label>
       <div style="display:flex;flex-wrap:wrap;gap:6px">
-        ${CLASSES.map(c=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;border:1.5px solid var(--border);border-radius:7px;padding:6px 9px;cursor:pointer"><input type="checkbox" class="es-class-chk" value="${c.id}" ${ids.includes(c.id)?'checked':''}> ${c.name} <span style="color:var(--text-muted)">${(WD_LABEL[c.weekday]||'')+(c.slot||'')}</span></label>`).join('')}
+        ${CLASSES.map(c=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;border:1.5px solid var(--border);border-radius:7px;padding:6px 9px;cursor:pointer"><input type="checkbox" class="es-class-chk" value="${c.id}" ${ids.includes(c.id)?'checked':''}> ${c.name} <span style="color:var(--text-muted)">${clsDayLabel(c)+(c.slot||'')}</span></label>`).join('')}
       </div>
     </div>
     <div class="form-row-2">
@@ -997,7 +1072,7 @@ function rStudents(){
         <div class="form-group">
           <label class="form-label">반 배정 (여러 개 선택 가능)</label>
           <div style="display:flex;flex-wrap:wrap;gap:6px">
-            ${CLASSES.map(c=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;border:1.5px solid var(--border);border-radius:7px;padding:6px 9px;cursor:pointer"><input type="checkbox" class="ns-class-chk" value="${c.id}"> ${c.name} <span style="color:var(--text-muted)">${(WD_LABEL[c.weekday]||'')+(c.slot||'')}</span></label>`).join('')}
+            ${CLASSES.map(c=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;border:1.5px solid var(--border);border-radius:7px;padding:6px 9px;cursor:pointer"><input type="checkbox" class="ns-class-chk" value="${c.id}"> ${c.name} <span style="color:var(--text-muted)">${clsDayLabel(c)+(c.slot||'')}</span></label>`).join('')}
           </div>
         </div>
         <div class="form-row-2">
@@ -1132,7 +1207,7 @@ function rClassroom(){
     <div class="card">
       <div class="card-title">반 선택</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
-        ${CLASSES.map(c=>`<button class="btn ${c.id===clRoomId?'btn-primary':'btn-outline'} btn-sm" onclick="clRoomId='${c.id}';rClassroom()">${c.name} <span style="opacity:.7">${(WD_LABEL[c.weekday]||'')+(c.slot||'')}</span></button>`).join('')}
+        ${CLASSES.map(c=>`<button class="btn ${c.id===clRoomId?'btn-primary':'btn-outline'} btn-sm" onclick="clRoomId='${c.id}';rClassroom()">${c.name} <span style="opacity:.7">${clsDayLabel(c)+(c.slot||'')}</span></button>`).join('')}
       </div>
     </div>
     <div class="stats-grid">
@@ -1193,17 +1268,17 @@ function hwOrder(asgn){
   const arr=[...asgn];
   arr.sort((a,b)=>{
     const ca=CLASSES.find(c=>c.id===a.classId)||{}, cb=CLASSES.find(c=>c.id===b.classId)||{};
-    if(hwGroupBy==='day'){ const d=wIdx(ca.weekday)-wIdx(cb.weekday); if(d) return d; }
+    if(hwGroupBy==='day'){ const d=wIdx(clsDays(ca)[0])-wIdx(clsDays(cb)[0]); if(d) return d; }
     else if(a.classId!==b.classId){ const o=(ca.order||0)-(cb.order||0); if(o) return o; return (a.classId>b.classId?1:-1); }
     return (b.createdAt||b.startDate||'').localeCompare(a.createdAt||a.startDate||'') || (b.id>a.id?1:-1);
   });
   return arr;
 }
-function hwGroupKey(a){ const c=CLASSES.find(x=>x.id===a.classId)||{}; return hwGroupBy==='day' ? (c.weekday||'기타') : a.classId; }
+function hwGroupKey(a){ const c=CLASSES.find(x=>x.id===a.classId)||{}; return hwGroupBy==='day' ? (clsDays(c)[0]||'기타') : a.classId; }
 function hwGroupHeader(key){
   if(hwGroupBy==='day'){ return `📅 ${WD_LABEL[key]?WD_LABEL[key]+'요일반':'요일 미지정'}`; }
   const c=CLASSES.find(x=>x.id===key)||{};
-  return `📚 ${c.name||'반 미지정'} <span style="color:var(--text-muted);font-weight:400">${(WD_LABEL[c.weekday]||'')}${c.slot||''}</span>`;
+  return `📚 ${c.name||'반 미지정'} <span style="color:var(--text-muted);font-weight:400">${clsDayLabel(c)}${c.slot||''}</span>`;
 }
 // 그동안 쓴 교재 모음 (반 기본교재 + 과거 숙제 교재) — 칩으로 빠른선택
 function allTextbooks(){
@@ -1219,6 +1294,7 @@ function rHomework(){
   const tbChips=allTextbooks();
   const esc=s=>(s||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   document.getElementById('homeworkContent').innerHTML=`
+    ${hwPresetDrawerHtml()}
     <div class="card" ${editA?'style="border-left:4px solid var(--orange)"':''}>
       <div class="card-title">${editA?'✏️ 과제 수정':'➕ 새 과제 만들기'}</div>
       <div class="form-row-3">
@@ -1597,7 +1673,7 @@ function openQuickHw(){
     </div>
     <label class="form-label">반 *</label>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px" id="qhw-cls-chips">
-      ${CLASSES.map(c=>`<button type="button" class="btn btn-outline btn-sm" data-cid="${c.id}" onclick="qhwPickClass('${c.id}')">${c.name} <span style="opacity:.6">${(WD_LABEL[c.weekday]||'')+(c.slot||'')}</span></button>`).join('')||'<span style="font-size:13px;color:var(--text-muted)">반이 없어요</span>'}
+      ${CLASSES.map(c=>`<button type="button" class="btn btn-outline btn-sm" data-cid="${c.id}" onclick="qhwPickClass('${c.id}')">${c.name} <span style="opacity:.6">${clsDayLabel(c)+(c.slot||'')}</span></button>`).join('')||'<span style="font-size:13px;color:var(--text-muted)">반이 없어요</span>'}
     </div>
     <label class="form-label">교재</label>
     <input class="form-input" id="qhw-textbook" placeholder="예: 쎈 공통수학1">
@@ -1714,7 +1790,7 @@ function rAttendance(){
   const today=new Date().toISOString().slice(0,10);
   if(!attDate) attDate=today;
   const wd=['sun','mon','tue','wed','thu','fri','sat'][new Date(attDate).getDay()];
-  const dayClasses=CLASSES.filter(c=>c.weekday===wd && isClassActive(c));
+  const dayClasses=CLASSES.filter(c=>clsHasDay(c,wd) && isClassActive(c));
   document.getElementById('attendanceContent').innerHTML=`
     <div class="card">
       <div class="card-title">✅ 출석 체크</div>
@@ -2359,7 +2435,7 @@ function calendarCardHtml(){
   function dayCell(d){
     const dow=new Date(calY,calM,d).getDay();
     const dateStr=`${calY}-${pad(calM+1)}-${pad(d)}`;
-    const cls=CLASSES.filter(c=>c.weekday===wdKeys[dow] && isClassActive(c,dateStr)).sort((a,b)=>(a.slot||'').localeCompare(b.slot||''));
+    const cls=CLASSES.filter(c=>clsHasDay(c,wdKeys[dow]) && isClassActive(c,dateStr)).sort((a,b)=>(a.slot||'').localeCompare(b.slot||''));
     const mks=makeups.filter(m=>m.date===dateStr);
     const inExam=exams.filter(e=>e.startDate&&e.endDate&&dateStr>=e.startDate&&dateStr<=e.endDate);
     const mathToday=[]; exams.forEach(e=>examMathDates(e).forEach(m=>{ if(m.date===dateStr) mathToday.push((e.school||'').slice(0,5)+' '+(m.label||'수학')); }));
@@ -2471,8 +2547,10 @@ function rSchedule(){
         <div class="form-group"><label class="form-label">반 이름 *</label><input class="form-input" id="sc-name" placeholder="예: 고1T Z2"></div>
         <div class="form-group"><label class="form-label">커리큘럼/과목</label><input class="form-input" id="sc-subject" placeholder="예: 공통수학1 유형편"></div>
       </div>
-      <div class="form-row-4">
-        <div class="form-group"><label class="form-label">요일</label><select class="form-select" id="sc-day">${days.map(d=>`<option value="${d}">${WD_LABEL[d]}요일</option>`).join('')}</select></div>
+      <div class="form-group"><label class="form-label">요일 <span style="font-size:11px;color:var(--text-muted)">(여러 개 선택 가능 — 예: 수·금 특강)</span></label>
+        <div style="display:flex;gap:5px;flex-wrap:wrap">${days.map(d=>`<label style="display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:600;border:1.5px solid var(--border);border-radius:8px;padding:7px 11px;cursor:pointer"><input type="checkbox" class="sc-day-chk" value="${d}"> ${WD_LABEL[d]}</label>`).join('')}</div>
+      </div>
+      <div class="form-row-3">
         <div class="form-group"><label class="form-label">교시(부)</label><input class="form-input" id="sc-slot" placeholder="예: 1부"></div>
         <div class="form-group"><label class="form-label">시작</label><input class="form-input" id="sc-start" type="time"></div>
         <div class="form-group"><label class="form-label">종료</label><input class="form-input" id="sc-end" type="time"></div>
@@ -2492,7 +2570,7 @@ function rSchedule(){
       <div style="overflow-x:auto"><table class="sched-tbl">
         <thead><tr>${days.map(d=>`<th>${WD_LABEL[d]}요일</th>`).join('')}</tr></thead>
         <tbody><tr>${days.map(d=>{
-          const list=CLASSES.filter(c=>c.weekday===d && isClassActive(c)).sort((a,b)=>(a.slot||'').localeCompare(b.slot||''));
+          const list=CLASSES.filter(c=>clsHasDay(c,d) && isClassActive(c)).sort((a,b)=>(a.slot||'').localeCompare(b.slot||''));
           return `<td style="vertical-align:top;min-width:120px">${list.map(c=>`
             <div class="sc-cell ${c.type==='보강'?'mk':''}" style="${c.type==='특강'?'background:var(--yellow-light);border:1px solid var(--yellow)':''}">
               <div class="sc-name">${c.name}</div>
@@ -2510,7 +2588,10 @@ function rSchedule(){
         <tbody>${CLASSES.map(c=>`
           <tr>
             <td><strong>${c.name}</strong><br><span style="font-size:11px;color:var(--text-muted)">${c.subject||''}</span></td>
-            <td>${WD_LABEL[c.weekday]||'-'}</td>
+            <td style="min-width:215px"><div style="display:flex;gap:3px;flex-wrap:wrap;align-items:center">
+              ${days.map(d=>`<label style="display:inline-flex;align-items:center;gap:2px;font-size:11px;border:1px solid var(--border);border-radius:5px;padding:2px 5px;cursor:pointer"><input type="checkbox" class="cd-${c.id}" value="${d}" ${clsHasDay(c,d)?'checked':''}> ${WD_LABEL[d]}</label>`).join('')}
+              <button class="btn btn-outline btn-sm" onclick="doSaveClassDays('${c.id}')">저장</button>
+            </div></td>
             <td>${c.slot||'-'}</td>
             <td style="min-width:230px"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><input type="time" class="form-input" style="width:120px;padding:6px 8px" id="ct-s-${c.id}" value="${c.startTime||''}"><span>~</span><input type="time" class="form-input" style="width:120px;padding:6px 8px" id="ct-e-${c.id}" value="${c.endTime||''}"><button class="btn btn-outline btn-sm" onclick="doSaveClassTime('${c.id}')">저장</button></div></td>
             <td><span class="badge ${TYPE_BADGE[c.type]||'b-gray'}">${c.type||'정규'}</span></td>
@@ -2532,9 +2613,12 @@ async function doToggleRole(id){
 async function doAddClass(){
   const name=document.getElementById('sc-name').value.trim();
   if(!name){showToast('반 이름을 입력해주세요','error');return;}
+  const wds=[...document.querySelectorAll('.sc-day-chk:checked')].map(el=>el.value);
+  if(!wds.length){showToast('요일을 하나 이상 선택해주세요','error');return;}
   const data={
     name, subject:document.getElementById('sc-subject').value.trim(),
-    weekday:document.getElementById('sc-day').value, slot:document.getElementById('sc-slot').value.trim(),
+    weekdays:wds, weekday:wds[0],   // weekday=첫 요일 (구버전·student.html 호환)
+    slot:document.getElementById('sc-slot').value.trim(),
     startTime:document.getElementById('sc-start').value, endTime:document.getElementById('sc-end').value,
     type:document.getElementById('sc-type').value,
     role:(document.getElementById('sc-role')?.value)||'담임',
@@ -2543,6 +2627,12 @@ async function doAddClass(){
   };
   try{ await addClassFS(data); showToast(`"${name}" 반이 추가되었어요! 📅`,'success'); rSchedule(); }
   catch(e){ showToast('추가 실패: '+e.message,'error'); }
+}
+async function doSaveClassDays(id){
+  const wds=[...document.querySelectorAll('.cd-'+id+':checked')].map(el=>el.value);
+  if(!wds.length){ showToast('요일을 하나 이상 선택해주세요','error'); return; }
+  try{ await updateClassFS(id,{weekdays:wds, weekday:wds[0]}); showToast(`요일 저장 — ${wds.map(w=>WD_LABEL[w]).join('·')}`,'success'); rSchedule(); }
+  catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
 async function doSaveClassTime(id){
   const s=document.getElementById('ct-s-'+id).value, e=document.getElementById('ct-e-'+id).value;
@@ -2716,6 +2806,7 @@ async function init(){
     await loadClasses();         // 반 목록 (없으면 13개 자동 생성)
     await loadStudents();        // 학생 명단
     await loadAssignments();     // 숙제(과제)
+    await loadHwPresets();       // 교재 서랍(숙제 프리셋) — 규칙 막혀도 조용히 빈 배열
     await loadSubmissions();     // 제출 현황
     await loadReviews();         // 복습(번호 지정)
     await loadReviewSubs();      // 복습 재풀이 제출
