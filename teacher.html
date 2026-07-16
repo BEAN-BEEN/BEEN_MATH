@@ -383,9 +383,12 @@ function hwPresetDrawerHtml(){
         <input class="form-input" id="hp-textbook" list="hp-tblist" placeholder="예: 쎈 공통수학1"><datalist id="hp-tblist">${tbChips.map(t=>`<option value="${esc(t)}">`).join('')}</datalist></div>
       <div class="form-group" style="margin:0;flex:1;min-width:130px"><label class="form-label">제목(선택)</label>
         <input class="form-input" id="hp-title" placeholder="예: 3단원 연습문제"></div>
-      <div class="form-group" style="margin:0;width:78px"><label class="form-label">시작</label><input class="form-input" id="hp-pstart" type="number" min="1" placeholder="1"></div>
-      <div class="form-group" style="margin:0;width:78px"><label class="form-label">끝</label><input class="form-input" id="hp-pend" type="number" min="1" placeholder="20"></div>
-      <div class="form-group" style="margin:0;flex:1;min-width:150px"><label class="form-label">자유 범위(선택)</label><input class="form-input" id="hp-plabel" placeholder="예: 자이스토리 H30~I70"></div>
+      <div class="form-group" style="margin:0"><label class="form-label">문제 번호 <span style="font-size:11px;color:var(--text-muted)">(학생이 이 번호판에서 틀린 것만 고름)</span></label>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input class="form-input" id="hp-pstart" type="number" min="1" style="width:72px" placeholder="1"><span>~</span>
+          <input class="form-input" id="hp-pend" type="number" min="1" style="width:72px" placeholder="20"><span style="font-size:12px;color:var(--text-muted)">번</span>
+        </div></div>
+      <div class="form-group" style="margin:0;flex:1;min-width:160px"><label class="form-label">또는 자유 범위 <span style="font-size:11px;color:var(--text-muted)">(문자+숫자일 때)</span></label><input class="form-input" id="hp-plabel" placeholder="예: 자이스토리 H30~I70"></div>
       <button class="btn btn-primary" onclick="doSaveHwPreset()">＋ 서랍에 저장</button>
     </div>
     ${ps.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
@@ -2582,12 +2585,17 @@ function rSchedule(){
       </table></div>
     </div>
     <div class="card">
-      <div class="card-title">⚙️ 반 목록 / 시간·삭제</div>
+      <div class="card-title">⚙️ 반 목록 — 교재·요일·시간 수정 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(시즌 바뀌면 교재 칸만 고치고 저장)</span></div>
+      <datalist id="cs-tblist">${allTextbooks().map(t=>`<option value="${(t||'').replace(/"/g,'&quot;')}">`).join('')}</datalist>
       <div class="table-wrap"><table>
-        <thead><tr><th>반</th><th>요일</th><th>교시</th><th>시간</th><th>유형</th><th>담임/부담임</th><th>운영기간 (특강)</th><th>학생</th><th>관리</th></tr></thead>
+        <thead><tr><th>반 / 교재</th><th>요일</th><th>교시</th><th>시간</th><th>유형</th><th>담임/부담임</th><th>운영기간 (특강)</th><th>학생</th><th>관리</th></tr></thead>
         <tbody>${CLASSES.map(c=>`
           <tr>
-            <td><strong>${c.name}</strong><br><span style="font-size:11px;color:var(--text-muted)">${c.subject||''}</span></td>
+            <td style="min-width:200px"><strong>${c.name}</strong>
+              <div style="display:flex;gap:4px;align-items:center;margin-top:5px">
+                <input class="form-input" id="cs-${c.id}" list="cs-tblist" style="width:140px;padding:4px 7px;font-size:11px" value="${(c.subject||'').replace(/"/g,'&quot;')}" placeholder="교재/커리큘럼">
+                <button class="btn btn-outline btn-sm" style="padding:2px 7px" onclick="doSaveClassSubject('${c.id}')">저장</button>
+              </div></td>
             <td style="min-width:215px"><div style="display:flex;gap:3px;flex-wrap:wrap;align-items:center">
               ${days.map(d=>`<label style="display:inline-flex;align-items:center;gap:2px;font-size:11px;border:1px solid var(--border);border-radius:5px;padding:2px 5px;cursor:pointer"><input type="checkbox" class="cd-${c.id}" value="${d}" ${clsHasDay(c,d)?'checked':''}> ${WD_LABEL[d]}</label>`).join('')}
               <button class="btn btn-outline btn-sm" onclick="doSaveClassDays('${c.id}')">저장</button>
@@ -2627,6 +2635,12 @@ async function doAddClass(){
   };
   try{ await addClassFS(data); showToast(`"${name}" 반이 추가되었어요! 📅`,'success'); rSchedule(); }
   catch(e){ showToast('추가 실패: '+e.message,'error'); }
+}
+async function doSaveClassSubject(id){
+  const el=document.getElementById('cs-'+id); if(!el) return;
+  const subject=el.value.trim();
+  try{ await updateClassFS(id,{subject}); showToast(`교재 저장 — ${subject||'(비움)'}`,'success'); rSchedule(); }
+  catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
 async function doSaveClassDays(id){
   const wds=[...document.querySelectorAll('.cd-'+id+':checked')].map(el=>el.value);
