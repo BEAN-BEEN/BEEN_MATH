@@ -1976,8 +1976,8 @@ let gradeTab='naesin';  // 성적관리 대탭: naesin(내신) / daily(학원 �
 function numFromScore(s){ const m=String(s==null?'':s).match(/-?\d+(\.\d+)?/); return m?parseFloat(m[0]):null; }  // "94+"→94, "40점대"→40
 function naesinTrendRows(){
   const sts = trendStatus==='전체' ? STUDENTS_CACHE.slice() : STUDENTS_CACHE.filter(s=>studentStatus(s)===trendStatus);
-  const rows=sts.map(st=>{ const mid=getNaesin(st.id,trendSubject,'중간'), fin=getNaesin(st.id,trendSubject,'기말'); if(!mid&&!fin) return null;
-    const mv=numFromScore(mid&&mid.score), fv=numFromScore(fin&&fin.score); const delta=(mv!=null&&fv!=null)?+(fv-mv).toFixed(1):null; return {st,mid,fin,delta}; }).filter(Boolean);
+  const rows=sts.map(st=>{ const mid=getNaesin(st.id,trendSubject,'중간'), fin=getNaesin(st.id,trendSubject,'기말'), sem=getNaesin(st.id,trendSubject,'1학기합산'); if(!mid&&!fin&&!sem) return null;
+    const mv=numFromScore(mid&&mid.score), fv=numFromScore(fin&&fin.score); const delta=(mv!=null&&fv!=null)?+(fv-mv).toFixed(1):null; return {st,mid,fin,sem,delta}; }).filter(Boolean);
   rows.sort((a,b)=>{ if(a.delta==null&&b.delta==null) return (a.st.name||'').localeCompare(b.st.name||''); if(a.delta==null) return 1; if(b.delta==null) return -1; return b.delta-a.delta; });
   return rows;
 }
@@ -2004,14 +2004,17 @@ function naesinTrendHtml(){
       ${avg!=null?`<span style="font-size:13px;color:var(--text-sub);margin-left:4px">평균 변화 <strong style="color:${avg>0?'var(--green)':(avg<0?'var(--red)':'var(--text-sub)')}">${avg>0?'+':''}${avg}점</strong></span>`:''}
     </div>
     <div class="table-wrap"><table>
-      <thead><tr><th>학생</th>${trendStatus==='전체'?'<th>상태</th>':''}<th>중간</th><th>기말</th><th>변화</th></tr></thead>
-      <tbody>${rows.map(r=>`<tr>
+      <thead><tr><th>학생</th>${trendStatus==='전체'?'<th>상태</th>':''}<th>중간</th><th>기말</th><th>변화</th><th>1학기 합산</th></tr></thead>
+      <tbody>${rows.map(r=>{ const gr=g=>g?` <span style="font-size:11px;color:var(--text-muted)">${g}등급</span>`:'';
+        const sc=n=>n&&n.score?n.score+gr(n.grade):(n&&n.grade?gr(n.grade).trim():'<span style="color:var(--text-muted)">-</span>');
+        return `<tr>
         <td><strong>${r.st.name}</strong>${r.st.school?`<span style="font-size:11px;color:var(--text-muted)"> · ${r.st.school}</span>`:''}</td>
         ${trendStatus==='전체'?`<td>${statusBadge(studentStatus(r.st))}</td>`:''}
-        <td>${r.mid&&r.mid.score?r.mid.score:'<span style="color:var(--text-muted)">-</span>'}</td>
-        <td>${r.fin&&r.fin.score?r.fin.score:'<span style="color:var(--text-muted)">-</span>'}</td>
+        <td>${sc(r.mid)}</td>
+        <td>${sc(r.fin)}</td>
         <td>${dcell(r)}</td>
-      </tr>`).join('')}</tbody>
+        <td>${r.sem&&r.sem.grade?`<span class="badge b-primary">${r.sem.grade}등급</span>`:'<span style="color:var(--text-muted)">-</span>'}</td>
+      </tr>`;}).join('')}</tbody>
     </table></div>
     <div style="font-size:11px;color:var(--text-muted);margin-top:8px">· 변화량은 점수의 숫자만 뽑아 계산해요(94+ → 94, 40점대 → 40). 숫자가 없으면 '-'.</div>`
     :`<div style="text-align:center;padding:24px;color:var(--text-muted)">${trendStatus==='전체'?'전체':trendStatus+'생'} 중 <strong>${trendSubject}</strong> 내신이 입력된 학생이 없어요.</div>`}
