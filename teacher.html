@@ -992,7 +992,8 @@ function rDashboard(){
 // ================================================================
 // STUDENTS
 // ================================================================
-let showAdd=false, stSearch='', editStudentId=null, stStatusFilter='재원';
+let showAdd=false, stSearch='', editStudentId=null, stStatusFilter='재원', stPushOnly=false;
+function pushOn(s){ return Array.isArray(s.fcmTokens) && s.fcmTokens.length>0; }
 function renderEditCard(){
   const s=getStudents().find(x=>x.id===editStudentId); if(!s) return '';
   const ids=s.classIds||(s.classId?[s.classId]:[]);
@@ -1062,8 +1063,10 @@ function rStudents(){
       <input class="form-input" id="stSearchInput" style="max-width:260px" placeholder="🔍 학생 이름 검색" value="${stSearch}" oninput="stSearch=this.value;renderStudentRows()">
       <button class="btn btn-primary" onclick="showAdd=!showAdd;rStudents()">➕ 학생 추가</button>
     </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
       ${[['재원','재원생'],['휴원','휴원'],['퇴원','퇴원'],['전체','전체']].map(([v,lbl])=>{const cnt=v==='전체'?STUDENTS_CACHE.length:STUDENTS_CACHE.filter(s=>studentStatus(s)===v).length;return `<button class="btn btn-sm" style="${stStatusFilter===v?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="stStatusFilter='${v}';rStudents()">${lbl} ${cnt}</button>`;}).join('')}
+      <span style="width:1px;height:20px;background:var(--border);margin:0 4px"></span>
+      <button class="btn btn-sm" style="${stPushOnly?'background:var(--green);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="stPushOnly=!stPushOnly;rStudents()">🔔 알림 켠 학생 ${STUDENTS_CACHE.filter(s=>studentStatus(s)==='재원'&&pushOn(s)).length}</button>
     </div>
     ${showAdd?`
       <div class="card" id="addCard">
@@ -1096,16 +1099,17 @@ function rStudents(){
 function statusBadge(v){ const m={'재원':'b-green','휴원':'b-yellow','퇴원':'b-red'}; return `<span class="badge ${m[v]||'b-gray'}">${v}</span>`; }
 function renderStudentRows(){
   const q=(stSearch||'').trim();
-  const sts=getStudents().filter(s=> (stStatusFilter==='전체'||studentStatus(s)===stStatusFilter) && (!q || (s.name||'').includes(q)));
+  const sts=getStudents().filter(s=> (stStatusFilter==='전체'||studentStatus(s)===stStatusFilter) && (!stPushOnly||pushOn(s)) && (!q || (s.name||'').includes(q)));
   const el=document.getElementById('studentList'); if(!el) return;
   el.innerHTML = sts.length===0
-    ? `<div style="text-align:center;padding:40px;color:var(--text-muted)">${q?'🔍 검색 결과가 없어요':(stStatusFilter==='재원'?'재원생이 없어요. 위 필터로 휴원·퇴원도 볼 수 있어요.':'해당 상태의 학생이 없어요')}</div>`
-    : `<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">총 ${sts.length}명</div>
+    ? `<div style="text-align:center;padding:40px;color:var(--text-muted)">${stPushOnly?'🔔 알림 켠 학생이 없어요 (학생이 앱에서 직접 켜야 해요)':(q?'🔍 검색 결과가 없어요':(stStatusFilter==='재원'?'재원생이 없어요. 위 필터로 휴원·퇴원도 볼 수 있어요.':'해당 상태의 학생이 없어요'))}</div>`
+    : `<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">총 ${sts.length}명${stPushOnly?' · 🔔 알림 켠 학생만':''}</div>
       <div class="table-wrap"><table>
-        <thead><tr><th>이름</th><th>상태</th><th>반</th><th>연락처</th><th>학부모 연락처</th><th>로그인 번호</th><th>관리</th></tr></thead>
+        <thead><tr><th>이름</th><th>알림</th><th>상태</th><th>반</th><th>연락처</th><th>학부모 연락처</th><th>로그인 번호</th><th>관리</th></tr></thead>
         <tbody>${sts.map(s=>{const st=studentStatus(s);return `
           <tr${st!=='재원'?' style="opacity:.62"':''}>
             <td><strong>${s.name}</strong>${s.memo?' <span title="메모 있음">📝</span>':''}</td>
+            <td>${pushOn(s)?'<span class="badge b-green">🔔 켬</span>':'<span class="badge b-gray" title="학생이 앱에서 알림 켜기를 눌러야 해요">🔕 꺼짐</span>'}</td>
             <td>${statusBadge(st)}${st!=='재원'&&s.statusMemo?`<div style="font-size:11px;color:var(--text-muted);margin-top:2px">${s.statusMemo}</div>`:''}</td>
             <td>${classNamesOf(s).map(n=>`<span class="chip" style="margin:1px 2px">${n}</span>`).join('')||'-'}</td>
             <td>${s.phone||'-'}</td>
