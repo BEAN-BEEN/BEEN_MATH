@@ -1493,15 +1493,18 @@ function showCorrPhotos(subId){
 }
 function oapRosterHtml(a, subs, sts){
   return `<div style="margin-top:14px"><div class="table-wrap"><table>
-    <thead><tr><th>학생</th><th>상태</th><th>틀린 문제</th><th>오답 완료</th><th>고친 사진</th></tr></thead>
+    <thead><tr><th>학생</th><th>제출(사진)</th><th>상태</th><th>틀린 문제</th><th>오답 완료</th><th>고친 사진</th></tr></thead>
     <tbody>${sts.map(st=>{ const sub=subs.find(s=>s.studentId===st.id); const o=oapStat(sub);
-      const statusCell = (!sub||!o.entered) ? '<span class="badge b-red">미입력</span>'
+      const subCell = !sub ? '<span class="badge b-red">미제출</span>'
+        : (sub.offline ? '<span class="badge b-orange">✋직접검사</span>'
+        : ((sub.photos&&sub.photos.length) ? `<button class="btn btn-outline btn-sm" onclick="openSubPhotos('${sub.id}')">📷 ${sub.photos.length}장</button>` : '<span class="badge b-yellow">사진 대기</span>'));
+      const statusCell = (!sub||!o.entered) ? '<span class="badge b-red">번호 미입력</span>'
         : (o.wrongNos.length===0 ? '<span class="badge b-green">😎 다 맞음</span>'
         : (o.done ? '<span class="badge b-green">✅ 오답완료</span>' : '<span class="badge b-orange">진행중</span>'));
       const wrongCell = !o.entered ? '-' : (o.wrongNos.length===0 ? '없음' : o.wrongNos.join(', ')+` <span style="color:var(--text-muted)">(${o.wrongNos.length})</span>`);
       const doneCell = (!o.entered||o.wrongNos.length===0) ? '-' : `${o.doneCnt}/${o.wrongNos.length}`;
       const photoCell = (o.entered && o.doneCnt>0) ? `<button class="btn btn-outline btn-sm" onclick="showCorrPhotos('${sub.id}')">📷 ${o.doneCnt}</button>` : '-';
-      return `<tr><td><strong>${st.name}</strong></td><td>${statusCell}</td><td style="font-size:12px">${wrongCell}</td><td>${doneCell}</td><td>${photoCell}</td></tr>`;
+      return `<tr><td><strong>${st.name}</strong></td><td>${subCell}</td><td>${statusCell}</td><td style="font-size:12px">${wrongCell}</td><td>${doneCell}</td><td>${photoCell}</td></tr>`;
     }).join('')}</tbody>
   </table></div></div>`;
 }

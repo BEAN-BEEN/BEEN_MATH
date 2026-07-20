@@ -675,15 +675,17 @@ function getAssignments(){
     // 선생님 확인 대기 문제(사진 있고 아직 맞음/재오답 판정 전)
     const oapAwaitTeacher = isOap && oapEntered && wrongNos.some(n=>corrections[n] && !oapRedo[n] && !oapOk[n]);
     const oapDone = oapPhotoDone; // 기존 배지 호환(사진 완료 기준)
+    // 📷 완료 사진(또는 직접검사) 제출 여부 — 오답 숙제도 '사진 + 번호' 둘 다 받음
+    const hasPhoto = !!(sub && ((Array.isArray(sub.photos)&&sub.photos.length) || sub.offline));
     let status;
     if(isOap){
-      if(!oapEntered) status=(a.dueDate && a.dueDate < today) ? 'late' : 'pending';
-      else if(oapPhotoDone) status='submitted';
-      else status='pending'; // 오답 입력했지만 고친 사진 미완료 → 계속 챙길 것
+      if(sub && sub.rejected) status='rejected';
+      else if(oapEntered && hasPhoto) status='submitted';   // 사진 + 틀린번호 둘 다 해야 제출 완료
+      else status=(a.dueDate && a.dueDate < today) ? 'late' : 'pending';
     } else if(sub && sub.rejected) status='rejected';
     else if(sub) status='submitted';
     else status=(a.dueDate && a.dueDate < today) ? 'late' : 'pending';
-    return { ...a, status, isOap, wrongNos, corrections, oapOk, oapRedo, oapEntered, oapDone, oapPhotoDone, oapConfirmed, oapNeedsStudent, oapAwaitTeacher, submittedAt:sub?sub.submittedAt:null, teacherChecked:sub?!!sub.checked:false, needsRetry:sub?!!sub.needsRetry:false, offline:sub?!!sub.offline:false, late:sub?!!sub.late:false, retryDone:sub?!!sub.retryDone:false, rejected:sub?!!sub.rejected:false, rejectReason:sub?(sub.rejectReason||''):'', evalPct:sub?(sub.evalPct||''):'', evalTag:sub?(sub.evalTag||''):'', subId:sub?sub.id:null };
+    return { ...a, status, isOap, wrongNos, corrections, oapOk, oapRedo, oapEntered, oapDone, oapPhotoDone, oapConfirmed, oapNeedsStudent, oapAwaitTeacher, hasPhoto, photos:(sub&&sub.photos)||[], submittedAt:sub?sub.submittedAt:null, teacherChecked:sub?!!sub.checked:false, needsRetry:sub?!!sub.needsRetry:false, offline:sub?!!sub.offline:false, late:sub?!!sub.late:false, retryDone:sub?!!sub.retryDone:false, rejected:sub?!!sub.rejected:false, rejectReason:sub?(sub.rejectReason||''):'', evalPct:sub?(sub.evalPct||''):'', evalTag:sub?(sub.evalTag||''):'', subId:sub?sub.id:null };
   });
 }
 function getAttendance()  { return S_ATTENDANCE; }
@@ -1083,11 +1085,41 @@ function renderHome() {
 // 🔢 오답 방식 숙제 카드
 function renderOapCard(a){
   const wrongNos = a.wrongNos||[]; const corrections = a.corrections||{}; const oapOk=a.oapOk||{}; const oapRedo=a.oapRedo||{};
+  const sub = a.subId ? S_SUBMISSIONS.find(s=>s.id===a.subId) : null;
+  const hasPhoto = a.hasPhoto; const photos=a.photos||[];
   const rangeHint = (a.probStart&&a.probEnd) ? `${a.probStart}~${a.probEnd}번` : (a.probLabel||'');
   const badge = a.oapConfirmed ? '<span class="badge b-green">오답 완료 ✅</span>'
-    : (!a.oapEntered ? '<span class="badge b-primary">틀린문제 입력</span>'
+    : (!(hasPhoto && a.oapEntered) ? '<span class="badge b-primary">제출 전 (사진+번호)</span>'
     : (wrongNos.length===0 ? '<span class="badge b-green">다 맞았어요 ✅</span>'
     : (a.oapNeedsStudent ? '<span class="badge b-orange">오답 진행중</span>' : '<span class="badge b-yellow">선생님 확인 대기</span>')));
+  // ① 완료 사진 제출 (오답 숙제도 사진 + 번호 둘 다)
+  let photoHtml;
+  if(!hasPhoto){
+    photoHtml=`
+      <div style="font-size:13px;font-weight:800;margin:12px 0 6px;color:var(--primary)">① 완료한 숙제 사진 올리기</div>
+      <div class="upload-area" onclick="this.querySelector('input').click()">
+        <div class="u-icon">📷</div><p>사진을 선택하세요 (최대 ${a.maxPhotos||30}장)</p>
+        <input type="file" accept="image/*" multiple id="hwfile-${a.id}" onchange="handlePreview(this,'${a.id}')">
+      </div>
+      <div id="prev-${a.id}" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"></div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="doSubmit('${a.id}')">📷 사진으로 제출 ✓</button>
+        <button class="btn btn-outline" onclick="doSubmitOffline('${a.id}')">✋ 직접 검사받기</button>
+      </div>`;
+  } else {
+    photoHtml=`
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:12px 0 6px;padding:10px 12px;background:var(--green-light);border-radius:var(--radius-sm)">
+        <span style="font-size:13px;font-weight:800;color:var(--green)">① ${sub&&sub.offline?'✋ 직접 검사 요청됨':'✅ 완료 사진 제출됨'}</span>
+        ${(!(sub&&sub.offline))&&photos.length?`<button class="btn btn-outline btn-sm" onclick="window.open('${photos[0]}','_blank')">📷 ${photos.length}장 보기</button>`:''}
+        ${!a.teacherChecked?`<button class="btn btn-outline btn-sm" onclick="toggleRedo('${a.id}')">✏️ 다시 올리기</button>`:'<span style="font-size:12px;color:var(--text-muted)">· 👁 확인 완료</span>'}
+      </div>
+      <div id="redo-${a.id}" style="display:none;margin-bottom:10px">
+        <div class="upload-area" onclick="this.querySelector('input').click()"><div class="u-icon">📷</div><p>새 사진 선택 (최대 ${a.maxPhotos||30}장)</p>
+          <input type="file" accept="image/*" multiple id="hwfile-${a.id}" onchange="handlePreview(this,'${a.id}')"></div>
+        <div id="prev-${a.id}" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px"></div>
+        <button class="btn btn-primary btn-sm" onclick="doSubmit('${a.id}')">이 사진으로 다시 제출 ✓</button>
+      </div>`;
+  }
   let bodyHtml='';
   if(!a.oapEntered){
     let nums='';
@@ -1125,6 +1157,8 @@ function renderOapCard(a){
     ${a.textbook?`<div style="font-size:12px;color:var(--primary);font-weight:600;margin-bottom:4px">📘 ${a.textbook}</div>`:''}
     ${a.content?`<div class="hw-body">${a.content}</div>`:''}
     ${a.dueDate?`<div class="hw-due">📅 ${fmtDateFull(a.dueDate)} 까지</div>`:''}
+    ${photoHtml}
+    <div style="font-size:13px;font-weight:800;margin:14px 0 2px;color:var(--red)">② 틀린 문제 체크</div>
     ${bodyHtml}
   </div>`;
 }
