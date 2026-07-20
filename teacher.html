@@ -1370,12 +1370,12 @@ function rHomework(){
           <input class="form-input" id="hw-pstart" type="number" min="1" style="width:90px" placeholder="시작" value="${editA?(editA.probStart||''):''}">
           <span>~</span>
           <input class="form-input" id="hw-pend" type="number" min="1" style="width:90px" placeholder="끝" value="${editA?(editA.probEnd||''):''}">
-          <span style="font-size:12px;color:var(--text-muted)">번 (예: 1 ~ 20 · 번호 그리드)</span>
+          <span style="font-size:12px;color:var(--text-muted)">번 (한 구간 · 예: 1 ~ 20 → 번호 그리드)</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
-          <input class="form-input" id="hw-plabel" style="flex:1;min-width:140px" placeholder="자유 범위 (예: 자이스토리 H30~I70)" value="${editA?esc(editA.probLabel||''):''}">
+          <input class="form-input" id="hw-plabel" style="flex:1;min-width:140px" placeholder="여러 구간·문자 범위 (예: 1~100, 105~110  또는  자이스토리 H30~I70)" value="${editA?esc(editA.probLabel||''):''}">
         </div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:6px">· 깔끔한 정수 범위면 위(그리드), 자이스토리처럼 문자+숫자면 아래 자유 범위를 쓰세요. 둘 중 하나만 넣어도 오답 관리가 켜져요.</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:6px">· 한 구간(1~20)이면 위 칸 → 번호 그리드. <strong>여러 구간(1~100, 105~110)</strong>이나 문자(H30~I70)면 아래 칸에 쉼표로. 문항이 40개 넘으면 그리드 대신 학생이 직접 입력해요. 둘 중 하나만 넣어도 오답 관리 켜짐.</div>
       </div>
       <div class="form-group" style="max-width:180px"><label class="form-label">최대 사진 수 <span style="font-size:11px;color:var(--text-muted)">(범위 미입력 시)</span></label><input class="form-input" id="hw-photos" type="number" value="${editA?(editA.maxPhotos||30):30}" min="1" max="30"></div>
       <div class="btn-row">
