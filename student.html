@@ -1348,7 +1348,7 @@ function renderHomework() {
     return `
       <div class="hw-card ${a.status}" id="hwcard-${a.id}">
         <div class="hw-head">
-          <div><span class="chip">${a.className}</span><span style="margin-left:8px">${statusBadge(a.status)}</span></div>
+          <div><span class="chip">${a.className}</span><span style="margin-left:8px">${a.status==='submitted' ? (a.teacherChecked ? '<span class="badge b-green">✅ 확인 완료</span>' : '<span class="badge b-yellow">📤 제출됨 · 확인 대기</span>') : statusBadge(a.status)}</span></div>
           <span style="font-size:12px;color:var(--text-muted)">최대 ${a.maxPhotos}장</span>
         </div>
         <div class="hw-title" style="margin-bottom:6px">${a.title}</div>
@@ -1411,7 +1411,9 @@ function renderHomework() {
   if (rejected.length) html += `<div class="sec-label" style="color:var(--red)">🔁 반려됨 — 다시 제출 (${rejected.length})</div>` + rejected.map(card).join('');
   if (pending.length) html += `<div class="sec-label">📌 제출할 숙제 (${pending.length})</div>` + pending.map(card).join('');
   if (late.length)    html += `<div class="sec-label" style="color:var(--red)">⚠️ 미제출 / 지각 (${late.length})</div>` + late.map(card).join('');
-  if (submitted.length) html += `<div class="sec-label">✅ 제출 완료 (${submitted.length})</div>` + submitted.map(card).join('');
+  const subWaiting = submitted.filter(a=>!a.teacherChecked), subDone = submitted.filter(a=>a.teacherChecked);
+  if (subWaiting.length) html += `<div class="sec-label" style="color:var(--yellow)">📤 제출됨 · 선생님 확인 대기 (${subWaiting.length})</div>` + subWaiting.map(card).join('');
+  if (subDone.length) html += `<div class="sec-label" style="color:var(--green)">✅ 확인 완료 (${subDone.length})</div>` + subDone.map(card).join('');
   if (!asgn.length) html = '<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">제출할 숙제가 없어요 🎉</div>';
   document.getElementById('homeworkContent').innerHTML = html;
 }
