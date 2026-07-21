@@ -1106,6 +1106,32 @@ function oapGridNums(a){
   }
   return [...new Set(nums)].sort((x,y)=>x-y);
 }
+// 문제 번호를 '구간(섹션)'으로 파싱 — 번호가 리셋되는 문제집(1~100 / 다시 1~20) 지원
+//  probLabel에 '/' 있으면 구간 분리, 각 구간은 '이름: 범위' 또는 '범위'. 리셋 구간은 ①②로 구분.
+function oapSections(a){
+  const parseRanges=(txt)=>{ const nums=[];
+    txt.split(',').forEach(part=>{ const m=part.trim().match(/^(\d+)\s*[~\-]\s*(\d+)$/);
+      if(m){ let x=+m[1],y=+m[2]; if(x>y)[x,y]=[y,x]; for(let i=x;i<=y&&i-x<500;i++) nums.push(i); }
+      else{ const v=parseInt(part,10); if(v>0) nums.push(v); } });
+    return [...new Set(nums)].sort((x,y)=>x-y);
+  };
+  const lbl=(a.probLabel||'').trim();
+  const circ='①②③④⑤⑥⑦⑧⑨⑩';
+  if(lbl && lbl.includes('/')){
+    return lbl.split('/').map((seg,i)=>{
+      seg=seg.trim(); let name='', rangeTxt=seg;
+      const nm=seg.match(/^([^\d]*?)\s*([\d].*)$/);   // 앞 비숫자=이름, 나머지=범위 (콜론 유무 무관)
+      if(nm){ name=(nm[1]||'').replace(/[:：]/g,'').trim(); rangeTxt=nm[2].trim(); }
+      const prefix = name || (circ[i]||('구간'+(i+1)));
+      return { name:prefix, prefix, nums:parseRanges(rangeTxt) };
+    }).filter(s=>s.nums.length);
+  }
+  let nums=[];
+  if(a.probStart&&a.probEnd){ for(let n=a.probStart;n<=a.probEnd&&n-a.probStart<500;n++) nums.push(n); }
+  if(lbl && /^[\d\s,~\-]+$/.test(lbl)){ nums=nums.concat(parseRanges(lbl)); }
+  nums=[...new Set(nums)].sort((x,y)=>x-y);
+  return nums.length ? [{ name:'', prefix:'', nums }] : [];
+}
 function renderOapCard(a){
   const wrongNos = a.wrongNos||[]; const corrections = a.corrections||{}; const oapOk=a.oapOk||{}; const oapRedo=a.oapRedo||{};
   const sub = a.subId ? S_SUBMISSIONS.find(s=>s.id===a.subId) : null;
@@ -1145,16 +1171,23 @@ function renderOapCard(a){
   }
   let bodyHtml='';
   if(!a.oapEntered){
-    const gridNums=oapGridNums(a);
-    const showGrid = gridNums.length>0;   // 문항 수 많아도 항상 번호 버튼으로 선택
-    let nums='';
+    const sections=oapSections(a);
+    const totalN=sections.reduce((s,sec)=>s+sec.nums.length,0);
+    const showGrid = totalN>0;
+    const multi = sections.length>1;
+    let gridHtml='';
     if(showGrid){
-      gridNums.forEach(n=>{ nums+=`<button type="button" class="oapnum" data-no="${n}" onclick="this.classList.toggle('on')">${n}</button>`; });
+      sections.forEach(sec=>{
+        if(multi && sec.name) gridHtml+=`<div style="font-size:12px;font-weight:800;color:var(--primary);margin:10px 0 4px">📑 ${sec.name}</div>`;
+        let btns=''; sec.nums.forEach(n=>{ const label=sec.prefix?`${sec.prefix}-${n}`:String(n);
+          btns+=`<button type="button" class="oapnum" data-no="${label}" onclick="this.classList.toggle('on')">${n}</button>`; });
+        gridHtml+=`<div class="oapgrid${sec.nums.length>60?' scroll':''}">${btns}</div>`;
+      });
+      gridHtml=`<div id="oapnums-${a.id}">${gridHtml}</div>`;
     }
-    const many = gridNums.length>60;
     bodyHtml=`
-      <div style="font-size:13px;color:var(--text-sub);margin:8px 0">${rangeHint?`<strong>${rangeHint}</strong> 중 `:''}<strong style="color:var(--red)">틀린 문제</strong>를 ${showGrid?'눌러서 선택하세요 👇':'입력해주세요'}</div>
-      ${nums?`<div id="oapnums-${a.id}" class="oapgrid${many?' scroll':''}">${nums}</div>`:''}
+      <div style="font-size:13px;color:var(--text-sub);margin:8px 0">${rangeHint?`<strong>${rangeHint}</strong> 중 `:''}<strong style="color:var(--red)">틀린 문제</strong>를 ${showGrid?'눌러서 선택하세요 👇':'입력해주세요'}${multi?' <span style="font-size:11px;color:var(--text-muted)">(구간별로 골라요)</span>':''}</div>
+      ${gridHtml}
       ${showGrid?`<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">숫자에 없는 문제(예: H30)만 아래에 직접 적어요</div>`:''}
       <input class="form-input" id="oapfree-${a.id}" placeholder="${showGrid?'직접 입력 (선택) 예: H30':'틀린 문제 입력 (예: 3, 57, 108)'}" style="margin-bottom:12px">
       <div class="btn-row">

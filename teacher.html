@@ -1379,9 +1379,9 @@ function rHomework(){
           <span style="font-size:12px;color:var(--text-muted)">번 (한 구간 · 예: 1 ~ 20 → 번호 그리드)</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
-          <input class="form-input" id="hw-plabel" style="flex:1;min-width:140px" placeholder="여러 구간·문자 범위 (예: 1~100, 105~110  또는  자이스토리 H30~I70)" value="${editA?esc(editA.probLabel||''):''}">
+          <input class="form-input" id="hw-plabel" style="flex:1;min-width:140px" placeholder="여러 구간·리셋·문자 (예: 1~100, 105~110  /  본문 1~100 / 복습 1~20  /  H30~I70)" value="${editA?esc(editA.probLabel||''):''}">
         </div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:6px">· 한 구간(1~20)이면 위 칸 → 번호 그리드. <strong>여러 구간(1~100, 105~110)</strong>이나 문자(H30~I70)면 아래 칸에 쉼표로. 문항이 40개 넘으면 그리드 대신 학생이 직접 입력해요. 둘 중 하나만 넣어도 오답 관리 켜짐.</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:6px">· 한 구간(1~20)이면 위 칸 → 번호 그리드. 아래 칸: 이어지는 여러 구간은 <strong>쉼표</strong>(1~100, 105~110). <strong>번호가 리셋(1~100 하다 다시 1~20)되면 슬래시 <code>/</code></strong>로 나눠요 — 이름 붙이려면 <code>본문 1~100 / 복습 1~20</code>. 문자(H30~I70)도 가능. 문항 많아도 학생은 번호 눌러서 선택.</div>
       </div>
       <div class="form-group" style="max-width:180px"><label class="form-label">최대 사진 수 <span style="font-size:11px;color:var(--text-muted)">(범위 미입력 시)</span></label><input class="form-input" id="hw-photos" type="number" value="${editA?(editA.maxPhotos||30):30}" min="1" max="30"></div>
       <div class="btn-row">
