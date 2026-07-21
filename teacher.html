@@ -1013,6 +1013,7 @@ function renderEditCard(){
       <div class="form-group"><label class="form-label">학교 <span style="color:var(--text-muted);font-weight:400">(내신 시험 일정 매칭용)</span></label><input class="form-input" id="es-school" value="${s.school||''}" placeholder="예: 송도고등학교"></div>
       <div class="form-group"><label class="form-label">학부모 연락처</label><input class="form-input" id="es-parent" value="${s.parentPhone||''}"></div>
     </div>
+    <div class="form-group"><label class="form-label">등록일(입학일) <span style="color:var(--text-muted);font-weight:400">(신입용 — 이 날짜 이전에 낸 숙제는 이 학생에게 안 보여요. 비우면 전부 보임)</span></label><input class="form-input" id="es-enroll" type="date" value="${s.enrollDate||''}" style="max-width:220px"></div>
     <div class="form-group" style="background:var(--bg);border-radius:10px;padding:12px">
       <label class="form-label">재원 상태 <span style="font-size:11px;color:var(--text-muted)">(휴원·퇴원은 명단/출석/알림에서 빠지고 기록은 보존돼요)</span></label>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -1049,7 +1050,8 @@ async function doSaveEdit(){
   const last4=phone.replace(/[^0-9]/g,'').slice(-4);
   const status=(document.getElementById('es-status').value||'재원');
   const statusMemo=(document.getElementById('es-statusmemo').value||'').trim();
-  const patch={name,phone,phoneLast4:last4,parentPhone,classIds,classNames,school,status,statusMemo};
+  const enrollDate=(document.getElementById('es-enroll').value||'');
+  const patch={name,phone,phoneLast4:last4,parentPhone,classIds,classNames,school,status,statusMemo,enrollDate};
   // 휴원/퇴원으로 바뀌면 처리일 자동 기록, 재원 복귀 시 처리일 제거
   const wasStatus=studentStatus(s);
   if(status!=='재원'){ if(wasStatus!==status || !s.statusDate) patch.statusDate=new Date().toISOString().slice(0,10); }

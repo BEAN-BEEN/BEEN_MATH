@@ -550,7 +550,7 @@ function clsDayLabel(c){ return clsDays(c).map(w=>WD_LABEL[w]).filter(Boolean).j
 
 // ===== Firebase에서 내 반·숙제·제출·출석·성적 불러오기 =====
 let S_CLASSES=[], ALL_CLASSES=[], S_ASSIGNMENTS=[], S_SUBMISSIONS=[], S_ATTENDANCE=[], S_EXAMS=[], S_EXAMSUBS=[], S_QUESTIONS=[], S_NOTICES=[], S_REVIEWS=[], S_REVIEWSUBS=[];
-let S_SCHOOL='', S_SCHOOLEXAM=null, S_MATHEVENTS=[], S_SCHOOL_EXAMS=[], S_MAKEUPS=[], ALL_MAKEUPS=[], ALL_SCHOOL_EXAMS=[];
+let S_SCHOOL='', S_ENROLL='', S_SCHOOLEXAM=null, S_MATHEVENTS=[], S_SCHOOL_EXAMS=[], S_MAKEUPS=[], ALL_MAKEUPS=[], ALL_SCHOOL_EXAMS=[];
 let calScope='mine'; // 'mine' = 내 일정만, 'all' = 전체 학교
 let S_MOCKEXAMS=[], S_MOCKSUBS=[];
 function myClassIds(){ try{ return JSON.parse(localStorage.getItem('bm_classIds')||'[]'); }catch(e){ return STUDENT.classId?[STUDENT.classId]:[]; } }
@@ -598,6 +598,7 @@ async function loadStudentData(){
     // 내 학교 내신 시험 일정 (수학 과목별로 다가오는 시험일 모음)
     const meDoc = await db.collection('students').doc(STUDENT.id).get();
     S_SCHOOL = meDoc.exists ? (meDoc.data().school||'') : '';
+    S_ENROLL = meDoc.exists ? (meDoc.data().enrollDate||'') : '';   // 등록일: 이전 숙제는 안 부과
     if(S_SCHOOL){
       const se = await db.collection('schoolExams').where('school','==',S_SCHOOL).get();
       const today=new Date().toISOString().slice(0,10);
@@ -662,7 +663,11 @@ async function submitExamAnswer(examId){
 // 숙제 = Firebase 과제 + 내 제출 상태를 합쳐서 보여줌
 function getAssignments(){
   const today = new Date().toISOString().slice(0,10);
-  return S_ASSIGNMENTS.map(a=>{
+  return S_ASSIGNMENTS.filter(a=>{   // 등록일(enrollDate) 이전에 낸 숙제는 신입에게 안 보임
+    if(!S_ENROLL) return true;
+    const d = a.startDate || a.createdAt || '';
+    return !d || d >= S_ENROLL;
+  }).map(a=>{
     const sub = S_SUBMISSIONS.find(s=>s.assignmentId===a.id);
     // 🔢 문제 범위(정수) 또는 자유 범위 라벨이 있는 숙제 = 오답 방식
     const isOap = !!((a.probStart && a.probEnd) || a.probLabel);
