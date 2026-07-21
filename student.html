@@ -1259,12 +1259,14 @@ function renderWrong(){
         ${wrongNos.map(n=>{
           const st = a.oapOk[n]?'ok':(a.oapRedo[n]?'redo':(a.corrections[n]?'wait':'todo'));
           const m=meta[st]; const canView=!!a.corrections[n];
-          const upload=`<input type="file" accept="image/*" id="corr-${a.id}-${n}" style="display:none" onchange="doUploadCorrection('${a.subId}','${a.id}','${n}')"><button class="btn ${st==='redo'?'btn-red':'btn-orange'} btn-sm" onclick="document.getElementById('corr-${a.id}-${n}').click()">📷 ${st==='redo'?'다시 ':''}올리기</button>`;
+          const upLabel = st==='wait' ? '📷 다시 올리기(수정)' : (st==='redo' ? '📷 다시 올리기' : '📷 올리기');
+          const upCls = st==='redo' ? 'btn-red' : (st==='wait' ? 'btn-outline' : 'btn-orange');
+          const upload = st==='ok' ? '' : `<input type="file" accept="image/*" id="corr-${a.id}-${n}" style="display:none" onchange="doUploadCorrection('${a.subId}','${a.id}','${n}')"><button class="btn ${upCls} btn-sm" onclick="document.getElementById('corr-${a.id}-${n}').click()">${upLabel}</button>`;
           return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border)">
             <span style="min-width:44px;height:44px;flex:0 0 auto;padding:0 8px;border-radius:10px;background:${m[0]};color:${m[1]};font-weight:800;display:flex;align-items:center;justify-content:center">${n}</span>
             <span style="flex:1;font-size:13px;color:${m[1]};font-weight:700">${m[2]}</span>
             ${canView?`<button class="btn btn-outline btn-sm" onclick="window.open('${a.corrections[n]}','_blank')">보기</button>`:''}
-            ${(st==='todo'||st==='redo')?upload:''}
+            ${upload}
           </div>`;
         }).join('')}
       </div>`;
