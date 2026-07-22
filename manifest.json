@@ -6,10 +6,8 @@
   "background_color": "#FFFFFF",
   "theme_color": "#114C56",
   "icons": [
-    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "icon-180.png", "sizes": "180x180", "type": "image/png" }
+    { "src": "logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "logo.png", "sizes": "192x192", "type": "image/png", "purpose": "any" }
   ],
   "shortcuts": [
     { "name": "숙제 빠른 입력", "short_name": "숙제 입력", "description": "수업 후 숙제를 바로 입력해요", "url": "teacher.html?quick=hw" }
