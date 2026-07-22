@@ -677,15 +677,16 @@ function getAssignments(){
     const corrections = (sub && sub.corrections) || {};
     const oapOk = (sub && sub.oapOk) || {};       // 선생님이 '맞음' 확인한 문제
     const oapRedo = (sub && sub.oapRedo) || {};   // 선생님이 '재오답 — 다시' 표시한 문제
+    const oapOffline = (sub && sub.oapOffline) || {};  // 학생이 사진 대신 '직접 검사받기' 요청한 문제
     const oapEntered = Array.isArray(wrongNos);
-    // 사진까지 다 올림(학생 기준 완료)
-    const oapPhotoDone = isOap && oapEntered && (wrongNos.length===0 || wrongNos.every(n=>corrections[n] && !oapRedo[n]));
+    // 학생 할 일 끝(사진 올렸거나 '직접 검사받기' 표시)
+    const oapPhotoDone = isOap && oapEntered && (wrongNos.length===0 || wrongNos.every(n=>(corrections[n]||oapOffline[n]) && !oapRedo[n]));
     // 선생님 확인까지 완료(진짜 완료)
     const oapConfirmed = isOap && oapEntered && (wrongNos.length===0 || wrongNos.every(n=>oapOk[n]));
-    // 학생이 아직 손봐야 할 문제(사진 없음 or 재오답 표시됨)
-    const oapNeedsStudent = isOap && oapEntered && wrongNos.some(n=>!corrections[n] || oapRedo[n]);
-    // 선생님 확인 대기 문제(사진 있고 아직 맞음/재오답 판정 전)
-    const oapAwaitTeacher = isOap && oapEntered && wrongNos.some(n=>corrections[n] && !oapRedo[n] && !oapOk[n]);
+    // 학생이 아직 손봐야 할 문제(사진·직접검사 둘 다 없음 or 재오답 표시됨)
+    const oapNeedsStudent = isOap && oapEntered && wrongNos.some(n=>(!corrections[n] && !oapOffline[n]) || oapRedo[n]);
+    // 선생님 확인 대기 문제(사진 있거나 직접검사 요청, 아직 맞음/재오답 판정 전)
+    const oapAwaitTeacher = isOap && oapEntered && wrongNos.some(n=>(corrections[n]||oapOffline[n]) && !oapRedo[n] && !oapOk[n]);
     const oapDone = oapPhotoDone; // 기존 배지 호환(사진 완료 기준)
     // 📷 완료 사진(또는 직접검사) 제출 여부 — 오답 숙제도 '사진 + 번호' 둘 다 받음
     const hasPhoto = !!(sub && ((Array.isArray(sub.photos)&&sub.photos.length) || sub.offline));
@@ -697,7 +698,7 @@ function getAssignments(){
     } else if(sub && sub.rejected) status='rejected';
     else if(sub) status='submitted';
     else status=(a.dueDate && a.dueDate < today) ? 'late' : 'pending';
-    return { ...a, status, isOap, wrongNos, corrections, oapOk, oapRedo, oapEntered, oapDone, oapPhotoDone, oapConfirmed, oapNeedsStudent, oapAwaitTeacher, hasPhoto, photos:(sub&&sub.photos)||[], submittedAt:sub?sub.submittedAt:null, teacherChecked:sub?!!sub.checked:false, needsRetry:sub?!!sub.needsRetry:false, offline:sub?!!sub.offline:false, late:sub?!!sub.late:false, retryDone:sub?!!sub.retryDone:false, rejected:sub?!!sub.rejected:false, rejectReason:sub?(sub.rejectReason||''):'', evalPct:sub?(sub.evalPct||''):'', evalTag:sub?(sub.evalTag||''):'', subId:sub?sub.id:null };
+    return { ...a, status, isOap, wrongNos, corrections, oapOk, oapRedo, oapOffline, oapEntered, oapDone, oapPhotoDone, oapConfirmed, oapNeedsStudent, oapAwaitTeacher, hasPhoto, photos:(sub&&sub.photos)||[], submittedAt:sub?sub.submittedAt:null, teacherChecked:sub?!!sub.checked:false, needsRetry:sub?!!sub.needsRetry:false, offline:sub?!!sub.offline:false, late:sub?!!sub.late:false, retryDone:sub?!!sub.retryDone:false, rejected:sub?!!sub.rejected:false, rejectReason:sub?(sub.rejectReason||''):'', evalPct:sub?(sub.evalPct||''):'', evalTag:sub?(sub.evalTag||''):'', subId:sub?sub.id:null };
   });
 }
 // 출석 자동 집계: 수업일=숙제 마감일(dueDate), 그날 숙제 중 선생님이 '확인 완료(checked)'한 게 있으면 출석
@@ -1162,7 +1163,7 @@ function oapSections(a){
   return nums.length ? [{ name:'', prefix:'', nums }] : [];
 }
 function renderOapCard(a){
-  const wrongNos = a.wrongNos||[]; const corrections = a.corrections||{}; const oapOk=a.oapOk||{}; const oapRedo=a.oapRedo||{};
+  const wrongNos = a.wrongNos||[]; const corrections = a.corrections||{}; const oapOk=a.oapOk||{}; const oapRedo=a.oapRedo||{}; const oapOffline=a.oapOffline||{};
   const sub = a.subId ? S_SUBMISSIONS.find(s=>s.id===a.subId) : null;
   const hasPhoto = a.hasPhoto; const photos=a.photos||[];
   const rangeHint = (a.probStart&&a.probEnd) ? `${a.probStart}~${a.probEnd}번` : (a.probLabel||'');
@@ -1226,12 +1227,12 @@ function renderOapCard(a){
     bodyHtml=`<div style="background:var(--green-light);border-radius:var(--radius-sm);padding:16px;text-align:center;color:var(--green);font-weight:800;margin-top:10px">😎 다 맞았어요! 오답 없음 ✅</div>
       <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="doResetWrong('${a.subId}','${a.id}')">틀린 문제 다시 입력</button>`;
   } else {
-    const photo = wrongNos.filter(n=>corrections[n]&&!oapRedo[n]).length;
+    const photo = wrongNos.filter(n=>(corrections[n]||oapOffline[n])&&!oapRedo[n]).length;
     const okN = wrongNos.filter(n=>oapOk[n]).length;
     bodyHtml=`
-      <div style="font-size:13px;margin:10px 0;font-weight:700">✏️ 오답 ${wrongNos.length}개 — 사진 ${photo}/${wrongNos.length} · 확인 ${okN}/${wrongNos.length}</div>
+      <div style="font-size:13px;margin:10px 0;font-weight:700">✏️ 오답 ${wrongNos.length}개 — 처리 ${photo}/${wrongNos.length} · 확인 ${okN}/${wrongNos.length}</div>
       <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px">${wrongNos.map(n=>{
-        const st = oapOk[n]?['var(--green-light)','var(--green)','✓']:(oapRedo[n]?['#FEE2E2','var(--red)','↻']:(corrections[n]?['#FEF9C3','#854D0E','…']:['#FEE2E2','var(--red)','']));
+        const st = oapOk[n]?['var(--green-light)','var(--green)','✓']:(oapRedo[n]?['#FEE2E2','var(--red)','↻']:(corrections[n]?['#FEF9C3','#854D0E','…']:(oapOffline[n]?['#DBEAFE','#1E40AF','✋']:['#FEE2E2','var(--red)',''])));
         return `<span style="padding:4px 9px;border-radius:8px;background:${st[0]};color:${st[1]};font-weight:800;font-size:13px">${n}${st[2]?' '+st[2]:''}</span>`;}).join('')}</div>
       ${a.oapConfirmed?`<div style="background:var(--green-light);border-radius:var(--radius-sm);padding:12px;text-align:center;color:var(--green);font-weight:800">🎉 오답 완료! 선생님 확인까지 끝났어요</div>`
         :`<button class="btn btn-primary" style="width:100%" onclick="navigate('wrong')">📒 오답 탭에서 고치기 →</button>
@@ -1294,13 +1295,31 @@ async function doUploadCorrection(subId, aid, no){
     const sub=S_SUBMISSIONS.find(s=>s.id===subId);
     const corr=Object.assign({}, sub&&sub.corrections); corr[no]=urls[0];
     const redo=Object.assign({}, sub&&sub.oapRedo); delete redo[no]; // 다시 올렸으니 재오답 표시 해제
-    await db.collection('submissions').doc(subId).update({corrections:corr, oapRedo:redo});
+    const off=Object.assign({}, sub&&sub.oapOffline); delete off[no]; // 사진 올렸으니 직접검사 표시 해제
+    await db.collection('submissions').doc(subId).update({corrections:corr, oapRedo:redo, oapOffline:off});
     await loadStudentData();
     const s2=S_SUBMISSIONS.find(s=>s.id===subId);
-    const all=(s2.wrongNos||[]).map(String).every(n=>s2.corrections&&s2.corrections[n]&&!(s2.oapRedo&&s2.oapRedo[n]));
-    if(all){ launchConfetti(); showToast('고친 사진 다 올렸어요! 선생님 확인을 기다려요 🎉','success'); } else showToast(no+' 고친 사진 등록 ✓','success');
+    const all=(s2.wrongNos||[]).map(String).every(n=>((s2.corrections&&s2.corrections[n])||(s2.oapOffline&&s2.oapOffline[n]))&&!(s2.oapRedo&&s2.oapRedo[n]));
+    if(all){ launchConfetti(); showToast('오답 다 처리했어요! 선생님 확인을 기다려요 🎉','success'); } else showToast(no+' 고친 사진 등록 ✓','success');
     renderSection(currentSection);
   }catch(e){ showToast('업로드 실패: '+e.message,'error'); }
+}
+// ✋ 오답 '직접 검사받기' — 사진 대신 보충/수업 때 선생님께 직접 보여주고 확인받기 (용량 절약)
+async function doOfflineCorr(subId, aid, n){
+  n=String(n);
+  const sub=S_SUBMISSIONS.find(s=>s.id===subId); if(!sub) return;
+  const off=Object.assign({}, sub.oapOffline); off[n]=true;
+  const redo=Object.assign({}, sub.oapRedo); delete redo[n];
+  try{ await db.collection('submissions').doc(subId).update({oapOffline:off, oapRedo:redo}); await loadStudentData(); renderSection(currentSection);
+    showToast('✋ 직접 검사 요청! 보충/수업 때 선생님께 보여주세요','success'); }
+  catch(e){ showToast('실패: '+e.message,'error'); }
+}
+async function doCancelOffline(subId, aid, n){
+  n=String(n);
+  const sub=S_SUBMISSIONS.find(s=>s.id===subId); if(!sub) return;
+  const off=Object.assign({}, sub.oapOffline); delete off[n];
+  try{ await db.collection('submissions').doc(subId).update({oapOffline:off}); await loadStudentData(); renderSection(currentSection); }
+  catch(e){ showToast('실패: '+e.message,'error'); }
 }
 async function doResetWrong(subId, aid){
   if(!confirm('틀린 문제 번호를 다시 입력할까요?\n(이미 올린 고친 사진도 초기화돼요)')) return;
@@ -1318,8 +1337,8 @@ function renderWrong(){
     .sort((x,y)=>(x.oapConfirmed?1:0)-(y.oapConfirmed?1:0));
   if(!asgn.length){ el.innerHTML='<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">아직 오답이 없어요 🎉<br><span style="font-size:12px">숙제에서 틀린 문제를 등록하면 여기에 모여요</span></div>'; return; }
   let todo=0, wait=0, ok=0;
-  asgn.forEach(a=>(a.wrongNos||[]).forEach(n=>{ if(a.oapOk[n]) ok++; else if(!a.corrections[n]||a.oapRedo[n]) todo++; else wait++; }));
-  const meta={ ok:['var(--green-light)','var(--green)','✅ 확인 완료'], redo:['#FEE2E2','var(--red)','❌ 재오답 — 다시 풀어요'], wait:['#FEF9C3','#854D0E','⏳ 선생님 확인 대기'], todo:['#FEE2E2','var(--red)','✏️ 다시 풀어 사진 올리기'] };
+  asgn.forEach(a=>(a.wrongNos||[]).forEach(n=>{ const off=a.oapOffline&&a.oapOffline[n]; if(a.oapOk[n]) ok++; else if(a.oapRedo[n]||(!a.corrections[n]&&!off)) todo++; else wait++; }));
+  const meta={ ok:['var(--green-light)','var(--green)','✅ 확인 완료'], redo:['#FEE2E2','var(--red)','❌ 재오답 — 다시 풀어요'], wait:['#FEF9C3','#854D0E','⏳ 선생님 확인 대기'], offline:['#DBEAFE','#1E40AF','✋ 직접 검사 대기 (선생님께 보여주기)'], todo:['#FEE2E2','var(--red)','✏️ 다시 풀어 사진 올리기'] };
   el.innerHTML=`
     <div class="hero-banner">
       <h2>📒 다시 풀 오답이 ${todo}개 있어요</h2>
@@ -1336,16 +1355,22 @@ function renderWrong(){
         ${a.textbook?`<div style="font-size:12px;color:var(--primary);font-weight:600;margin-bottom:2px">📘 ${a.textbook}</div>`:''}
         <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px"><span class="chip">${a.className}</span></div>
         ${wrongNos.map(n=>{
-          const st = a.oapOk[n]?'ok':(a.oapRedo[n]?'redo':(a.corrections[n]?'wait':'todo'));
+          const off=a.oapOffline&&a.oapOffline[n];
+          const st = a.oapOk[n]?'ok':(a.oapRedo[n]?'redo':(a.corrections[n]?'wait':(off?'offline':'todo')));
           const m=meta[st]; const canView=!!a.corrections[n];
-          const upLabel = st==='wait' ? '📷 다시 올리기(수정)' : (st==='redo' ? '📷 다시 올리기' : '📷 올리기');
+          const upLabel = st==='wait' ? '📷 다시 올리기(수정)' : (st==='redo' ? '📷 다시 올리기' : '📷 사진');
           const upCls = st==='redo' ? 'btn-red' : (st==='wait' ? 'btn-outline' : 'btn-orange');
-          const upload = st==='ok' ? '' : `<input type="file" accept="image/*" id="corr-${a.id}-${n}" style="display:none" onchange="doUploadCorrection('${a.subId}','${a.id}','${n}')"><button class="btn ${upCls} btn-sm" onclick="document.getElementById('corr-${a.id}-${n}').click()">${upLabel}</button>`;
-          return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border)">
+          // 사진 올리기 (ok/offline 상태에선 숨김)
+          const upload = (st==='ok'||st==='offline') ? '' : `<input type="file" accept="image/*" id="corr-${a.id}-${n}" style="display:none" onchange="doUploadCorrection('${a.subId}','${a.id}','${n}')"><button class="btn ${upCls} btn-sm" onclick="document.getElementById('corr-${a.id}-${n}').click()">${upLabel}</button>`;
+          // 직접 검사받기 (아직 안 낸 문제엔 사진 대안으로 제공, offline 상태면 취소 버튼)
+          const offBtn = st==='offline' ? `<button class="btn btn-outline btn-sm" onclick="doCancelOffline('${a.subId}','${a.id}','${n}')">취소</button>`
+                       : (st==='todo'||st==='redo') ? `<button class="btn btn-outline btn-sm" onclick="doOfflineCorr('${a.subId}','${a.id}','${n}')">✋ 직접 검사</button>` : '';
+          return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--border);flex-wrap:wrap">
             <span style="min-width:44px;height:44px;flex:0 0 auto;padding:0 8px;border-radius:10px;background:${m[0]};color:${m[1]};font-weight:800;display:flex;align-items:center;justify-content:center">${n}</span>
-            <span style="flex:1;font-size:13px;color:${m[1]};font-weight:700">${m[2]}</span>
+            <span style="flex:1;min-width:120px;font-size:13px;color:${m[1]};font-weight:700">${m[2]}</span>
             ${canView?`<button class="btn btn-outline btn-sm" onclick="window.open('${a.corrections[n]}','_blank')">보기</button>`:''}
             ${upload}
+            ${offBtn}
           </div>`;
         }).join('')}
       </div>`;

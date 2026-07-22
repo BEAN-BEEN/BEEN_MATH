@@ -1496,8 +1496,10 @@ function oapStat(sub){
   const wn = entered ? sub.wrongNos.map(String) : [];
   const corr = (sub && sub.corrections) || {};
   const redo = (sub && sub.oapRedo) || {};
-  const done = entered && (wn.length===0 || wn.every(n=>corr[n] && !redo[n]));
-  return { entered, wrongNos:wn, corr, done, doneCnt:wn.filter(n=>corr[n] && !redo[n]).length };
+  const off  = (sub && sub.oapOffline) || {};
+  const resolved = n => (corr[n]||off[n]) && !redo[n];   // 사진 or 직접검사 요청 = 학생이 처리함
+  const done = entered && (wn.length===0 || wn.every(resolved));
+  return { entered, wrongNos:wn, corr, done, doneCnt:wn.filter(resolved).length };
 }
 function showCorrPhotos(subId){
   const s=getSubmissions().find(x=>x.id===subId);
@@ -1707,18 +1709,21 @@ function rWrong(){
           <div><span class="chip">${a.className}</span><strong style="margin-left:8px">${a.title}</strong> <span class="badge b-primary">🔢 ${range}</span>${g.gWait>0?` <span class="badge b-yellow">확인 대기 ${g.gWait}</span>`:''}</div>
           ${a.textbook?`<span style="font-size:12px;color:var(--text-muted)">📘 ${a.textbook}</span>`:''}
         </div>
-        ${g.subs.map(s=>{ const wn=(s.wrongNos||[]).map(String); const corr=s.corrections||{}, ok=s.oapOk||{}, redo=s.oapRedo||{};
+        ${g.subs.map(s=>{ const wn=(s.wrongNos||[]).map(String); const corr=s.corrections||{}, ok=s.oapOk||{}, redo=s.oapRedo||{}, off=s.oapOffline||{};
           return `<div style="padding:10px 0;border-top:1px solid var(--border)">
             <div style="font-weight:700;margin-bottom:6px">${s.studentName||'학생'} <span style="font-size:12px;color:var(--text-muted);font-weight:400">· 오답 ${wn.length}개, 확인 ${wn.filter(n=>ok[n]).length}/${wn.length}</span></div>
             <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start">
-              ${wn.map(n=>{ const st = ok[n]?'ok':(redo[n]?'redo':(corr[n]?'wait':'todo'));
-                const bg={ok:'var(--green-light)',redo:'#FEE2E2',wait:'#FEF9C3',todo:'var(--bg)'}[st];
-                const fg={ok:'var(--green)',redo:'var(--red)',wait:'#854D0E',todo:'var(--text-muted)'}[st];
+              ${wn.map(n=>{ const st = ok[n]?'ok':(redo[n]?'redo':(corr[n]?'wait':(off[n]?'offline':'todo')));
+                const bg={ok:'var(--green-light)',redo:'#FEE2E2',wait:'#FEF9C3',offline:'#DBEAFE',todo:'var(--bg)'}[st];
+                const fg={ok:'var(--green)',redo:'var(--red)',wait:'#854D0E',offline:'#1E40AF',todo:'var(--text-muted)'}[st];
+                const okBtn=`<button class="btn btn-green btn-sm" style="padding:2px 6px" onclick="doConfirmWrong('${s.id}','${esc(n)}')">✓맞음</button>`;
+                const redoBtn=`<button class="btn btn-red btn-sm" style="padding:2px 6px" onclick="doRedoWrong('${s.id}','${esc(n)}')">↻재오답</button>`;
                 let actions='';
-                if(st==='wait') actions=`<button class="btn btn-outline btn-sm" style="padding:2px 6px" onclick='showPhotoModal(["${corr[n]}"])'>보기</button><button class="btn btn-green btn-sm" style="padding:2px 6px" onclick="doConfirmWrong('${s.id}','${esc(n)}')">✓맞음</button><button class="btn btn-red btn-sm" style="padding:2px 6px" onclick="doRedoWrong('${s.id}','${esc(n)}')">↻재오답</button>`;
+                if(st==='wait') actions=`<button class="btn btn-outline btn-sm" style="padding:2px 6px" onclick='showPhotoModal(["${corr[n]}"])'>보기</button>`+okBtn+redoBtn;
                 else if(st==='ok') actions=`<button class="btn btn-outline btn-sm" style="padding:2px 6px" onclick="doUnconfirmWrong('${s.id}','${esc(n)}')">취소</button>`;
-                else if(st==='redo') actions=`<span style="font-size:11px;color:var(--red)">다시 풀는 중</span>`;
-                else actions=`<span style="font-size:11px;color:var(--text-muted)">사진 대기</span>`;
+                else if(st==='offline') actions=`<span style="font-size:10px;color:#1E40AF;font-weight:700">✋직접</span>`+okBtn+redoBtn;
+                else if(st==='redo') actions=`<span style="font-size:10px;color:var(--red)">다시</span>`+okBtn;
+                else actions=`<span style="font-size:10px;color:var(--text-muted)">보충확인</span>`+okBtn+redoBtn;
                 return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;border:1px solid var(--border);border-radius:10px;padding:6px 8px;min-width:58px">
                   <span style="font-weight:800;padding:2px 8px;border-radius:7px;background:${bg};color:${fg}">${n}</span>
                   <div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:center">${actions}</div>
@@ -1734,13 +1739,15 @@ function rWrong(){
 async function doConfirmWrong(subId,label){
   const sub=SUBMISSIONS_CACHE.find(s=>s.id===subId); if(!sub) return;
   const ok=Object.assign({},sub.oapOk); ok[label]=true; const redo=Object.assign({},sub.oapRedo); delete redo[label];
-  try{ await db.collection('submissions').doc(subId).update({oapOk:ok,oapRedo:redo}); await loadSubmissions(); rWrong(); }
+  const off=Object.assign({},sub.oapOffline); delete off[label];
+  try{ await db.collection('submissions').doc(subId).update({oapOk:ok,oapRedo:redo,oapOffline:off}); await loadSubmissions(); rWrong(); }
   catch(e){ showToast('처리 실패: '+e.message,'error'); }
 }
 async function doRedoWrong(subId,label){
   const sub=SUBMISSIONS_CACHE.find(s=>s.id===subId); if(!sub) return;
   const redo=Object.assign({},sub.oapRedo); redo[label]=true; const ok=Object.assign({},sub.oapOk); delete ok[label];
-  try{ await db.collection('submissions').doc(subId).update({oapRedo:redo,oapOk:ok}); await loadSubmissions(); rWrong(); showToast('재오답 표시 — 학생이 다시 풀어 올려요','warning'); }
+  const off=Object.assign({},sub.oapOffline); delete off[label];
+  try{ await db.collection('submissions').doc(subId).update({oapRedo:redo,oapOk:ok,oapOffline:off}); await loadSubmissions(); rWrong(); showToast('재오답 표시 — 학생이 다시 풀어 올려요','warning'); }
   catch(e){ showToast('처리 실패: '+e.message,'error'); }
 }
 async function doUnconfirmWrong(subId,label){
