@@ -1364,7 +1364,6 @@ function rHomework(){
   const esc=s=>(s||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   document.getElementById('homeworkContent').innerHTML=`
     ${hwMissingBoardHtml()}
-    ${hwPresetDrawerHtml()}
     <div class="card" ${editA?'style="border-left:4px solid var(--orange)"':''}>
       <div class="card-title">${editA?'✏️ 과제 수정':'➕ 새 과제 만들기'}</div>
       <div class="form-row-3">
