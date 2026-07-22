@@ -550,86 +550,92 @@ function clsDayLabel(c){ return clsDays(c).map(w=>WD_LABEL[w]).filter(Boolean).j
 
 // ===== Firebase에서 내 반·숙제·제출·출석·성적 불러오기 =====
 let S_CLASSES=[], ALL_CLASSES=[], S_ASSIGNMENTS=[], S_SUBMISSIONS=[], S_ATTENDANCE=[], S_EXAMS=[], S_EXAMSUBS=[], S_QUESTIONS=[], S_NOTICES=[], S_REVIEWS=[], S_REVIEWSUBS=[];
+// 제출 전 임시 상태: 찍은 사진 누적 / 고른 오답번호 / 오답 직접입력 (과제ID별) — 화면 다시 그려도 유지
+let PENDING_PHOTOS={}, PENDING_WRONG={}, PENDING_FREE={};
 let S_SCHOOL='', S_ENROLL='', S_SCHOOLEXAM=null, S_MATHEVENTS=[], S_SCHOOL_EXAMS=[], S_MAKEUPS=[], ALL_MAKEUPS=[], ALL_SCHOOL_EXAMS=[];
 let calScope='mine'; // 'mine' = 내 일정만, 'all' = 전체 학교
 let S_MOCKEXAMS=[], S_MOCKSUBS=[];
 function myClassIds(){ try{ return JSON.parse(localStorage.getItem('bm_classIds')||'[]'); }catch(e){ return STUDENT.classId?[STUDENT.classId]:[]; } }
 async function loadStudentData(){
   const ids = myClassIds();
-  const cs = await db.collection('classes').get();
+  const sid = STUDENT.id;
+  // ⚡ 모든 조회를 '동시에' 시작 (기존엔 하나씩 순차 await → 왕복 18번이 그대로 대기시간). await는 아래에서.
+  const pClasses = db.collection('classes').get();
+  const pAsn     = db.collection('assignments').get();
+  const pReviews = db.collection('reviews').get();
+  const pExams   = db.collection('exams').get();
+  const pVids    = db.collection('videos').get();
+  const pMats    = db.collection('materials').get();
+  const pNotices = db.collection('notices').get();
+  const pMakeups = db.collection('makeups').get();
+  const pAllSe   = db.collection('schoolExams').get();
+  const pMock    = db.collection('mockExams').get();
+  const pSub = sid ? db.collection('submissions').where('studentId','==',sid).get() : null;
+  const pRvs = sid ? db.collection('reviewSubs').where('studentId','==',sid).get() : null;
+  const pEs  = sid ? db.collection('examSubs').where('studentId','==',sid).get() : null;
+  const pQ   = sid ? db.collection('questions').where('studentId','==',sid).get() : null;
+  const pRep = sid ? db.collection('reports').doc(sid).get() : null;
+  const pMe  = sid ? db.collection('students').doc(sid).get() : null;
+  const pMks = sid ? db.collection('mockSubs').where('studentId','==',sid).get() : null;
+
+  const cs = await pClasses;
   ALL_CLASSES = cs.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.order!=null?a.order:99)-(b.order!=null?b.order:99));
   S_CLASSES = ALL_CLASSES.filter(c=>ids.includes(c.id));
-  const asn = await db.collection('assignments').get();
+  const asn = await pAsn;
   S_ASSIGNMENTS = asn.docs.map(d=>({id:d.id,...d.data()})).filter(a=>ids.includes(a.classId))
     .sort((x,y)=>(y.createdAt||'').localeCompare(x.createdAt||''));
-  // 복습 (내 반) — 선생님이 번호 지정
-  try{ const rv = await db.collection('reviews').get();
+  try{ const rv = await pReviews;
     S_REVIEWS = rv.docs.map(d=>({id:d.id,...d.data()})).filter(r=>ids.includes(r.classId))
       .sort((x,y)=>(y.createdAt||'').localeCompare(x.createdAt||'')); }
   catch(e){ S_REVIEWS=[]; }
-  // 내 반의 시험
-  const ex = await db.collection('exams').get();
+  const ex = await pExams;
   S_EXAMS = ex.docs.map(d=>({id:d.id,...d.data()})).filter(e=>ids.includes(e.classId))
     .sort((x,y)=>(y.date||'').localeCompare(x.date||''));
-  // 수업 영상 / 자료실 (내 반 또는 전체)
-  const vids = await db.collection('videos').get();
+  const vids = await pVids;
   VIDEOS = vids.docs.map(d=>({id:d.id,...d.data()})).filter(v=>ids.includes(v.classId)||v.classId==='all').sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-  const mats = await db.collection('materials').get();
+  const mats = await pMats;
   MATERIALS = mats.docs.map(d=>({id:d.id,...d.data()})).filter(m=>ids.includes(m.classId)||m.classId==='all').sort((a,b)=>(b.uploadDate||'').localeCompare(a.uploadDate||''));
   // 출석은 이제 숙제 확인에서 자동 집계 (getAttendance) — 별도 attendance 컬렉션 미사용
-  // 내 제출/내 시험답안
-  if(STUDENT.id){
-    const sub = await db.collection('submissions').where('studentId','==',STUDENT.id).get();
-    S_SUBMISSIONS = sub.docs.map(d=>({id:d.id,...d.data()}));
-    try{ const rvs = await db.collection('reviewSubs').where('studentId','==',STUDENT.id).get();
-      S_REVIEWSUBS = rvs.docs.map(d=>({id:d.id,...d.data()})); }
+  if(sid){
+    const sub = await pSub; S_SUBMISSIONS = sub.docs.map(d=>({id:d.id,...d.data()}));
+    try{ const rvs = await pRvs; S_REVIEWSUBS = rvs.docs.map(d=>({id:d.id,...d.data()})); }
     catch(e){ S_REVIEWSUBS=[]; }
-    const es = await db.collection('examSubs').where('studentId','==',STUDENT.id).get();
-    S_EXAMSUBS = es.docs.map(d=>({id:d.id,...d.data()}));
-    const q = await db.collection('questions').where('studentId','==',STUDENT.id).get();
-    S_QUESTIONS = q.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
-    const rep = await db.collection('reports').doc(STUDENT.id).get();
-    S_REPORT = rep.exists ? rep.data() : null;
-    // 내 학교 내신 시험 일정 (수학 과목별로 다가오는 시험일 모음)
-    const meDoc = await db.collection('students').doc(STUDENT.id).get();
+    const es = await pEs; S_EXAMSUBS = es.docs.map(d=>({id:d.id,...d.data()}));
+    const q = await pQ; S_QUESTIONS = q.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+    const rep = await pRep; S_REPORT = rep.exists ? rep.data() : null;
+    const meDoc = await pMe;
     S_SCHOOL = meDoc.exists ? (meDoc.data().school||'') : '';
     S_ENROLL = meDoc.exists ? (meDoc.data().enrollDate||'') : '';   // 등록일: 이전 숙제는 안 부과
-    if(S_SCHOOL){
-      const se = await db.collection('schoolExams').where('school','==',S_SCHOOL).get();
-      const today=new Date().toISOString().slice(0,10);
-      const mathOf=e=>(Array.isArray(e.mathDates)&&e.mathDates.length)?e.mathDates.filter(m=>m&&m.date):(e.mathDate?[{label:'수학',date:e.mathDate}]:[]);
-      const events=[];
-      se.docs.forEach(d=>{ const e=d.data();
-        const ms=mathOf(e);
-        ms.forEach(m=>{ if(m.date>=today) events.push({title:e.title,school:e.school,grade:e.grade,startDate:e.startDate,endDate:e.endDate,label:m.label||'수학',date:m.date}); });
-        // 수학일 미정이어도 시험기간이 다가오면 기간 기준으로 안내
-        if(!ms.length && e.startDate && e.startDate>=today) events.push({title:e.title,school:e.school,grade:e.grade,startDate:e.startDate,endDate:e.endDate,label:'시험기간',date:e.startDate,period:true});
-      });
-      events.sort((a,b)=>(a.date||'').localeCompare(b.date||''));
-      S_MATHEVENTS = events;
-      S_SCHOOLEXAM = events[0] || null;
-      S_SCHOOL_EXAMS = se.docs.map(d=>({id:d.id,...d.data()}));   // 캘린더 음영용 (내 학교 전체)
-    } else { S_SCHOOLEXAM=null; S_MATHEVENTS=[]; S_SCHOOL_EXAMS=[]; }
-    // 보강 일정 — 전체(ALL) + 내 것(S_MAKEUPS) 구분해서 보관
+    // 학교 내신 시험: 전체를 한 번만 받아서 (캘린더 전체) + 내 학교 필터 (중복 쿼리 제거)
     try{
-      const mku = await db.collection('makeups').get();
+      const allSe = await pAllSe;
+      ALL_SCHOOL_EXAMS = allSe.docs.map(d=>({id:d.id,...d.data()}));
+      if(S_SCHOOL){
+        const today=new Date().toISOString().slice(0,10);
+        const mathOf=e=>(Array.isArray(e.mathDates)&&e.mathDates.length)?e.mathDates.filter(m=>m&&m.date):(e.mathDate?[{label:'수학',date:e.mathDate}]:[]);
+        const events=[], mySe=[];
+        allSe.docs.forEach(d=>{ const e=d.data(); if(e.school!==S_SCHOOL) return; mySe.push({id:d.id,...e});
+          const ms=mathOf(e);
+          ms.forEach(m=>{ if(m.date>=today) events.push({title:e.title,school:e.school,grade:e.grade,startDate:e.startDate,endDate:e.endDate,label:m.label||'수학',date:m.date}); });
+          if(!ms.length && e.startDate && e.startDate>=today) events.push({title:e.title,school:e.school,grade:e.grade,startDate:e.startDate,endDate:e.endDate,label:'시험기간',date:e.startDate,period:true});
+        });
+        events.sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+        S_MATHEVENTS = events; S_SCHOOLEXAM = events[0] || null; S_SCHOOL_EXAMS = mySe;
+      } else { S_SCHOOLEXAM=null; S_MATHEVENTS=[]; S_SCHOOL_EXAMS=[]; }
+    }catch(e){ ALL_SCHOOL_EXAMS=[]; S_SCHOOLEXAM=null; S_MATHEVENTS=[]; S_SCHOOL_EXAMS=[]; }
+    // 보강 일정 — 전체(ALL) + 내 것(S_MAKEUPS)
+    try{
+      const mku = await pMakeups;
       const myNames = [STUDENT.name, ...(S_CLASSES.map(c=>c.name))];
       const mine=m=>!m.className || (m.school && m.school===S_SCHOOL) || myNames.some(n=>n && (m.className.includes(n) || n.includes(m.className)));
       ALL_MAKEUPS = mku.docs.map(d=>({id:d.id,...d.data(), _mine:false})).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
       ALL_MAKEUPS.forEach(m=>m._mine=mine(m));
       S_MAKEUPS = ALL_MAKEUPS.filter(m=>m._mine);
     }catch(e){ S_MAKEUPS=[]; ALL_MAKEUPS=[]; }
-    // 전체 학교 시험(캘린더 전체보기용)
-    try{ const allSe=await db.collection('schoolExams').get(); ALL_SCHOOL_EXAMS=allSe.docs.map(d=>({id:d.id,...d.data()})); }
-    catch(e){ ALL_SCHOOL_EXAMS=[]; }
-    // 모의고사 (자가 등록) — 전체 목록 + 내 등록
-    const mk=await db.collection('mockExams').get();
-    S_MOCKEXAMS=mk.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-    const mks=await db.collection('mockSubs').where('studentId','==',STUDENT.id).get();
-    S_MOCKSUBS=mks.docs.map(d=>({id:d.id,...d.data()}));
+    const mk = await pMock; S_MOCKEXAMS = mk.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    const mks = await pMks; S_MOCKSUBS = mks.docs.map(d=>({id:d.id,...d.data()}));
   } else { S_SUBMISSIONS=[]; S_REVIEWSUBS=[]; S_EXAMSUBS=[]; S_QUESTIONS=[]; S_REPORT=null; S_SCHOOLEXAM=null; S_MOCKEXAMS=[]; S_MOCKSUBS=[]; }
-  // 공지사항 (전체 공통)
-  try{ const nt = await db.collection('notices').get(); S_NOTICES = nt.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.ts||0)-(a.ts||0)); }
+  try{ const nt = await pNotices; S_NOTICES = nt.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.ts||0)-(a.ts||0)); }
   catch(e){ S_NOTICES=[]; }
 }
 
@@ -778,8 +784,8 @@ async function uploadPhotos(files, folder){
 async function submitHomework(assignmentId) {
   const a = S_ASSIGNMENTS.find(x=>x.id===assignmentId);
   let photos=[];
-  const fi=document.getElementById('hwfile-'+assignmentId);
-  if(fi && fi.files && fi.files.length){ photos=await uploadPhotos(fi.files, 'submissions/'+assignmentId); }
+  const arr=PENDING_PHOTOS[assignmentId]||[];
+  if(arr.length){ photos=await uploadPhotos(arr, 'submissions/'+assignmentId); }
   const today=new Date().toISOString().slice(0,10);
   const late = !!(a && a.dueDate && today > a.dueDate);
   const base={ photos, offline:false, late, submittedAt:new Date().toLocaleString('ko-KR'), checked:false, needsRetry:false, retryDone:false, rejected:false, rejectReason:'' };
@@ -1203,7 +1209,7 @@ function renderOapCard(a){
       sections.forEach(sec=>{
         if(multi && sec.name) gridHtml+=`<div style="font-size:12px;font-weight:800;color:var(--primary);margin:10px 0 4px">📑 ${sec.name}</div>`;
         let btns=''; sec.nums.forEach(n=>{ const label=sec.prefix?`${sec.prefix}-${n}`:String(n);
-          btns+=`<button type="button" class="oapnum" data-no="${label}" onclick="this.classList.toggle('on')">${n}</button>`; });
+          btns+=`<button type="button" class="oapnum" data-no="${label}" onclick="toggleWrong('${a.id}',this)">${n}</button>`; });
         gridHtml+=`<div class="oapgrid${sec.nums.length>60?' scroll':''}">${btns}</div>`;
       });
       gridHtml=`<div id="oapnums-${a.id}">${gridHtml}</div>`;
@@ -1212,7 +1218,7 @@ function renderOapCard(a){
       <div style="font-size:13px;color:var(--text-sub);margin:8px 0">${rangeHint?`<strong>${rangeHint}</strong> 중 `:''}<strong style="color:var(--red)">틀린 문제</strong>를 ${showGrid?'눌러서 선택하세요 👇':'입력해주세요'}${multi?' <span style="font-size:11px;color:var(--text-muted)">(구간별로 골라요)</span>':''}</div>
       ${gridHtml}
       ${showGrid?`<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">숫자에 없는 문제(예: H30)만 아래에 직접 적어요</div>`:''}
-      <input class="form-input" id="oapfree-${a.id}" placeholder="${showGrid?'직접 입력 (선택) 예: H30':'틀린 문제 입력 (예: 3, 57, 108)'}" style="margin-bottom:12px">
+      <input class="form-input" id="oapfree-${a.id}" oninput="PENDING_FREE['${a.id}']=this.value" placeholder="${showGrid?'직접 입력 (선택) 예: H30':'틀린 문제 입력 (예: 3, 57, 108)'}" style="margin-bottom:12px">
       <div class="btn-row">
         <button class="btn btn-primary" onclick="doSaveWrong('${a.id}')">틀린 문제 등록 ✓</button>
         <button class="btn btn-outline" onclick="doAllCorrect('${a.id}')">😎 다 맞았어요</button>
@@ -1238,6 +1244,10 @@ function renderOapCard(a){
     ${a.textbook?`<div style="font-size:12px;color:var(--primary);font-weight:600;margin-bottom:4px">📘 ${a.textbook}</div>`:''}
     ${a.content?`<div class="hw-body">${a.content}</div>`:''}
     ${a.dueDate?`<div class="hw-due">📅 ${fmtDateFull(a.dueDate)} 까지</div>`:''}
+    ${a.rejected?`<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:var(--radius-sm);padding:12px;margin:10px 0">
+      <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:4px">🔁 오답이 반려됐어요 — 틀린 문제를 다시 골라주세요</div>
+      ${a.rejectReason?`<div style="font-size:13px;color:#7F1D1D">사유: ${a.rejectReason}</div>`:''}
+    </div>`:''}
     ${photoHtml}
     <div style="font-size:13px;font-weight:800;margin:14px 0 2px;color:var(--red)">② 틀린 문제 체크</div>
     ${bodyHtml}
@@ -1246,7 +1256,7 @@ function renderOapCard(a){
 async function saveWrongNos(aid, nos){
   const a=S_ASSIGNMENTS.find(x=>x.id===aid);
   const exist=S_SUBMISSIONS.find(s=>s.assignmentId===aid);
-  const base={ wrongNos:nos, oapType:true, corrections:(exist&&exist.corrections)||{}, submittedAt:new Date().toLocaleString('ko-KR'), ts:Date.now() };
+  const base={ wrongNos:nos, oapType:true, corrections:(exist&&exist.corrections)||{}, rejected:false, rejectReason:'', submittedAt:new Date().toLocaleString('ko-KR'), ts:Date.now() };
   if(exist){ await db.collection('submissions').doc(exist.id).update(base); }
   else{ await db.collection('submissions').add({ assignmentId:aid, assignmentTitle:a?a.title:'', classId:a?a.classId:'', className:a?a.className:'', studentId:STUDENT.id, studentName:STUDENT.name, ...base }); }
   await loadStudentData();
@@ -1254,18 +1264,26 @@ async function saveWrongNos(aid, nos){
 // 라벨 정렬 — 둘 다 숫자면 숫자 순, 아니면 문자 순
 function cmpLabel(a,b){ const na=parseFloat(a),nb=parseFloat(b); const aNum=/^\d+$/.test(a),bNum=/^\d+$/.test(b);
   if(aNum&&bNum) return na-nb; if(aNum) return -1; if(bNum) return 1; return String(a).localeCompare(String(b)); }
+// 틀린 문제 번호 선택 → 임시로 기억해둠 (사진 제출 등으로 화면을 다시 그려도 유지)
+function toggleWrong(id, btn){
+  btn.classList.toggle('on');
+  PENDING_WRONG[id] = PENDING_WRONG[id] || new Set();
+  const label=String(btn.dataset.no);
+  if(btn.classList.contains('on')) PENDING_WRONG[id].add(label); else PENDING_WRONG[id].delete(label);
+}
+function clearPendingWrong(aid){ delete PENDING_WRONG[aid]; delete PENDING_FREE[aid]; }
 async function doSaveWrong(aid){
   const grid=[...document.querySelectorAll('#oapnums-'+aid+' .oapnum.on')].map(b=>String(b.dataset.no));
   const freeEl=document.getElementById('oapfree-'+aid);
   const free=(freeEl?freeEl.value:'').split(/[,\s]+/).map(s=>s.trim()).filter(Boolean);
   const nos=[...new Set([...grid,...free])].sort(cmpLabel);
   if(!nos.length){ showToast('틀린 문제를 누르거나 입력해주세요. 다 맞았으면 "다 맞았어요"를 눌러주세요','warning'); return; }
-  try{ await saveWrongNos(aid,nos); showToast('틀린 문제 '+nos.length+'개 등록! 오답 탭에서 고친 사진을 올려요 ✏️','success'); renderHomework(); }
+  try{ await saveWrongNos(aid,nos); clearPendingWrong(aid); showToast('틀린 문제 '+nos.length+'개 등록! 오답 탭에서 고친 사진을 올려요 ✏️','success'); renderHomework(); }
   catch(e){ showToast('등록 실패: '+e.message,'error'); }
 }
 async function doAllCorrect(aid){
   if(!confirm('다 맞았다고 등록할까요? (오답 없음)')) return;
-  try{ await saveWrongNos(aid,[]); launchConfetti(); showToast('다 맞았어요! 대단해요 😎','success'); renderHomework(); }
+  try{ await saveWrongNos(aid,[]); clearPendingWrong(aid); launchConfetti(); showToast('다 맞았어요! 대단해요 😎','success'); renderHomework(); }
   catch(e){ showToast('실패: '+e.message,'error'); }
 }
 async function doUploadCorrection(subId, aid, no){
@@ -1287,6 +1305,7 @@ async function doUploadCorrection(subId, aid, no){
 }
 async function doResetWrong(subId, aid){
   if(!confirm('틀린 문제 번호를 다시 입력할까요?\n(이미 올린 고친 사진도 초기화돼요)')) return;
+  clearPendingWrong(aid);
   try{ await db.collection('submissions').doc(subId).update({wrongNos:null, corrections:{}, oapOk:{}, oapRedo:{}}); await loadStudentData(); renderSection(currentSection); }
   catch(e){ showToast('실패: '+e.message,'error'); }
 }
@@ -1479,23 +1498,47 @@ function renderHomework() {
   if (subDone.length) html += `<div class="sec-label" style="color:var(--green)">✅ 확인 완료 (${subDone.length})</div>` + subDone.map(card).join('');
   if (!asgn.length) html = '<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">제출할 숙제가 없어요 🎉</div>';
   document.getElementById('homeworkContent').innerHTML = html;
+  restorePendingUI();
+}
+// 화면을 다시 그린 뒤: 아직 제출 안 한 임시 상태(누적 사진·고른 오답번호·직접입력)를 복원
+function restorePendingUI(){
+  Object.keys(PENDING_PHOTOS).forEach(id=>{ if((PENDING_PHOTOS[id]||[]).length) renderPendingPhotos(id); });
+  Object.keys(PENDING_WRONG).forEach(id=>{ const set=PENDING_WRONG[id]; if(!set||!set.size) return;
+    document.querySelectorAll('#oapnums-'+id+' .oapnum').forEach(btn=>{ if(set.has(String(btn.dataset.no))) btn.classList.add('on'); }); });
+  Object.keys(PENDING_FREE).forEach(id=>{ const el=document.getElementById('oapfree-'+id); if(el && PENDING_FREE[id]!=null) el.value=PENDING_FREE[id]; });
 }
 
+// 사진 선택/촬영 → 이전에 찍은 것에 '누적' (카메라로 한 장씩 찍어도 안 사라짐)
 function handlePreview(input, id) {
+  const a=S_ASSIGNMENTS.find(x=>x.id===id); const max=(a&&a.maxPhotos)||30;
+  PENDING_PHOTOS[id] = PENDING_PHOTOS[id] || [];
+  Array.from(input.files).forEach(f => { if(PENDING_PHOTOS[id].length<max) PENDING_PHOTOS[id].push(f); });
+  if(PENDING_PHOTOS[id].length>=max) showToast(`최대 ${max}장까지 올릴 수 있어요`,'warning');
+  input.value=''; // 같은 파일/다음 촬영을 위해 비움 → onchange 다시 동작
+  renderPendingPhotos(id);
+}
+function renderPendingPhotos(id){
   const prev = document.getElementById('prev-'+id);
-  if (!prev) return;
-  prev.innerHTML = '';
-  Array.from(input.files).forEach(f => {
-    const url = URL.createObjectURL(f);
-    prev.innerHTML += `<div style="width:72px;height:72px;border-radius:8px;overflow:hidden;border:2px solid var(--border)"><img src="${url}" style="width:100%;height:100%;object-fit:cover"></div>`;
-  });
+  if(!prev) return;
+  const arr = PENDING_PHOTOS[id]||[];
+  prev.innerHTML = arr.map((f,i)=>{
+    const url=URL.createObjectURL(f);
+    return `<div style="position:relative;width:72px;height:72px;border-radius:8px;overflow:hidden;border:2px solid var(--border)">
+      <img src="${url}" style="width:100%;height:100%;object-fit:cover">
+      <button type="button" onclick="removePendingPhoto('${id}',${i})" style="position:absolute;top:1px;right:1px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:13px;line-height:18px;cursor:pointer;padding:0">×</button>
+    </div>`;
+  }).join('') + (arr.length?`<div style="flex-basis:100%;font-size:12px;color:var(--text-muted);margin-top:2px">📷 ${arr.length}장 선택됨 · 카메라로 계속 찍어 추가할 수 있어요</div>`:'');
+}
+function removePendingPhoto(id,i){
+  if(PENDING_PHOTOS[id]){ PENDING_PHOTOS[id].splice(i,1); renderPendingPhotos(id); }
 }
 async function doSubmit(id) {
-  const fi=document.getElementById('hwfile-'+id);
-  if(!fi || !fi.files || !fi.files.length){ showToast('사진을 먼저 선택해주세요. (사진 없이 검사받으려면 ‘직접 검사받기’)','warning'); return; }
+  const arr=PENDING_PHOTOS[id]||[];
+  if(!arr.length){ showToast('사진을 먼저 선택해주세요. (사진 없이 검사받으려면 ‘직접 검사받기’)','warning'); return; }
   showToast('📤 제출 중이에요… 잠시만요','');
   try{
     await submitHomework(id);
+    delete PENDING_PHOTOS[id];   // 업로드 끝났으니 임시 사진 비움
     renderHomework();        // 카드 먼저 '제출 완료'로 갱신
     launchConfetti();
     showSubmitDone();        // 또렷한 ✅ 제출 완료 확인
