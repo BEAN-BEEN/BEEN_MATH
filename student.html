@@ -1182,7 +1182,6 @@ function renderOapCard(a){
       <div id="prev-${a.id}" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"></div>
       <div class="btn-row">
         <button class="btn btn-primary" onclick="doSubmit('${a.id}')">📷 사진으로 제출 ✓</button>
-        <button class="btn btn-outline" onclick="doSubmitOffline('${a.id}')">✋ 직접 검사받기</button>
       </div>`;
   } else {
     photoHtml=`
@@ -1450,9 +1449,7 @@ function renderHomework() {
           <div id="prev-${a.id}" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"></div>
           <div class="btn-row">
             <button class="btn btn-primary" onclick="doSubmit('${a.id}')">📷 사진으로 제출 ✓</button>
-            <button class="btn btn-outline" onclick="doSubmitOffline('${a.id}')">✋ 교실에서 직접 검사받기</button>
           </div>
-          <div style="font-size:11px;color:var(--text-muted);margin-top:8px">사진 찍기 어려우면 '직접 검사받기'를 누르고 수업 때 공책을 보여주세요!</div>
         ` : `
           <div class="divider"></div>
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
@@ -1534,7 +1531,7 @@ function removePendingPhoto(id,i){
 }
 async function doSubmit(id) {
   const arr=PENDING_PHOTOS[id]||[];
-  if(!arr.length){ showToast('사진을 먼저 선택해주세요. (사진 없이 검사받으려면 ‘직접 검사받기’)','warning'); return; }
+  if(!arr.length){ showToast('사진을 먼저 선택해주세요','warning'); return; }
   showToast('📤 제출 중이에요… 잠시만요','');
   try{
     await submitHomework(id);
