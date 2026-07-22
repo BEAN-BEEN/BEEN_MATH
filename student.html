@@ -8,7 +8,7 @@
   <meta http-equiv="Expires" content="0">
   <title>BEEN MATH — 학생 포털</title>
   <link rel="icon" type="image/svg+xml" href="icon.svg">
-  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="apple-touch-icon" href="logo.png">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#114C56">
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -129,7 +129,7 @@
     .btn-row{display:flex;gap:8px;flex-wrap:wrap}
 
     /* === ATTENDANCE === */
-    .monthly-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px}
+    .monthly-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
     .m-stat{background:var(--surface);border-radius:var(--radius-sm);padding:14px 10px;text-align:center;box-shadow:var(--shadow)}
     .m-stat .count{font-size:26px;font-weight:800}
     .m-stat .mlabel{font-size:11px;color:var(--text-muted);margin-top:4px}
@@ -292,7 +292,7 @@
       .video-grid{grid-template-columns:1fr}
       .sched-grid{grid-template-columns:repeat(4,1fr)}
       .report-stats{grid-template-columns:repeat(2,1fr)}
-      .monthly-grid{grid-template-columns:repeat(3,1fr)}
+      .monthly-grid{grid-template-columns:repeat(2,1fr)}
       .mgmt-grid{grid-template-columns:1fr}
       .form-row{grid-template-columns:1fr}
       .toast-container{bottom:80px;left:16px;right:16px;transform:none;align-items:stretch}
@@ -576,12 +576,7 @@ async function loadStudentData(){
   VIDEOS = vids.docs.map(d=>({id:d.id,...d.data()})).filter(v=>ids.includes(v.classId)||v.classId==='all').sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const mats = await db.collection('materials').get();
   MATERIALS = mats.docs.map(d=>({id:d.id,...d.data()})).filter(m=>ids.includes(m.classId)||m.classId==='all').sort((a,b)=>(b.uploadDate||'').localeCompare(a.uploadDate||''));
-  // 출석(내 기록만 추출)
-  const att = await db.collection('attendance').get();
-  S_ATTENDANCE = [];
-  att.docs.forEach(d=>{ const a=d.data(); const r=(a.records||[]).find(x=>x.studentId===STUDENT.id);
-    if(r) S_ATTENDANCE.push({ date:a.date, className:a.className, status:r.status, lateMinutes:r.lateMinutes }); });
-  S_ATTENDANCE.sort((x,y)=>(y.date||'').localeCompare(x.date||''));
+  // 출석은 이제 숙제 확인에서 자동 집계 (getAttendance) — 별도 attendance 컬렉션 미사용
   // 내 제출/내 시험답안
   if(STUDENT.id){
     const sub = await db.collection('submissions').where('studentId','==',STUDENT.id).get();
@@ -699,7 +694,34 @@ function getAssignments(){
     return { ...a, status, isOap, wrongNos, corrections, oapOk, oapRedo, oapEntered, oapDone, oapPhotoDone, oapConfirmed, oapNeedsStudent, oapAwaitTeacher, hasPhoto, photos:(sub&&sub.photos)||[], submittedAt:sub?sub.submittedAt:null, teacherChecked:sub?!!sub.checked:false, needsRetry:sub?!!sub.needsRetry:false, offline:sub?!!sub.offline:false, late:sub?!!sub.late:false, retryDone:sub?!!sub.retryDone:false, rejected:sub?!!sub.rejected:false, rejectReason:sub?(sub.rejectReason||''):'', evalPct:sub?(sub.evalPct||''):'', evalTag:sub?(sub.evalTag||''):'', subId:sub?sub.id:null };
   });
 }
-function getAttendance()  { return S_ATTENDANCE; }
+// 출석 자동 집계: 수업일=숙제 마감일(dueDate), 그날 숙제 중 선생님이 '확인 완료(checked)'한 게 있으면 출석
+function calcAttendance(assignments, subByAsn, today){
+  const sessions = new Map();
+  assignments.forEach(a=>{
+    const d = a.dueDate || a.startDate || a.createdAt || '';
+    if(!d || d > today) return;                 // 아직 안 지난(미래) 수업일은 제외
+    const sub = subByAsn[a.id];
+    const checked = !!(sub && sub.checked);
+    let cur = sessions.get(d);
+    if(!cur){ cur = { date:d, present:false, names:new Set() }; sessions.set(d, cur); }
+    if(a.className) cur.names.add(a.className);
+    if(checked) cur.present = true;
+  });
+  const list = [...sessions.values()]
+    .filter(s => s.date < today || s.present)    // 오늘분은 이미 확인된 것만 반영(당일 미확인은 감점 안 함)
+    .sort((x,y)=>(y.date).localeCompare(x.date))
+    .map(s=>({ date:s.date, className:[...s.names].join(', '), present:s.present }));
+  const total = list.length, present = list.filter(s=>s.present).length;
+  return { list, total, present, rate: total?Math.round(present/total*100):0 };
+}
+function getAttendance(){
+  const today = new Date().toISOString().slice(0,10);
+  const subByAsn = {}; S_SUBMISSIONS.forEach(s=>{ if(s.assignmentId) subByAsn[s.assignmentId]=s; });
+  return calcAttendance(getAssignments(), subByAsn, today);
+}
+// 제출률 집계 시작일(hwStart): 새 교재 시작 시 리셋 — 이 날짜(출제일 기준) 이후 숙제만 제출률에 반영
+function classHwStart(classId){ const c=ALL_CLASSES.find(x=>x.id===classId); return (c&&c.hwStart)||''; }
+function asnInHwWindow(a){ const st=classHwStart(a.classId); if(!st) return true; const d=a.startDate||a.createdAt||a.dueDate||''; return !d || d>=st; }
 function getQuestions()   { return S_QUESTIONS; }
 // 한 과제의 완성도(%) — 제출+평가됨이면 그 값, 제출만 했으면 100, 미제출/반려는 0
 function asnCompletion(a){
@@ -708,19 +730,20 @@ function asnCompletion(a){
   return parseInt(a.evalPct,10)||0;
 }
 function getReport(){
-  const asn=getAssignments(); const hwTotal=asn.length, hwSub=asn.filter(a=>a.status==='submitted').length;
+  const asn=getAssignments().filter(asnInHwWindow);   // 제출률은 새 교재(hwStart) 이후 숙제만
+  const hwTotal=asn.length, hwSub=asn.filter(a=>a.status==='submitted').length;
   const hwPct=hwTotal?Math.round(asn.reduce((s,a)=>s+asnCompletion(a),0)/hwTotal):0;
-  const att=getAttendance(); const attTotal=att.length;
+  const att=getAttendance();
   const scored=getExams().filter(e=>e.status==='scored');
   const recent=scored.slice(0,4).reverse();
   return {
     homeworkRate: hwPct,
     retryRate: 0,
-    attendanceRate: attTotal?Math.round(att.filter(a=>a.status!=='absent').length/attTotal*100):0,
+    attendanceRate: att.rate,
     avgScore: scored.length?Math.round(scored.reduce((s,e)=>s+e.score,0)/scored.length):0,
     teacherComment: (S_REPORT && S_REPORT.teacherComment) || REPORT.teacherComment,
     homeworkReport:{ submitted:hwSub, total:hwTotal, lateCount:asn.filter(a=>a.status==='late').length },
-    attendanceReport:{ present:att.filter(a=>a.status==='present').length, late:att.filter(a=>a.status==='late').length, absent:att.filter(a=>a.status==='absent').length, makeup:0 },
+    attendanceReport:{ present:att.present, late:0, absent:att.total-att.present, makeup:0 },
     gradeReport:{ labels:recent.map(e=>(e.title||'').slice(0,4)), scores:recent.map(e=>e.score) }
   };
 }
@@ -1047,7 +1070,7 @@ function renderHome() {
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px">
       <div class="stat-card" onclick="navigate('attendance')" style="cursor:pointer;padding:12px">
         <div class="s-label" style="font-size:12px">🗓️ 출석</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-top:6px">출석 ${att.filter(a=>a.status==='present').length} · 지각 ${att.filter(a=>a.status==='late').length} · 결석 ${att.filter(a=>a.status==='absent').length}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:6px">출석률 ${att.rate}% · 출석 ${att.present}/${att.total}</div>
       </div>
       <div class="stat-card" onclick="navigate('grades')" style="cursor:pointer;padding:12px">
         <div class="s-label" style="font-size:12px">🏆 성적</div>
@@ -1549,28 +1572,29 @@ function showSubmitDone(){
 // ================================================================
 function renderAttendance() {
   const att = getAttendance();
-  const p=att.filter(a=>a.status==='present').length, l=att.filter(a=>a.status==='late').length, ab=att.filter(a=>a.status==='absent').length;
-  const attBadge = r => ({ present:'<span class="badge b-green">출석</span>', late:`<span class="badge b-yellow">지각 (${r.lateMinutes}분)</span>`, absent:'<span class="badge b-red">결석</span>', makeup:'<span class="badge b-orange">보강 완료</span>' }[r.status]||'');
+  const p = att.present, ab = att.total - att.present;
 
   document.getElementById('attendanceContent').innerHTML = `
     <div class="monthly-grid">
+      <div class="m-stat"><div class="count" style="color:var(--primary)">${att.rate}%</div><div class="mlabel">출석률</div></div>
       <div class="m-stat"><div class="count" style="color:var(--green)">${p}</div><div class="mlabel">출석</div></div>
-      <div class="m-stat"><div class="count" style="color:var(--yellow)">${l}</div><div class="mlabel">지각</div></div>
-      <div class="m-stat"><div class="count" style="color:var(--red)">${ab}</div><div class="mlabel">결석</div></div>
+      <div class="m-stat"><div class="count" style="color:var(--red)">${ab}</div><div class="mlabel">미확인</div></div>
       <div class="m-stat"><div class="count" style="color:var(--orange)">${MAKEUP_SCHEDULES.length}</div><div class="mlabel">보강 예정</div></div>
-      <div class="m-stat"><div class="count" style="color:var(--text-muted)">0</div><div class="mlabel">보강 완료</div></div>
+    </div>
+    <div style="font-size:12px;color:var(--text-muted);background:var(--bg);border-radius:10px;padding:10px 12px;margin-bottom:14px">
+      📌 숙제를 제출하고 선생님이 확인하면 그날 수업은 자동으로 <b>출석</b> 처리돼요. (숙제 마감일 기준)
     </div>
     ${MAKEUP_SCHEDULES.map(m=>`
       <div class="alert-card"><div class="a-icon">🔶</div>
         <div><h4>보강 예정: ${m.date} ${m.time}</h4><p>${m.className} · ${m.reason}</p></div>
       </div>`).join('')}
-    <div class="card-title" style="margin-bottom:10px">출석 기록</div>
-    ${att.map(r=>`
+    <div class="card-title" style="margin-bottom:10px">수업별 출석</div>
+    ${att.list.length ? att.list.map(r=>`
       <div class="att-record">
         <div class="att-date">${fmtDate(r.date)}</div>
         <div class="att-class">${r.className}</div>
-        <div>${attBadge(r)}</div>
-      </div>`).join('')}`;
+        <div>${r.present?'<span class="badge b-green">출석</span>':'<span class="badge b-red">미확인</span>'}</div>
+      </div>`).join('') : '<div style="color:var(--text-muted);padding:20px;text-align:center">아직 집계된 수업이 없어요</div>'}`;
 }
 
 // ================================================================

@@ -8,7 +8,7 @@
   <meta http-equiv="Expires" content="0">
   <title>BEEN MATH — 선생님 포털</title>
   <link rel="icon" type="image/svg+xml" href="icon.svg">
-  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="apple-touch-icon" href="logo.png">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#114C56">
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -893,14 +893,22 @@ function rDashboard(){
   let reviewWaiting=0, reviewOngoing=0;
   getReviews().forEach(r=>{ const rsubs=getReviewSubs(r.id); getStudentsByClass(r.classId).forEach(st=>{ const stt=revStat(r, rsubs.find(x=>x.studentId===st.id)); if(stt.done&&!stt.checked) reviewWaiting++; else if(stt.started&&!stt.done) reviewOngoing++; }); });
 
-  // 최근 결석/지각 모으기 (챙길 것)
+  // 지난 수업(각 반의 마지막 마감 숙제) 중 아직 '확인 완료' 안 된 학생 = 출석 미반영 → 챙길 것
   const flagged=[];
-  getAttendance().forEach(a=>(a.records||[]).forEach(r=>{
-    if(r.status==='absent'||r.status==='late') flagged.push({date:a.date, name:r.studentName, className:a.className, status:r.status, lateMinutes:r.lateMinutes});
-  }));
+  const todayStr=today.toISOString().slice(0,10);
+  CLASSES.filter(c=>isClassActive(c)).forEach(c=>{
+    const clsAsgns=getAssignments().filter(a=>a.classId===c.id && a.dueDate && a.dueDate<todayStr);
+    if(!clsAsgns.length) return;
+    const lastDue=clsAsgns.reduce((m,a)=>a.dueDate>m?a.dueDate:m,'');
+    const dayAsgns=clsAsgns.filter(a=>a.dueDate===lastDue);
+    getStudentsByClass(c.id).forEach(st=>{
+      const ok=dayAsgns.some(a=>subs.some(s=>s.studentId===st.id&&s.assignmentId===a.id&&s.checked));
+      if(!ok) flagged.push({date:lastDue, name:st.name, className:c.name});
+    });
+  });
   flagged.sort((x,y)=>(y.date||'').localeCompare(x.date||''));
-  const recentFlagged=flagged.slice(0,8);
-  const absentCount=flagged.filter(f=>f.status==='absent').length;
+  const recentFlagged=flagged.slice(0,10);
+  const absentCount=flagged.length;
 
   document.getElementById('dashboardContent').innerHTML=`
     <div class="stats-grid">
@@ -966,14 +974,14 @@ function rDashboard(){
       </div>
     </div>
     <div class="card" style="margin-top:16px;border-left:4px solid var(--red)">
-      <div class="card-title">🔴 결석·지각 챙길 것 ${absentCount?`<span class="badge b-red">결석 ${absentCount}</span>`:''}</div>
+      <div class="card-title">🔴 지난 수업 숙제 미확인 <span style="font-size:12px;color:var(--text-muted);font-weight:400">— 확인하면 출석 처리돼요</span> ${absentCount?`<span class="badge b-red">${absentCount}명</span>`:''}</div>
       ${recentFlagged.length?recentFlagged.map(f=>`
         <div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border)">
           <span style="font-size:12px;color:var(--text-muted);min-width:60px">${f.date?f.date.slice(5):''}</span>
           <strong style="font-size:13px;min-width:70px">${f.name}</strong>
           <span class="chip">${f.className}</span>
-          <span style="margin-left:auto">${f.status==='absent'?'<span class="badge b-red">결석</span>':`<span class="badge b-yellow">지각 ${f.lateMinutes||0}분</span>`}</span>
-        </div>`).join(''):'<div style="text-align:center;padding:24px;color:var(--text-muted)">최근 결석·지각이 없어요 👍</div>'}
+          <span style="margin-left:auto"><span class="badge b-red">미확인</span></span>
+        </div>`).join(''):'<div style="text-align:center;padding:24px;color:var(--text-muted)">지난 수업 숙제를 모두 확인했어요 👍</div>'}
     </div>
     <div class="card" style="margin-top:16px">
       <div class="card-title">📬 최근 제출 숙제 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(사진 보고 바로 확인하세요)</span></div>
@@ -1191,25 +1199,25 @@ function rClassroom(){
   const cls=CLASSES.find(c=>c.id===clRoomId);
   const sts=getStudentsByClass(cls.id);
   const asgns=getAssignments().filter(a=>a.classId===cls.id);
+  const hwAsgns=asgns.filter(asnInHwWindow);   // 제출률은 새 교재(hwStart) 이후 숙제만
   const exams=getExams().filter(e=>e.classId===cls.id);
   const esubs=getExamSubs(), allSubs=getSubmissions();
-  const atts=getAttendance().filter(a=>a.classId===cls.id);
+  const today=new Date().toISOString().slice(0,10);
   const rows=sts.map(st=>{
     const mySubs=allSubs.filter(s=>s.studentId===st.id && asgns.some(a=>a.id===s.assignmentId));
-    const hwRate=asgns.length?Math.round(asgns.reduce((sum,a)=>sum+subCompletion(mySubs.find(s=>s.assignmentId===a.id)),0)/asgns.length):null;
+    const hwRate=hwAsgns.length?Math.round(hwAsgns.reduce((sum,a)=>sum+subCompletion(mySubs.find(s=>s.assignmentId===a.id)),0)/hwAsgns.length):null;
     const myScores=esubs.filter(s=>s.studentId===st.id && exams.some(e=>e.id===s.examId) && s.score!=null);
     const avg=myScores.length?Math.round(myScores.reduce((a,s)=>a+s.score,0)/myScores.length):null;
-    const myAtt=atts.filter(a=>(a.records||[]).some(r=>r.studentId===st.id));
-    const present=myAtt.filter(a=>(a.records||[]).some(r=>r.studentId===st.id&&r.status!=='absent')).length;
-    const attRate=myAtt.length?Math.round(present/myAtt.length*100):null;
+    const attInfo=calcAttendance(asgns, subMap(mySubs), today);
+    const attRate=attInfo.total?attInfo.rate:null;
     return {st, hwRate, avg, attRate, n:myScores.length};
   });
   rows.sort((a,b)=>((b.avg==null?-1:b.avg)-(a.avg==null?-1:a.avg)));
   const scored=rows.filter(r=>r.avg!=null);
   const classAvg=scored.length?Math.round(scored.reduce((a,r)=>a+r.avg,0)/scored.length):null;
   const totalSubs=allSubs.filter(s=>asgns.some(a=>a.id===s.assignmentId)).length;
-  let compTotal=0; sts.forEach(st=>asgns.forEach(a=>{compTotal+=subCompletion(allSubs.find(s=>s.studentId===st.id&&s.assignmentId===a.id));}));
-  const hwClassRate=asgns.length&&sts.length?Math.round(compTotal/(asgns.length*sts.length)):null;
+  let compTotal=0; sts.forEach(st=>hwAsgns.forEach(a=>{compTotal+=subCompletion(allSubs.find(s=>s.studentId===st.id&&s.assignmentId===a.id));}));
+  const hwClassRate=hwAsgns.length&&sts.length?Math.round(compTotal/(hwAsgns.length*sts.length)):null;
   const medal=i=>['🥇','🥈','🥉'][i]||(i+1);
   const pct=v=>v==null?'<span style="color:var(--text-muted)">-</span>':v+'%';
   el.innerHTML=`
@@ -2671,7 +2679,9 @@ function rSchedule(){
               <div style="display:flex;gap:4px;align-items:center;margin-top:5px">
                 <input class="form-input" id="cs-${c.id}" list="cs-tblist" style="width:140px;padding:4px 7px;font-size:11px" value="${(c.subject||'').replace(/"/g,'&quot;')}" placeholder="교재/커리큘럼">
                 <button class="btn btn-outline btn-sm" style="padding:2px 7px" onclick="doSaveClassSubject('${c.id}')">저장</button>
-              </div></td>
+              </div>
+              <div style="font-size:10px;color:var(--text-muted);margin-top:3px">📊 제출률 집계 ${c.hwStart?`<b>${c.hwStart}~</b> <a onclick="doClearHwStart('${c.id}')" style="cursor:pointer;color:var(--primary);text-decoration:underline">전체로</a>`:'전체 기간'}</div>
+            </td>
             <td style="min-width:215px"><div style="display:flex;gap:3px;flex-wrap:wrap;align-items:center">
               ${days.map(d=>`<label style="display:inline-flex;align-items:center;gap:2px;font-size:11px;border:1px solid var(--border);border-radius:5px;padding:2px 5px;cursor:pointer"><input type="checkbox" class="cd-${c.id}" value="${d}" ${clsHasDay(c,d)?'checked':''}> ${WD_LABEL[d]}</label>`).join('')}
               <button class="btn btn-outline btn-sm" onclick="doSaveClassDays('${c.id}')">저장</button>
@@ -2715,8 +2725,19 @@ async function doAddClass(){
 async function doSaveClassSubject(id){
   const el=document.getElementById('cs-'+id); if(!el) return;
   const subject=el.value.trim();
-  try{ await updateClassFS(id,{subject}); showToast(`교재 저장 — ${subject||'(비움)'}`,'success'); rSchedule(); }
+  const c=CLASSES.find(x=>x.id===id);
+  const changed=c && (c.subject||'')!==subject && subject;
+  const patch={subject};
+  if(changed && confirm(`📚 새 교재로 바꾸는 건가요?\n\n[확인] 지금부터 이 반 숙제 제출률을 새로 집계해요 (이전 숙제·성적·출석 기록은 그대로 남아요)\n[취소] 교재 이름만 바꿔요`)){
+    patch.hwStart=new Date().toISOString().slice(0,10);
+  }
+  try{ await updateClassFS(id,patch); showToast(`교재 저장 — ${subject||'(비움)'}${patch.hwStart?' · 제출률 새로 집계 시작 📊':''}`,'success'); rSchedule(); }
   catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+async function doClearHwStart(id){
+  if(!confirm('제출률 집계를 전체 기간(이전 숙제 포함)으로 되돌릴까요?')) return;
+  try{ await updateClassFS(id,{hwStart:''}); showToast('제출률 집계: 전체 기간으로','success'); rSchedule(); }
+  catch(e){ showToast('실패: '+e.message,'error'); }
 }
 async function doSaveClassDays(id){
   const wds=[...document.querySelectorAll('.cd-'+id+':checked')].map(el=>el.value);
@@ -2784,19 +2805,37 @@ async function doCSMemo(id){ try{ await updateConsult(id,{memo:document.getEleme
 // REPORT
 // ================================================================
 let rpStId='';
+// 출석 자동 집계: 수업일=숙제 마감일(dueDate), 그날 숙제 중 '확인 완료(checked)'한 게 있으면 출석
+function calcAttendance(assignments, subByAsn, today){
+  const sessions = new Map();
+  assignments.forEach(a=>{
+    const d = a.dueDate || a.startDate || a.createdAt || '';
+    if(!d || d > today) return;
+    const sub = subByAsn[a.id];
+    const checked = !!(sub && sub.checked);
+    let cur = sessions.get(d);
+    if(!cur){ cur = { date:d, present:false }; sessions.set(d, cur); }
+    if(checked) cur.present = true;
+  });
+  const list = [...sessions.values()].filter(s => s.date < today || s.present);
+  const total = list.length, present = list.filter(s=>s.present).length;
+  return { total, present, rate: total?Math.round(present/total*100):0 };
+}
+function subMap(subs){ const m={}; subs.forEach(s=>{ if(s.assignmentId) m[s.assignmentId]=s; }); return m; }
+// 제출률 집계 시작일(hwStart): 새 교재 시작 시 리셋 — 이 날짜(출제일 기준) 이후 숙제만 제출률에 반영
+function classHwStart(classId){ const c=CLASSES.find(x=>x.id===classId); return (c&&c.hwStart)||''; }
+function asnInHwWindow(a){ const st=classHwStart(a.classId); if(!st) return true; const d=a.startDate||a.createdAt||a.dueDate||''; return !d || d>=st; }
 function studentStats(st){
   if(!st) return {hwRate:'-',retryRate:'-',attRate:'-',recent:'-'};
   const myClassIds=st.classIds||(st.classId?[st.classId]:[]);
   const myAsgn=getAssignments().filter(a=>myClassIds.includes(a.classId));
+  const myAsgnHw=myAsgn.filter(asnInHwWindow);   // 제출률은 새 교재(hwStart) 이후만
   const mySubs=getSubmissions().filter(s=>s.studentId===st.id);
-  const subAids=new Set(mySubs.map(s=>s.assignmentId));
-  const submitted=myAsgn.filter(a=>subAids.has(a.id)).length;
-  const hwRate=myAsgn.length?Math.round(myAsgn.reduce((sum,a)=>sum+subCompletion(mySubs.find(s=>s.assignmentId===a.id)),0)/myAsgn.length)+'%':'-';
+  const hwRate=myAsgnHw.length?Math.round(myAsgnHw.reduce((sum,a)=>sum+subCompletion(mySubs.find(s=>s.assignmentId===a.id)),0)/myAsgnHw.length)+'%':'-';
   const retrySubs=mySubs.filter(s=>s.needsRetry).length;
   const retryRate=mySubs.length&&retrySubs?Math.round((1-retrySubs/mySubs.length)*100)+'%':(mySubs.length?'100%':'-');
-  const myAtt=getAttendance().filter(a=>(a.records||[]).some(r=>r.studentId===st.id));
-  const present=myAtt.filter(a=>(a.records||[]).some(r=>r.studentId===st.id&&r.status!=='absent')).length;
-  const attRate=myAtt.length?Math.round(present/myAtt.length*100)+'%':'-';
+  const attInfo=calcAttendance(myAsgn, subMap(mySubs), new Date().toISOString().slice(0,10));
+  const attRate=attInfo.total?attInfo.rate+'%':'-';
   const myScores=getExamSubs().filter(s=>s.studentId===st.id&&s.score!=null).sort((a,b)=>(b.ts||0)-(a.ts||0));
   const recent=myScores.length?myScores[0].score+'점':'-';
   return {hwRate,retryRate,attRate,recent};
