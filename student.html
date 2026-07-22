@@ -1948,25 +1948,30 @@ async function doAIHint(level) {
 // ================================================================
 let vFilter='all';
 function renderVideos() {
-  const filters=[{key:'all',label:'전체'},{key:'recent',label:'최근 수업'},{key:'absent',label:'결석 보충'},{key:'concept',label:'단원별 개념'},{key:'exam_prep',label:'시험 대비'}];
-  const filtered = vFilter==='all'?VIDEOS:VIDEOS.filter(v=>v.type===vFilter);
-  const hasAbsent = VIDEOS.some(v=>v.type==='absent');
   document.getElementById('videosContent').innerHTML = `
-    ${hasAbsent?`<div class="alert-card"><div class="a-icon">📹</div><div><h4>결석한 수업 영상이 있어요</h4><p>결석 보충 탭에서 확인하고 복습하세요!</p></div></div>`:''}
-    <div class="filter-tabs">${filters.map(f=>`<div class="f-tab ${vFilter===f.key?'active':''}" onclick="setVF('${f.key}')">${f.label}</div>`).join('')}</div>
     <div class="video-grid">
-      ${filtered.map(v=>`
-        <div class="video-card" onclick="${v.url?`window.open('${v.url}','_blank')`:`showToast('영상 링크가 아직 없어요')`}">
-          <div class="v-thumb" style="background:${v.color||'#6366F1'}"><span>▶️</span>${v.duration?`<div class="v-dur">${v.duration}</div>`:''}</div>
+      ${VIDEOS.map(v=>{ const seen=(v.viewedBy||[]).includes(STUDENT.id);
+        return `<div class="video-card" onclick="watchVideo('${v.id}')">
+          <div class="v-thumb" style="background:${v.color||'#6366F1'}"><span>▶️</span></div>
           <div class="v-info">
             <div class="v-title">${v.title}</div>
-            <div class="v-meta">${v.className} · ${v.date}</div>
+            <div class="v-meta">${v.className} · ${v.date}${seen?' · <span style="color:var(--green);font-weight:700">✅ 봤어요</span>':''}</div>
           </div>
-        </div>`).join('')}
+        </div>`; }).join('')}
     </div>
-    ${!filtered.length?'<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">해당하는 영상이 없어요</div>':''}`;
+    ${!VIDEOS.length?'<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">아직 등록된 영상이 없어요</div>':''}`;
 }
-function setVF(f){vFilter=f;renderVideos();}
+// 영상 열기 + '봤어요' 기록 (선생님이 누가 봤는지 확인)
+async function watchVideo(id){
+  const v=VIDEOS.find(x=>x.id===id);
+  if(!v || !v.url){ showToast('영상 링크가 아직 없어요'); return; }
+  window.open(v.url,'_blank');
+  if(!(v.viewedBy||[]).includes(STUDENT.id)){
+    v.viewedBy=(v.viewedBy||[]).concat(STUDENT.id);   // 즉시 반영
+    renderVideos();
+    try{ await db.collection('videos').doc(id).update({ viewedBy: firebase.firestore.FieldValue.arrayUnion(STUDENT.id) }); }catch(e){}
+  }
+}
 
 // ================================================================
 // MATERIALS
