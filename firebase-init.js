@@ -1,4 +1,39 @@
 // ================================================================
+// 🌐 카카오톡 인앱 브라우저 가드 — 카톡 안에서는 로그인(익명인증)·사진 올리기가
+//    막히는 경우가 많아, 외부 브라우저(크롬/사파리)로 열도록 유도한다.
+//    (다른 파일보다 먼저, firebase 초기화 전에 실행)
+// ================================================================
+(function inAppBrowserGuard(){
+  try{
+    var ua = navigator.userAgent || '';
+    if(!/KAKAOTALK/i.test(ua)) return;                 // 카카오톡 인앱 브라우저만 대상
+    var isAndroid = /Android/i.test(ua);
+    var url = location.href;
+    if(isAndroid){ try{ location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(url); }catch(e){} }
+    var show = function(){
+      if(document.getElementById('__inappGuard')) return;
+      var d = document.createElement('div'); d.id='__inappGuard';
+      d.style.cssText='position:fixed;inset:0;z-index:2147483647;background:#fff;color:#1E293B;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:28px;font-family:-apple-system,BlinkMacSystemFont,sans-serif';
+      d.innerHTML='<div style="font-size:46px;margin-bottom:10px">🌐</div>'+
+        '<div style="font-size:18px;font-weight:800;margin-bottom:8px">브라우저에서 열어주세요</div>'+
+        '<div style="font-size:14px;color:#555;line-height:1.7;margin-bottom:20px;max-width:340px">카카오톡 안에서는 <b>로그인·사진 올리기</b>가 안 될 수 있어요.<br>'+
+          (isAndroid ? '아래 버튼을 눌러 <b>크롬</b>에서 열어주세요.' : '오른쪽 아래 <b>메뉴(⋯) → Safari로 열기</b>를 누르거나,<br>아래에서 주소를 복사해 <b>사파리</b> 주소창에 붙여넣어 주세요.')+'</div>'+
+        (isAndroid
+          ? '<button id="__gOpen" style="background:#5B6CF5;color:#fff;border:none;border-radius:10px;padding:13px 24px;font-size:15px;font-weight:700;cursor:pointer">🌐 크롬으로 열기</button>'
+          : '<button id="__gCopy" style="background:#5B6CF5;color:#fff;border:none;border-radius:10px;padding:13px 24px;font-size:15px;font-weight:700;cursor:pointer">🔗 주소 복사하기</button>')+
+        '<div id="__gMsg" style="font-size:12px;color:#10B981;margin-top:10px;height:16px"></div>'+
+        '<button id="__gSkip" style="background:none;border:none;color:#94a3b8;font-size:12px;margin-top:18px;text-decoration:underline;cursor:pointer">그냥 여기서 볼게요</button>';
+      document.body.appendChild(d);
+      var o=document.getElementById('__gOpen'); if(o) o.onclick=function(){ location.href='kakaotalk://web/openExternal?url='+encodeURIComponent(url); };
+      var c=document.getElementById('__gCopy'); if(c) c.onclick=function(){ var ok=function(){ document.getElementById('__gMsg').textContent='복사됐어요! 사파리 주소창에 붙여넣기'; };
+        try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(url).then(ok,function(){ prompt('주소를 복사하세요', url); }); } else { prompt('주소를 복사하세요', url); } }catch(e){ prompt('주소를 복사하세요', url); } };
+      document.getElementById('__gSkip').onclick=function(){ d.remove(); };
+    };
+    if(document.body) show(); else document.addEventListener('DOMContentLoaded', show);
+  }catch(e){}
+})();
+
+// ================================================================
 // Firebase 초기화 — 모든 페이지(index/student/teacher)가 공유
 // ================================================================
 // HTML에서 firebase-app-compat.js → firestore-compat.js → 이 파일 순서로 로드돼요.
@@ -29,9 +64,14 @@ window.bmAuthReady = new Promise(function(resolve){
   var done=false, finish=function(u){ if(!done){ done=true; resolve(u||null); } };
   try{
     if(!firebase.auth){ finish(null); return; }
-    firebase.auth().onAuthStateChanged(function(user){ if(user) finish(user); });
-    firebase.auth().signInAnonymously().catch(function(e){ console.warn('익명 인증 실패:', e && (e.code||e.message)); finish(null); });
-    setTimeout(function(){ finish(null); }, 6000);   // 안전장치: 응답 없어도 6초 뒤 진행
+    var A=firebase.auth();
+    A.onAuthStateChanged(function(user){ if(user) finish(user); });
+    var trySignIn=function(){ A.signInAnonymously().catch(function(e){ console.warn('익명 인증 실패:', e && (e.code||e.message)); finish(null); }); };
+    // 인앱 브라우저(카카오톡 등)에서 IndexedDB/저장소가 막혀 실패하는 경우 대비:
+    //  LOCAL 저장 시도 → 실패하면 인메모리(NONE)로 전환 후 로그인 (앱은 매번 익명 재발급이라 무방)
+    var P=(firebase.auth.Auth && firebase.auth.Auth.Persistence) || {LOCAL:'local',NONE:'none'};
+    A.setPersistence(P.LOCAL).then(trySignIn, function(){ A.setPersistence(P.NONE).then(trySignIn, trySignIn); });
+    setTimeout(function(){ finish(null); }, 8000);   // 안전장치: 응답 없어도 8초 뒤 진행
   }catch(e){ finish(null); }
 });
 
