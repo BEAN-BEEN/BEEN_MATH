@@ -247,6 +247,11 @@
       <div class="page-header"><div class="page-title">성적 관리</div></div>
       <div class="content-area" id="gradesContent"></div>
     </div>
+    <div class="section" id="sec-naesin">
+      <div class="page-header"><div class="page-title">내신 관리</div></div>
+      <div class="content-area"><div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap" id="naesinTabs"></div></div>
+      <div class="content-area" id="naesinContent"></div>
+    </div>
     <div class="section" id="sec-questions">
       <div class="page-header"><div class="page-title">질문 관리</div></div>
       <div class="content-area" id="questionsContent"></div>
@@ -560,6 +565,15 @@ function schoolExamCardHtml(){
       <div class="form-group"><label class="form-label">시험기간 시작</label><input class="form-input" id="se-start" type="date" value="${editS?(editS.startDate||''):''}"></div>
       <div class="form-group"><label class="form-label">시험기간 끝</label><input class="form-input" id="se-end" type="date" value="${editS?(editS.endDate||''):''}"></div>
     </div>
+    <div class="form-row-3">
+      <div class="form-group"><label class="form-label">교과서</label><input class="form-input" id="se-textbook" list="se-tblist" value="${editS?esc(editS.textbook||''):''}" placeholder="예: 미래엔"><datalist id="se-tblist"><option value="미래엔"><option value="비상(김)"><option value="지학사"><option value="동아(고)"><option value="YBM"><option value="천재(류)"></datalist></div>
+      <div class="form-group"><label class="form-label">부교재</label><input class="form-input" id="se-submaterial" value="${editS?esc(editS.subMaterial||''):''}" placeholder="예: 올림포스 고난도"></div>
+      <div class="form-group"><label class="form-label">교재/교사용</label><input class="form-input" id="se-teachermat" value="${editS?esc(editS.teacherMaterial||''):''}" placeholder="예: 학교 프린트"></div>
+    </div>
+    <div class="form-row-2">
+      <div class="form-group"><label class="form-label">문항 수</label><input class="form-input" id="se-qcount" value="${editS?esc(editS.qCount||''):''}" placeholder="예: 25"></div>
+      <div class="form-group"><label class="form-label">범위</label><input class="form-input" id="se-scope" value="${editS?esc(editS.scope||''):''}" placeholder="예: 여러 가지 방정식 ~ 행렬"></div>
+    </div>
     <div class="form-group">
       <label class="form-label">수학 시험일 <span style="font-size:11px;color:var(--text-muted)">(과목이 둘이면 둘 다 입력 · 아직 미정이면 비워두고 나중에 ‘수정’으로 확정)</span></label>
       ${(function(){const ms=editS?examMathDates(editS):[];const m1=ms[0]||{},m2=ms[1]||{};return `
@@ -575,7 +589,7 @@ function schoolExamCardHtml(){
     </div>
     <div class="btn-row">
       <button class="btn btn-primary" onclick="doSaveSchoolExam()">${editS?'수정 저장 💾':'일정 추가'}</button>
-      ${editS?`<button class="btn btn-outline" onclick="seEditId=null;rGrades()">취소</button>`:''}
+      ${editS?`<button class="btn btn-outline" onclick="seEditId=null;rNaesin()">취소</button>`:''}
     </div>
     ${list.length?`<div class="table-wrap" style="margin-top:14px"><table>
       <thead><tr><th>학교</th><th>시험</th><th>시험기간</th><th>수학 시험일</th><th>관리</th></tr></thead>
@@ -584,7 +598,7 @@ function schoolExamCardHtml(){
         <td><strong>${e.title||'-'}</strong>${e.grade?` <span style="font-size:11px;color:var(--text-muted)">${e.grade}</span>`:''}</td>
         <td style="color:var(--text-muted)">${e.startDate||'?'}~${e.endDate||'?'}</td>
         <td>${examMathDates(e).map(m=>`<div style="margin:1px 0"><strong>${m.label||'수학'}</strong> ${m.date} ${ddayBadge(m.date)}</div>`).join('')||'<span class="badge b-yellow">📌 수학일 미정</span>'}</td>
-        <td style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="seEditId='${e.id}';rGrades();window.scrollTo({top:0,behavior:'smooth'})">수정</button> <button class="btn btn-red btn-sm" onclick="doDelSchoolExam('${e.id}','${(e.school||'')+' '+(e.title||'')}')">삭제</button></td>
+        <td style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="seEditId='${e.id}';rNaesin();window.scrollTo({top:0,behavior:'smooth'})">수정</button> <button class="btn btn-red btn-sm" onclick="doDelSchoolExam('${e.id}','${(e.school||'')+' '+(e.title||'')}')">삭제</button></td>
       </tr>`).join('')}</tbody>
     </table></div>`:'<div style="margin-top:12px;font-size:13px;color:var(--text-muted)">아직 등록된 내신 일정이 없어요. 학교별로 추가하면 그 학교 학생 전원이 D-day를 봐요.</div>'}
   </div>`;
@@ -598,14 +612,67 @@ async function doSaveSchoolExam(){
   const mathDates=[];
   if(m1d) mathDates.push({label:document.getElementById('se-m1-label').value.trim()||'수학', date:m1d});
   if(m2d) mathDates.push({label:document.getElementById('se-m2-label').value.trim()||'수학②', date:m2d});
-  const data={school,title,grade:document.getElementById('se-grade').value.trim(),startDate:document.getElementById('se-start').value,endDate:document.getElementById('se-end').value,mathDates,mathDate:m1d||'',jikboStart:document.getElementById('se-jikbo').value||''};
+  const g=id=>{const el=document.getElementById(id);return el?el.value.trim():'';};
+  const data={school,title,grade:g('se-grade'),startDate:document.getElementById('se-start').value,endDate:document.getElementById('se-end').value,mathDates,mathDate:m1d||'',jikboStart:document.getElementById('se-jikbo').value||'',
+    textbook:g('se-textbook'),subMaterial:g('se-submaterial'),teacherMaterial:g('se-teachermat'),qCount:g('se-qcount'),scope:g('se-scope')};
   try{
     if(seEditId){ await updateSchoolExam(seEditId,data); seEditId=null; showToast('내신 일정 수정 완료 ✏️','success'); }
     else{ await addSchoolExam(data); showToast(`${school} 내신 일정 추가 완료 🏫`,'success'); }
-    rGrades();
+    rNaesin();
   }catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
-async function doDelSchoolExam(id,label){ if(!confirm(`"${label}" 내신 일정을 삭제할까요?`))return; try{ await deleteSchoolExam(id); if(seEditId===id)seEditId=null; showToast('삭제했어요','warning'); rGrades(); }catch(e){ showToast('삭제 실패: '+e.message,'error'); } }
+async function doDelSchoolExam(id,label){ if(!confirm(`"${label}" 내신 일정을 삭제할까요?`))return; try{ await deleteSchoolExam(id); if(seEditId===id)seEditId=null; showToast('삭제했어요','warning'); rNaesin(); }catch(e){ showToast('삭제 실패: '+e.message,'error'); } }
+
+// ===== 📋 내신 관리 탭 (학교 정보 / 직보 일정 / 시험 정보) =====
+let naesinTab='school';   // school / jikbo / exam
+function rNaesin(){
+  const tabs=[['school','🏫 학교 정보'],['jikbo','🔶 직보 일정'],['exam','📅 시험 정보']];
+  const tb=document.getElementById('naesinTabs'); if(tb) tb.innerHTML=tabs.map(([k,l])=>`<button class="btn ${naesinTab===k?'btn-primary':'btn-outline'} btn-sm" onclick="naesinTab='${k}';rNaesin()">${l}</button>`).join('');
+  const el=document.getElementById('naesinContent'); if(!el) return;
+  el.innerHTML = naesinTab==='exam' ? schoolExamCardHtml()
+    : naesinTab==='jikbo' ? makeupBlockHtml()
+    : schoolInfoHtml();
+}
+// 학생 반 이름에서 등급(T/S/A) 추출 — 여러 반이면 여러 등급
+function studentTiers(s){
+  const set=new Set();
+  classNamesOf(s).forEach(nm=>{ const m=String(nm).match(/고\s*\d*\s*([TSA])/); if(m) set.add(m[1]); });
+  return set;
+}
+// 사진형 학교 정보 표 (학교=열, 항목=행, 학생은 등급 T/S/A로 자동)
+function schoolInfoHtml(){
+  const list=getSchoolExams();
+  if(!list.length) return `<div class="card" style="text-align:center;padding:30px;color:var(--text-muted)">아직 등록된 학교(내신 시험)가 없어요.<br><span style="font-size:12px">‘📅 시험 정보’에서 학교를 추가하면 여기에 표로 정리돼요.</span></div>`;
+  const actives=getStudents().filter(isActiveStudent);
+  const tiers=['T','S','A'];
+  const cell=html=>`<td style="border:1px solid var(--border);padding:6px 8px;font-size:12px;vertical-align:top;min-width:120px">${html||'<span style="color:var(--text-muted)">-</span>'}</td>`;
+  const rowLabel=t=>`<td style="border:1px solid var(--border);padding:6px 8px;background:var(--bg);font-weight:700;font-size:12px;position:sticky;left:0;white-space:nowrap">${t}</td>`;
+  const row=(label,fn)=>`<tr>${rowLabel(label)}${list.map(e=>cell(fn(e))).join('')}</tr>`;
+  const esc=s=>(s||'').replace(/</g,'&lt;');
+  const head=`<th style="border:1px solid var(--border);padding:6px 8px;background:var(--bg);position:sticky;left:0;z-index:2;min-width:78px">항목</th>`+
+    list.map(e=>`<th style="border:1px solid var(--border);padding:6px 8px;background:var(--bg);min-width:122px"><div style="font-weight:800">${esc(e.school)||'-'}</div><div style="font-size:11px;color:var(--text-muted);font-weight:400">${esc(e.title)}</div><button class="btn btn-outline btn-sm" style="padding:1px 6px;font-size:10px;margin-top:3px" onclick="seEditId='${e.id}';naesinTab='exam';rNaesin();window.scrollTo({top:0,behavior:'smooth'})">수정</button></th>`).join('');
+  const mathHtml=e=>examMathDates(e).map(m=>`${esc(m.label)||'수학'} ${m.date||''}`).join('<br>');
+  const tierRow=t=>`<tr>${rowLabel(t)}${list.map(e=>{
+    const names=actives.filter(s=>(s.school||'')===e.school && studentTiers(s).has(t)).map(s=>esc(s.name));
+    return cell(names.length?names.join(', '):'');
+  }).join('')}</tr>`;
+  return `<div class="card">
+    <div class="card-title">🏫 학교 정보 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(학교별 시험 준비 · 학생은 반 등급 T/S/A로 자동 표시 · ‘시험 정보’에서 입력)</span></div>
+    <div class="table-wrap"><table style="border-collapse:collapse;min-width:100%">
+      <thead><tr>${head}</tr></thead>
+      <tbody>
+        ${row('교과서',e=>esc(e.textbook))}
+        ${row('부교재',e=>esc(e.subMaterial))}
+        ${row('교재/교사용',e=>esc(e.teacherMaterial))}
+        ${row('문항 수',e=>esc(e.qCount))}
+        ${row('범위',e=>esc(e.scope))}
+        ${row('시험일',mathHtml)}
+        ${row('직보',e=>e.jikboStart||'')}
+        ${tiers.map(tierRow).join('')}
+      </tbody>
+    </table></div>
+  </div>`;
+}
 
 // 📝 모의고사 (학생 자가 등록) — 점수만 / 답 자동채점(문항별 배점) 선택
 let mockEditId=null;
@@ -641,7 +708,7 @@ function mockExamCardHtml(){
     <div class="card-title">${editM?'✏️ 모의고사 수정':'📝 모의고사 (학생 자가 등록)'} <span style="font-size:12px;color:var(--text-muted);font-weight:400">(학생이 직접 점수/답을 등록해요)</span></div>
     <div class="form-row-3">
       <div class="form-group"><label class="form-label">시험명 *</label><input class="form-input" id="mock-title" value="${editM?esc(editM.title):''}" placeholder="예: 6월 모의평가"></div>
-      <div class="form-group"><label class="form-label">날짜</label><input class="form-input" id="mock-date" type="date" value="${editM?(editM.date||''):''}"></div>
+      <div class="form-group"><label class="form-label">시험 날짜(일정)</label><input class="form-input" id="mock-date" type="date" value="${editM?(editM.date||''):''}"></div>
       <div class="form-group"><label class="form-label">채점 방식</label><select class="form-select" id="mock-mode" onchange="toggleMockMode()"><option value="score" ${mode==='score'?'selected':''}>점수만 입력</option><option value="auto" ${mode==='auto'?'selected':''}>답 입력 → 자동채점</option></select></div>
     </div>
     <div id="mock-score-block" style="${mode==='score'?'':'display:none'}">
@@ -731,6 +798,7 @@ const ICONS={
   homework:_svg('<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h4"/>'),
   attendance:_svg('<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M9 16l2 2 4-4"/>'),
   grades:_svg('<circle cx="12" cy="8" r="5"/><path d="M8.5 12.5L7 22l5-3 5 3-1.5-9.5"/>'),
+  naesin:_svg('<path d="M3 21h18"/><path d="M5 21V5a2 2 0 012-2h7l5 5v13"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/>'),
   questions:_svg('<path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>'),
   videos:_svg('<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 9l5 3-5 3z"/>'),
   materials:_svg('<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>'),
@@ -747,6 +815,7 @@ const NAV=[
   {id:'manage',label:'관리'},
   {id:'homework',label:'숙제 관리'},
   {id:'grades',label:'성적 관리'},
+  {id:'naesin',label:'내신 관리'},
   {id:'videos',label:'수업 영상 관리'},{id:'materials',label:'자료실 관리'},
   {id:'schedule',label:'시간표 관리'},
   {id:'report',label:'리포트'}
@@ -768,7 +837,7 @@ function navigate(s){
   curSec=s;renderSection(s);window.scrollTo(0,0);closeMob();
 }
 function renderSection(s){
-  ({dashboard:rDashboard,manage:rManage,homework:rHomeworkHub,grades:rGrades,videos:rVideos,materials:rMaterials,schedule:rSchedule,report:rReport,
+  ({dashboard:rDashboard,manage:rManage,homework:rHomeworkHub,grades:rGrades,naesin:rNaesin,videos:rVideos,materials:rMaterials,schedule:rSchedule,report:rReport,
     students:rStudents,classroom:rClassroom,attendance:rAttendance,questions:rQuestions,consultation:rConsultation})[s]?.();
 }
 // 관리 하위탭: 학생 관리 / 반별 관리
@@ -2208,7 +2277,6 @@ function rGrades(){
       </div>
     </div>
     ${gradeView==='추이'?naesinTrendHtml():naesinPanelHtml()}
-    ${schoolExamCardHtml()}
     `:''}
     ${gradeTab==='mock'?mockExamCardHtml():''}
     ${gradeTab==='daily'?`
@@ -2661,8 +2729,14 @@ function calendarCardHtml(){
       <span>📕 시험기간 · 📐 수학시험일</span>
     </div>
     <div style="overflow-x:auto">${grid}</div>
-    <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
-      <div style="font-size:13px;font-weight:700;margin-bottom:8px">🔶 보강 추가</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-top:10px">🔶 보강·직보 추가는 <strong>내신 관리 → 직보 일정</strong>에서 해요.</div>
+  </div>`;
+}
+// 🔶 직보·보강 관리 (내신 관리 > 직보 일정) — 시간표에서 이동
+function makeupBlockHtml(){
+  const makeups=getMakeups();
+  return `<div class="card">
+      <div class="card-title">🔶 직보 · 보강 일정 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(시험 전날 직보 자동생성 · 결석 보강 추가) · 학생은 각자 플래너/캘린더에서 봐요</span></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
         <div class="form-group" style="margin:0"><label class="form-label">날짜 *</label><input class="form-input" id="mk-date" type="date" style="width:160px"></div>
         <div class="form-group" style="margin:0"><label class="form-label">반/대상</label><input class="form-input" id="mk-class" list="mk-classes" placeholder="예: 고2 세마 / 김민수" style="width:170px"><datalist id="mk-classes">${CLASSES.map(c=>`<option value="${c.name}">`).join('')}</datalist></div>
@@ -2683,18 +2757,17 @@ function calendarCardHtml(){
           <td><strong>${m.date}</strong></td><td>${m.className||'-'}</td><td style="color:var(--text-muted)">${m.time||'-'}</td><td style="color:var(--text-muted)">${m.note||'-'}</td>
           <td><button class="btn btn-red btn-sm" onclick="doDelMakeup('${m.id}')">삭제</button></td>
         </tr>`).join('')}</tbody>
-      </table></div>`:''}
-    </div>
+      </table></div>`:'<div style="margin-top:10px;font-size:13px;color:var(--text-muted)">아직 등록된 보강·직보가 없어요.</div>'}
   </div>`;
 }
 async function doAddMakeup(){
   const date=document.getElementById('mk-date').value;
   if(!date){ showToast('보강 날짜를 선택해주세요','error'); return; }
   const data={date, className:document.getElementById('mk-class').value.trim(), time:document.getElementById('mk-time').value.trim(), note:document.getElementById('mk-note').value.trim()};
-  try{ await addMakeup(data); showToast('보강 일정이 추가됐어요 🔶','success'); rSchedule(); }
+  try{ await addMakeup(data); showToast('보강 일정이 추가됐어요 🔶','success'); rNaesin(); }
   catch(e){ showToast('추가 실패: '+e.message,'error'); }
 }
-async function doDelMakeup(id){ if(!confirm('이 보강을 삭제할까요?'))return; try{ await deleteMakeupFS(id); showToast('보강을 삭제했어요','warning'); rSchedule(); }catch(e){ showToast('삭제 실패: '+e.message,'error'); } }
+async function doDelMakeup(id){ if(!confirm('이 보강을 삭제할까요?'))return; try{ await deleteMakeupFS(id); showToast('보강을 삭제했어요','warning'); rNaesin(); }catch(e){ showToast('삭제 실패: '+e.message,'error'); } }
 // 🪄 시험 전날 직보 자동 생성 — 수학시험 전날: 그날 학교시험 있으면 2시, 없으면 5시
 async function doAutoMakeups(){
   const today=new Date().toISOString().slice(0,10);
@@ -2724,7 +2797,7 @@ async function doAutoMakeups(){
     created++;
   }
   await loadMakeups();
-  showToast(`🪄 직보 ${created}건 자동 생성!${skipped?` (중복 ${skipped}건 건너뜀)`:''}`,'success'); rSchedule();
+  showToast(`🪄 직보 ${created}건 자동 생성!${skipped?` (중복 ${skipped}건 건너뜀)`:''}`,'success'); rNaesin();
 }
 function rSchedule(){
   const days=['mon','tue','wed','thu','fri','sat','sun'];
