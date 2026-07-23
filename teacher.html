@@ -893,27 +893,11 @@ function rDashboard(){
   let reviewWaiting=0, reviewOngoing=0;
   getReviews().forEach(r=>{ const rsubs=getReviewSubs(r.id); getStudentsByClass(r.classId).forEach(st=>{ const stt=revStat(r, rsubs.find(x=>x.studentId===st.id)); if(stt.done&&!stt.checked) reviewWaiting++; else if(stt.started&&!stt.done) reviewOngoing++; }); });
 
-  // 지난 수업(각 반의 마지막 마감 숙제) 중 아직 '확인 완료' 안 된 학생 = 출석 미반영 → 챙길 것
-  const flagged=[];
-  const todayStr=today.toISOString().slice(0,10);
-  CLASSES.filter(c=>isClassActive(c)).forEach(c=>{
-    const clsAsgns=getAssignments().filter(a=>a.classId===c.id && a.dueDate && a.dueDate<todayStr);
-    if(!clsAsgns.length) return;
-    const lastDue=clsAsgns.reduce((m,a)=>a.dueDate>m?a.dueDate:m,'');
-    const dayAsgns=clsAsgns.filter(a=>a.dueDate===lastDue);
-    getStudentsByClass(c.id).forEach(st=>{
-      const ok=dayAsgns.some(a=>subs.some(s=>s.studentId===st.id&&s.assignmentId===a.id&&s.checked));
-      if(!ok) flagged.push({date:lastDue, name:st.name, className:c.name});
-    });
-  });
-  flagged.sort((x,y)=>(y.date||'').localeCompare(x.date||''));
-  const recentFlagged=flagged.slice(0,10);
-  const absentCount=flagged.length;
 
   document.getElementById('dashboardContent').innerHTML=`
     <div class="stats-grid">
       <div class="stat-card" onclick="navigate('manage')"><div class="stat-icon">👥</div><div class="stat-value" style="color:var(--primary)">${sts.length}</div><div class="stat-label">전체 학생 수</div></div>
-      <div class="stat-card" onclick="navigate('schedule')"><div class="stat-icon">📚</div><div class="stat-value" style="color:var(--green)">${todayCls.length}</div><div class="stat-label">오늘 수업 반 수</div></div>
+      <div class="stat-card" onclick="navigate('schedule')"><div class="stat-icon">📚</div><div class="stat-value" style="color:var(--green)">${todayCls.length}</div><div class="stat-label">오늘 수업 반 수 <button class="btn btn-outline btn-sm" style="padding:1px 7px;font-size:11px;margin-left:2px" onclick="event.stopPropagation();doRemindToday()">🔔 알림</button></div></div>
     </div>
     <div class="card" style="border:2px solid var(--primary);background:linear-gradient(180deg,var(--primary-light),var(--surface))">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px">
@@ -973,16 +957,7 @@ function rDashboard(){
           </div>`).join(''):'<div style="text-align:center;padding:24px;color:var(--text-muted)">오늘 수업이 없어요</div>'}
       </div>
     </div>
-    <div class="card" style="margin-top:16px;border-left:4px solid var(--red)">
-      <div class="card-title">🔴 지난 수업 숙제 미확인 <span style="font-size:12px;color:var(--text-muted);font-weight:400">— 확인하면 출석 처리돼요</span> ${absentCount?`<span class="badge b-red">${absentCount}명</span>`:''}</div>
-      ${recentFlagged.length?recentFlagged.map(f=>`
-        <div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border)">
-          <span style="font-size:12px;color:var(--text-muted);min-width:60px">${f.date?f.date.slice(5):''}</span>
-          <strong style="font-size:13px;min-width:70px">${f.name}</strong>
-          <span class="chip">${f.className}</span>
-          <span style="margin-left:auto"><span class="badge b-red">미확인</span></span>
-        </div>`).join(''):'<div style="text-align:center;padding:24px;color:var(--text-muted)">지난 수업 숙제를 모두 확인했어요 👍</div>'}
-    </div>
+    ${todayRosterHtml(todayCls, subs)}
     <div class="card" style="margin-top:16px">
       <div class="card-title">📬 최근 제출 숙제 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(사진 보고 바로 확인하세요)</span></div>
       <div class="table-wrap"><table>
@@ -1835,8 +1810,63 @@ async function doCheck(sid){ const s=getSubmissions().find(x=>x.id===sid); const
 // 대시보드에서 바로 확인 처리 (확인 후 대시보드만 새로고침)
 async function dashCheck(sid){
   const s=getSubmissions().find(x=>x.id===sid); const nv=!(s&&s.checked);
-  try{ await updateSub(sid,{checked:nv, ...(nv?{rejected:false}:{})}); showToast(nv?'숙제 확인 완료!':'확인을 취소했어요','success'); rDashboard(); }
+  try{ await updateSub(sid,{checked:nv, ...(nv?{rejected:false}:{})}); showToast(nv?'확인=출석 처리 ✅':'출석(확인)을 취소했어요','success'); rDashboard(); }
   catch(e){ showToast('처리 실패: '+e.message,'error'); }
+}
+// 🗓️ 오늘 수업 반 출석판 — 숙제 '확인'을 누르면 출석. 미제출은 보충/직접 검사 시 '직접확인'.
+function todayRosterHtml(todayCls, subs){
+  if(!todayCls.length) return '<div class="card" style="margin-top:16px;text-align:center;padding:24px;color:var(--text-muted)">오늘은 수업이 없어요 ☕</div>';
+  const todayStr=new Date().toISOString().slice(0,10);
+  return todayCls.map(c=>{
+    const sts=getStudentsByClass(c.id);
+    const clsAsgns=getAssignments().filter(a=>a.classId===c.id);
+    const past=clsAsgns.filter(a=>a.dueDate && a.dueDate<=todayStr);
+    const pool=past.length?past:clsAsgns;
+    const a=pool.slice().sort((x,y)=>{const dx=x.dueDate||x.startDate||'',dy=y.dueDate||y.startDate||'';return dy>dx?1:(dy<dx?-1:0);})[0];
+    let presentN=0;
+    const rows=sts.map(st=>{
+      const sub=a?subs.find(s=>s.studentId===st.id&&s.assignmentId===a.id):null;
+      const present=!!(sub&&sub.checked);
+      if(present) presentN++;
+      let right;
+      if(present) right=`<button class="btn btn-green btn-sm" onclick="dashCheck('${sub.id}')">✓ 출석</button>`;
+      else if(sub) right=`${sub.photos&&sub.photos.length?`<button class="btn btn-outline btn-sm" onclick="openSubPhotos('${sub.id}')">📷${sub.photos.length}</button>`:(sub.offline?'<span style="font-size:10px;color:#1E40AF;font-weight:700">✋직접</span>':'')} <button class="btn btn-primary btn-sm" onclick="dashCheck('${sub.id}')">확인=출석</button>`;
+      else right=`<span style="font-size:10px;color:var(--red);font-weight:700">미제출</span> ${a?`<button class="btn btn-outline btn-sm" onclick="dashOfflineAtt('${a.id}','${st.id}')">✓ 직접확인</button>`:''}`;
+      return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)"><strong style="font-size:13px">${st.name}</strong><div style="margin-left:auto;display:flex;gap:5px;align-items:center;flex-wrap:wrap">${right}</div></div>`;
+    }).join('');
+    return `<div class="card" style="margin-top:14px;border-left:4px solid var(--green)">
+      <div class="card-title">🗓️ ${c.name} 출석 <span style="font-size:12px;color:var(--text-muted);font-weight:400">· ${presentN}/${sts.length}명 출석${a?` · 📘 ${a.title}`:' · 낸 숙제 없음'}</span></div>
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">숙제 '확인'을 누르면 출석 처리돼요. 사진 없이 보충/직접 검사한 학생은 '직접확인'.</div>
+      ${sts.length?rows:'<div style="color:var(--text-muted);padding:8px">배정된 학생이 없어요</div>'}
+    </div>`;
+  }).join('');
+}
+// 미제출 학생 직접확인 = 출석 처리 (사진 없는 offline 제출 생성 또는 기존 제출 확인)
+async function dashOfflineAtt(aid, stid){
+  const a=getAssignments().find(x=>x.id===aid), st=getStudents().find(x=>x.id===stid);
+  if(!a||!st) return;
+  const ex=getSubmissions().find(s=>s.assignmentId===aid&&s.studentId===stid);
+  try{
+    if(ex){ await updateSub(ex.id,{checked:true, offline:true, rejected:false}); }
+    else{ await db.collection('submissions').add({ assignmentId:aid, assignmentTitle:a.title||'', classId:a.classId||'', className:a.className||'', studentId:stid, studentName:st.name, photos:[], offline:true, byTeacher:true, submittedAt:new Date().toLocaleString('ko-KR'), checked:true, needsRetry:false, ts:Date.now() }); await loadSubmissions(); }
+    showToast('직접확인=출석 처리 ✅','success'); rDashboard();
+  }catch(e){ showToast('실패: '+e.message,'error'); }
+}
+// 🔔 오늘 수업 반 학생들에게 알림(푸시) 보내기
+async function doRemindToday(){
+  const dayKey=['sun','mon','tue','wed','thu','fri','sat'][new Date().getDay()];
+  const todayCls=CLASSES.filter(c=>clsHasDay(c,dayKey)&&isClassActive(c));
+  if(!todayCls.length){ showToast('오늘은 수업이 없어요','warning'); return; }
+  const msg=prompt(`오늘 수업 ${todayCls.length}개 반 학생들에게 보낼 알림 내용`, '오늘 수업 있어요! 숙제 챙겨오세요 📚');
+  if(msg===null || !msg.trim()) return;
+  let tokens=[]; todayCls.forEach(c=>{ tokens=tokens.concat(classTokens(c.id)); });
+  tokens=[...new Set(tokens)];
+  if(!tokens.length){ showToast('알림을 켠 학생이 없어요','warning'); return; }
+  try{
+    const r=await fetch('/api/notify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tokens, title:'BEEN MATH 알림 🔔', body:msg.trim()})});
+    const j=await r.json().catch(()=>null);
+    showToast(j&&j.sent?`알림 ${j.sent}명에게 발송 📨`:'알림 발송 완료','success');
+  }catch(e){ showToast('발송 실패: '+e.message,'error'); }
 }
 // 숙제 평가(완성도·비고) 저장 — 학생 숙제 카드에 표시됨
 async function doEvalSub(sid,u){
