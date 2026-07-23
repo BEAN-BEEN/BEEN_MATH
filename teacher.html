@@ -1218,6 +1218,9 @@ function rClassroom(){
   const totalSubs=allSubs.filter(s=>asgns.some(a=>a.id===s.assignmentId)).length;
   let compTotal=0; sts.forEach(st=>hwAsgns.forEach(a=>{compTotal+=subCompletion(allSubs.find(s=>s.studentId===st.id&&s.assignmentId===a.id));}));
   const hwClassRate=hwAsgns.length&&sts.length?Math.round(compTotal/(hwAsgns.length*sts.length)):null;
+  const attVals=rows.map(r=>r.attRate).filter(v=>v!=null);
+  const classAtt=attVals.length?Math.round(attVals.reduce((a,b)=>a+b,0)/attVals.length):null;
+  const lowAtt=rows.filter(r=>r.attRate!=null && r.attRate<70).sort((a,b)=>a.attRate-b.attRate);   // 보충 대상(출석률 70% 미만)
   const medal=i=>['🥇','🥈','🥉'][i]||(i+1);
   const pct=v=>v==null?'<span style="color:var(--text-muted)">-</span>':v+'%';
   el.innerHTML=`
@@ -1231,8 +1234,12 @@ function rClassroom(){
       <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-value" style="color:var(--primary)">${sts.length}</div><div class="stat-label">${cls.name} 학생</div></div>
       <div class="stat-card"><div class="stat-icon">🏆</div><div class="stat-value" style="color:var(--green)">${classAvg!=null?classAvg+'점':'-'}</div><div class="stat-label">반 평균 성적</div></div>
       <div class="stat-card"><div class="stat-icon">📝</div><div class="stat-value" style="color:var(--orange)">${hwClassRate!=null?hwClassRate+'%':'-'}</div><div class="stat-label">숙제 제출률</div></div>
-      <div class="stat-card"><div class="stat-icon">📚</div><div class="stat-value" style="color:var(--text-sub)">${exams.length}</div><div class="stat-label">시험 수</div></div>
+      <div class="stat-card"><div class="stat-icon">🗓️</div><div class="stat-value" style="color:var(--green)">${classAtt!=null?classAtt+'%':'-'}</div><div class="stat-label">평균 출석률</div></div>
     </div>
+    ${lowAtt.length?`<div class="card" style="border-left:4px solid var(--red);margin-bottom:16px">
+      <div class="card-title">🔴 보충 챙길 학생 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(출석률 70% 미만 · 자주 결석/미확인)</span> <span class="badge b-red">${lowAtt.length}명</span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">${lowAtt.map(r=>`<span style="display:inline-flex;align-items:center;gap:6px;background:#FEF2F2;border:1px solid #FECACA;border-radius:9px;padding:5px 10px;font-size:13px"><strong>${r.st.name}</strong><span style="color:var(--red);font-weight:800">${r.attRate}%</span></span>`).join('')}</div>
+    </div>`:''}
     <div class="card">
       <div class="card-title">🏅 학생별 성취도 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(성적 높은 순)</span></div>
       ${sts.length?`<div class="table-wrap"><table>
@@ -1526,7 +1533,7 @@ function oapRosterHtml(a, subs, sts){
       <button class="btn btn-outline btn-sm" onclick="migrateOapPrefix('${a.id}')">🔤 번호 앞글자 일괄</button>
       <span style="font-size:11px;color:var(--text-muted)">이미 제출한 학생들의 오답 번호 앞에 글자(예: H)를 붙여요 · 이미 붙어있으면 건너뜀</span>
     </div>` : '';
-  return `<div style="margin-top:14px">${topHtml}${prefixBar}<div class="table-wrap"><table>
+  return `<div style="margin-top:14px">${prefixBar}<div class="table-wrap"><table>
     <thead><tr><th>학생</th><th>제출(사진)</th><th>상태</th><th>틀린 문제</th><th>오답 완료</th><th>고친 사진</th><th>관리</th></tr></thead>
     <tbody>${sts.map(st=>{ const sub=subs.find(s=>s.studentId===st.id); const o=oapStat(sub);
       const subCell = !sub ? '<span class="badge b-red">미제출</span>'
@@ -1676,6 +1683,7 @@ async function doCheckReview(subId){
 // 🔶 오답 관리 — 학생이 올린 재풀이 사진을 문제별로 확인(맞음)/재오답, 누락분 보완
 // ================================================================
 let wrongOnlyPending=false;
+let wrongOpen={};   // 오답 탭 학생별 펼침 상태 (기본 접힘)
 function rWrong(){
   const asgn=getAssignments().filter(a=>!!((a.probStart&&a.probEnd)||a.probLabel));
   const groups=[]; let waitTotal=0, okTotal=0, redoTotal=0;
@@ -1683,8 +1691,8 @@ function rWrong(){
     const subs=getSubsByAssignment(a.id).filter(s=>Array.isArray(s.wrongNos)&&s.wrongNos.length>0);
     if(!subs.length) return;
     let gWait=0;
-    subs.forEach(s=>{ (s.wrongNos||[]).map(String).forEach(n=>{ const corr=(s.corrections||{})[n], ok=(s.oapOk||{})[n], redo=(s.oapRedo||{})[n];
-      if(ok) okTotal++; else if(redo) redoTotal++; else if(corr){ waitTotal++; gWait++; } }); });
+    subs.forEach(s=>{ (s.wrongNos||[]).map(String).forEach(n=>{ const corr=(s.corrections||{})[n], ok=(s.oapOk||{})[n], redo=(s.oapRedo||{})[n], off=(s.oapOffline||{})[n];
+      if(ok) okTotal++; else if(redo) redoTotal++; else if(corr||off){ waitTotal++; gWait++; } }); });
     groups.push({a,subs,gWait});
   });
   groups.sort((x,y)=>y.gWait-x.gWait);
@@ -1704,15 +1712,21 @@ function rWrong(){
     </div>
     ${view.length===0?`<div class="card" style="text-align:center;padding:30px;color:var(--text-muted)">${groups.length===0?'아직 등록된 오답이 없어요. 학생이 숙제에서 틀린 문제를 표시하면 여기 모여요.':'확인 대기 중인 오답이 없어요 🎉'}</div>`:''}
     ${view.map(g=>{ const a=g.a; const range=(a.probStart&&a.probEnd)?`${a.probStart}~${a.probEnd}번`:(a.probLabel||'');
+      const gEnt=g.subs.filter(s=>Array.isArray(s.wrongNos));
+      const gFreq={}; gEnt.forEach(s=>s.wrongNos.map(String).forEach(n=>{ gFreq[n]=(gFreq[n]||0)+1; }));
+      const gRank=Object.entries(gFreq).filter(x=>x[1]>=2).sort((x,y)=>y[1]-x[1]||(parseFloat(x[0])-parseFloat(y[0]))||(x[0]>y[0]?1:-1));
+      const gDenom=gEnt.length||1;
+      const topHot = gRank.length ? `<div style="background:var(--bg);border-radius:10px;padding:9px 11px;margin:8px 0 4px"><div style="font-size:12px;font-weight:800;margin-bottom:6px">🎯 많이 틀린 문제 <span style="font-weight:400;color:var(--text-muted)">(2명 이상 · 제출 ${gEnt.length}명)</span></div><div style="display:flex;flex-wrap:wrap;gap:5px">${gRank.slice(0,40).map(x=>{const n=x[0],c=x[1],p=Math.round(c/gDenom*100);const col=p>=60?['#FEE2E2','var(--red)']:(p>=30?['#FEF9C3','#854D0E']:['var(--surface)','var(--text-sub)']);return `<span style="background:${col[0]};color:${col[1]};border:1px solid var(--border);border-radius:7px;padding:2px 7px;font-size:12px;font-weight:700">${n} · ${c}명 <span style="opacity:.7;font-weight:500">${p}%</span></span>`;}).join('')}</div></div>` : '';
       return `<div class="card" style="border-left:4px solid ${g.gWait>0?'var(--orange)':'var(--primary)'};margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:4px">
           <div><span class="chip">${a.className}</span><strong style="margin-left:8px">${a.title}</strong> <span class="badge b-primary">🔢 ${range}</span>${g.gWait>0?` <span class="badge b-yellow">확인 대기 ${g.gWait}</span>`:''}</div>
           ${a.textbook?`<span style="font-size:12px;color:var(--text-muted)">📘 ${a.textbook}</span>`:''}
         </div>
-        ${g.subs.map(s=>{ const wn=(s.wrongNos||[]).map(String); const corr=s.corrections||{}, ok=s.oapOk||{}, redo=s.oapRedo||{}, off=s.oapOffline||{};
-          return `<div style="padding:10px 0;border-top:1px solid var(--border)">
-            <div style="font-weight:700;margin-bottom:6px">${s.studentName||'학생'} <span style="font-size:12px;color:var(--text-muted);font-weight:400">· 오답 ${wn.length}개, 확인 ${wn.filter(n=>ok[n]).length}/${wn.length}</span></div>
-            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start">
+        ${topHot}
+        ${g.subs.map(s=>{ const wn=(s.wrongNos||[]).map(String); const corr=s.corrections||{}, ok=s.oapOk||{}, redo=s.oapRedo||{}, off=s.oapOffline||{}; const okCnt=wn.filter(n=>ok[n]).length; const pend=wn.length-okCnt;
+          return `<details ${wrongOpen[s.id]?'open':''} ontoggle="wrongOpen['${s.id}']=this.open" style="border-top:1px solid var(--border)">
+            <summary style="cursor:pointer;font-weight:700;padding:9px 4px">${s.studentName||'학생'} <span style="font-size:12px;color:var(--text-muted);font-weight:400">· 오답 ${wn.length}개 · 확인 ${okCnt}/${wn.length}</span> ${pend>0?`<span class="badge b-yellow" style="font-size:10px">남음 ${pend}</span>`:`<span class="badge b-green" style="font-size:10px">완료</span>`}</summary>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;padding:4px 0 8px">
               ${wn.map(n=>{ const st = ok[n]?'ok':(redo[n]?'redo':(corr[n]?'wait':(off[n]?'offline':'todo')));
                 const bg={ok:'var(--green-light)',redo:'#FEE2E2',wait:'#FEF9C3',offline:'#DBEAFE',todo:'var(--bg)'}[st];
                 const fg={ok:'var(--green)',redo:'var(--red)',wait:'#854D0E',offline:'#1E40AF',todo:'var(--text-muted)'}[st];
@@ -1733,7 +1747,7 @@ function rWrong(){
                 <button class="btn btn-outline btn-sm" onclick="doAddWrong('${s.id}')">추가</button>
               </div>
             </div>
-          </div>`; }).join('')}
+          </details>`; }).join('')}
       </div>`; }).join('')}`;
 }
 async function doConfirmWrong(subId,label){

@@ -784,13 +784,15 @@ async function uploadPhotos(files, folder){
 // 숙제 제출 → 사진 Storage 업로드 + Firebase 저장 (선생님이 바로 확인)
 async function submitHomework(assignmentId) {
   const a = S_ASSIGNMENTS.find(x=>x.id===assignmentId);
-  let photos=[];
+  const exist=S_SUBMISSIONS.find(s=>s.assignmentId===assignmentId);
   const arr=PENDING_PHOTOS[assignmentId]||[];
-  if(arr.length){ photos=await uploadPhotos(arr, 'submissions/'+assignmentId); }
+  let newUrls=[];
+  if(arr.length){ newUrls=await uploadPhotos(arr, 'submissions/'+assignmentId); }
+  // 기존 사진에 '추가'(덮어쓰기 아님) — 일부만 올렸다가 나중에 더 올려도 앞 사진 안 사라짐
+  const photos=[...((exist&&Array.isArray(exist.photos))?exist.photos:[]), ...newUrls];
   const today=new Date().toISOString().slice(0,10);
   const late = !!(a && a.dueDate && today > a.dueDate);
   const base={ photos, offline:false, late, submittedAt:new Date().toLocaleString('ko-KR'), checked:false, needsRetry:false, retryDone:false, rejected:false, rejectReason:'' };
-  const exist=S_SUBMISSIONS.find(s=>s.assignmentId===assignmentId);
   if(exist){ await db.collection('submissions').doc(exist.id).update(base); Object.assign(exist, base); }
   else{
     const payload={ assignmentId, assignmentTitle:a?a.title:'', classId:a?a.classId:'', className:a?a.className:'', studentId:STUDENT.id, studentName:STUDENT.name, ...base, ts:Date.now() };
@@ -1187,15 +1189,15 @@ function renderOapCard(a){
   } else {
     photoHtml=`
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:12px 0 6px;padding:10px 12px;background:var(--green-light);border-radius:var(--radius-sm)">
-        <span style="font-size:13px;font-weight:800;color:var(--green)">① ${sub&&sub.offline?'✋ 직접 검사 요청됨':'✅ 완료 사진 제출됨'}</span>
-        ${(!(sub&&sub.offline))&&photos.length?`<button class="btn btn-outline btn-sm" onclick="window.open('${photos[0]}','_blank')">📷 ${photos.length}장 보기</button>`:''}
-        ${!a.teacherChecked?`<button class="btn btn-outline btn-sm" onclick="toggleRedo('${a.id}')">✏️ 다시 올리기</button>`:'<span style="font-size:12px;color:var(--text-muted)">· 👁 확인 완료</span>'}
+        <span style="font-size:13px;font-weight:800;color:var(--green)">① ${sub&&sub.offline?'✋ 직접 검사 요청됨':`✅ 완료 사진 ${photos.length}장 제출됨`}</span>
+        ${!a.teacherChecked?`<button class="btn btn-outline btn-sm" onclick="toggleRedo('${a.id}')">📷 사진 더 추가</button>`:'<span style="font-size:12px;color:var(--text-muted)">· 👁 확인 완료</span>'}
       </div>
+      ${subPhotosHtml(a)}
       <div id="redo-${a.id}" style="display:none;margin-bottom:10px">
-        <div class="upload-area" onclick="this.querySelector('input').click()"><div class="u-icon">📷</div><p>새 사진 선택 (최대 ${a.maxPhotos||30}장)</p>
+        <div class="upload-area" onclick="this.querySelector('input').click()"><div class="u-icon">📷</div><p>추가할 사진 선택 (최대 ${a.maxPhotos||30}장)</p>
           <input type="file" accept="image/*" multiple id="hwfile-${a.id}" onchange="handlePreview(this,'${a.id}')"></div>
         <div id="prev-${a.id}" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px"></div>
-        <button class="btn btn-primary btn-sm" onclick="doSubmit('${a.id}')">이 사진으로 다시 제출 ✓</button>
+        <button class="btn btn-primary btn-sm" onclick="doSubmit('${a.id}')">➕ 이 사진 추가 제출</button>
       </div>`;
   }
   let bodyHtml='';
@@ -1479,23 +1481,24 @@ function renderHomework() {
           <div class="divider"></div>
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
             <div style="font-size:12px;color:var(--text-muted)">
-              ${a.offline?'✋ 직접 검사 요청':'✅ 사진 제출'}: ${a.submittedAt||''}${a.late?' · <span style="color:var(--red);font-weight:700">⏰지각 제출</span>':''} &nbsp;·&nbsp; ${a.teacherChecked?'👁 선생님 확인 완료':'⏳ 선생님 확인 중'}
+              ${a.offline?'✋ 직접 검사 요청':`✅ 사진 ${(a.photos||[]).length}장 제출`}: ${a.submittedAt||''}${a.late?' · <span style="color:var(--red);font-weight:700">⏰지각 제출</span>':''} &nbsp;·&nbsp; ${a.teacherChecked?'👁 선생님 확인 완료':'⏳ 선생님 확인 중'}
             </div>
           </div>
+          ${subPhotosHtml(a)}
           ${canEdit?`
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
-              <span style="font-size:12px;color:var(--text-muted)">잘못 올렸나요?</span>
-              <button class="btn btn-outline btn-sm" onclick="toggleRedo('${a.id}')">✏️ 다시 올리기</button>
+              <span style="font-size:12px;color:var(--text-muted)">일부만 올렸나요?</span>
+              <button class="btn btn-outline btn-sm" onclick="toggleRedo('${a.id}')">📷 사진 더 추가</button>
               <button class="btn btn-outline btn-sm" onclick="doCancelSubmit('${a.subId}','${a.id}')">🗑 제출 취소</button>
             </div>
             <div id="redo-${a.id}" style="display:none;margin-top:10px">
               <div class="upload-area" onclick="this.querySelector('input').click()">
                 <div class="u-icon">📷</div>
-                <p>새 사진을 선택하세요 (최대 ${a.maxPhotos}장)</p>
+                <p>추가할 사진을 선택하세요 (최대 ${a.maxPhotos}장)</p>
                 <input type="file" accept="image/*" multiple id="hwfile-${a.id}" onchange="handlePreview(this,'${a.id}')">
               </div>
               <div id="prev-${a.id}" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"></div>
-              <button class="btn btn-primary btn-sm" onclick="doSubmit('${a.id}')">📷 이 사진으로 다시 제출 ✓</button>
+              <button class="btn btn-primary btn-sm" onclick="doSubmit('${a.id}')">➕ 이 사진 추가 제출</button>
             </div>
           `:''}
           ${((a.evalPct!==''&&a.evalPct!=null)||a.evalTag)?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
@@ -1553,6 +1556,28 @@ function renderPendingPhotos(id){
 }
 function removePendingPhoto(id,i){
   if(PENDING_PHOTOS[id]){ PENDING_PHOTOS[id].splice(i,1); renderPendingPhotos(id); }
+}
+// 이미 제출한 사진 목록(썸네일) + 삭제(×) — 선생님 확인 전까지 학생이 정리 가능
+function subPhotosHtml(a){
+  const ph=(a&&a.photos)||[]; if(!ph.length) return '';
+  const canEdit=!a.teacherChecked;
+  return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">${ph.map((u,i)=>`
+    <div style="position:relative;width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid var(--border)">
+      <img src="${u}" style="width:100%;height:100%;object-fit:cover;cursor:pointer" onclick="window.open('${u}','_blank')">
+      ${canEdit?`<button type="button" onclick="doDeleteSubPhoto('${a.subId}',${i})" style="position:absolute;top:1px;right:1px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:12px;line-height:16px;cursor:pointer;padding:0">×</button>`:''}
+    </div>`).join('')}</div>`;
+}
+async function doDeleteSubPhoto(subId, idx){
+  const sub=S_SUBMISSIONS.find(s=>s.id===subId); if(!sub||!Array.isArray(sub.photos)) return;
+  if(!confirm('이 사진을 지울까요?')) return;
+  const url=sub.photos[idx];
+  const photos=sub.photos.slice(); photos.splice(idx,1);
+  try{
+    await db.collection('submissions').doc(subId).update({photos});
+    try{ if(url) await firebase.storage().refFromURL(url).delete(); }catch(e){}   // 스토리지에서도 정리(용량)
+    await loadStudentData(); renderSection(currentSection);
+    showToast('사진을 지웠어요','warning');
+  }catch(e){ showToast('삭제 실패: '+e.message,'error'); }
 }
 async function doSubmit(id) {
   const arr=PENDING_PHOTOS[id]||[];
