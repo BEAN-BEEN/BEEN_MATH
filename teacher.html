@@ -535,6 +535,27 @@ function getMakeups(){ return MAKEUPS_CACHE; }
 let ABSENCES_CACHE=[];
 async function loadAbsences(){ try{ const s=await db.collection('absences').get(); ABSENCES_CACHE=s.docs.map(d=>({id:d.id,...d.data()})); }catch(e){ ABSENCES_CACHE=[]; } }
 function getAbsences(){ return ABSENCES_CACHE; }
+// 📅 시즌(제출률 집계 기간) — {name, startDate, endDate}. 학원 전체 공통. 제출률은 선택 시즌 구간 숙제만.
+let SEASONS_CACHE=[];
+async function loadSeasons(){ try{ const s=await db.collection('seasons').get(); SEASONS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.startDate||'').localeCompare(a.startDate||'')); }catch(e){ SEASONS_CACHE=[]; } }
+function getSeasons(){ return SEASONS_CACHE; }
+async function addSeason(d){ await db.collection('seasons').add({...d, ts:Date.now()}); await loadSeasons(); }
+async function deleteSeasonFS(id){ await db.collection('seasons').doc(id).delete(); await loadSeasons(); }
+function currentSeason(){ const t=new Date().toISOString().slice(0,10); const list=getSeasons();
+  return list.find(s=>s.startDate&&s.startDate<=t&&(!s.endDate||s.endDate>=t)) || list[0] || null; }
+function asnInSeason(a, season){ if(!season) return true; const d=a.startDate||a.createdAt||a.dueDate||''; if(!d) return true; return (!season.startDate||d>=season.startDate)&&(!season.endDate||d<=season.endDate); }
+let gradeSeasonId=null;   // 반별 관리에서 보고 있는 시즌(null=현재)
+let gradeSeasonMgmt=false;
+function selectedSeason(){ const list=getSeasons(); if(!list.length) return null; return list.find(x=>x.id===gradeSeasonId) || currentSeason(); }
+async function doAddSeason(){
+  const name=document.getElementById('season-name').value.trim();
+  const start=document.getElementById('season-start').value, end=document.getElementById('season-end').value;
+  if(!name||!start){ showToast('시즌 이름과 시작일을 입력해주세요','error'); return; }
+  try{ await addSeason({name,startDate:start,endDate:end||''}); showToast(`"${name}" 시즌 추가 📅`,'success'); rClassroom(); }
+  catch(e){ showToast('추가 실패: '+e.message,'error'); }
+}
+async function doDelSeason(id,name){ if(!confirm(`"${name}" 시즌을 삭제할까요?\n(집계 기간 구분만 사라지고 숙제·성적은 그대로예요)`)) return;
+  try{ await deleteSeasonFS(id); if(gradeSeasonId===id) gradeSeasonId=null; showToast('시즌 삭제','warning'); rClassroom(); }catch(e){ showToast('삭제 실패: '+e.message,'error'); } }
 function absentDatesOf(studentId){ return new Set(getAbsences().filter(a=>a.studentId===studentId).map(a=>a.date)); }
 async function addMakeup(d){ await db.collection('makeups').add({...d, ts:Date.now()}); await loadMakeups(); }
 async function deleteMakeupFS(id){ await db.collection('makeups').doc(id).delete(); await loadMakeups(); }
@@ -1306,7 +1327,8 @@ function rClassroom(){
   const cls=CLASSES.find(c=>c.id===clRoomId);
   const sts=getStudentsByClass(cls.id);
   const asgns=getAssignments().filter(a=>a.classId===cls.id);
-  const hwAsgns=asgns.filter(asnInHwWindow);   // 제출률은 새 교재(hwStart) 이후 숙제만
+  const _season=selectedSeason();
+  const hwAsgns=asgns.filter(a=>asnInSeason(a,_season));   // 제출률은 선택 시즌 구간 숙제만
   const exams=getExams().filter(e=>e.classId===cls.id);
   const esubs=getExamSubs(), allSubs=getSubmissions();
   const today=new Date().toISOString().slice(0,10);
@@ -1331,6 +1353,25 @@ function rClassroom(){
   const medal=i=>['🥇','🥈','🥉'][i]||(i+1);
   const pct=v=>v==null?'<span style="color:var(--text-muted)">-</span>':v+'%';
   el.innerHTML=`
+    <div class="card" style="padding:12px 14px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:13px;font-weight:700">📅 제출률 시즌</span>
+        ${getSeasons().length?`<select class="form-select" style="max-width:240px;padding:6px 8px" onchange="gradeSeasonId=this.value;rClassroom()">
+          ${getSeasons().map(s=>`<option value="${s.id}" ${(_season&&_season.id===s.id)?'selected':''}>${(s.name||'').replace(/</g,'&lt;')} (${s.startDate||''}~${s.endDate||'진행중'})</option>`).join('')}
+        </select>`:'<span style="font-size:12px;color:var(--text-muted)">시즌 없음 — 전체 기간 집계 중</span>'}
+        <button class="btn btn-outline btn-sm" onclick="gradeSeasonMgmt=!gradeSeasonMgmt;rClassroom()">${gradeSeasonMgmt?'닫기':'시즌 관리'}</button>
+      </div>
+      ${gradeSeasonMgmt?`<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">
+          <div class="form-group" style="margin:0"><label class="form-label">시즌 이름</label><input class="form-input" id="season-name" placeholder="예: 2026 여름학기" style="width:170px"></div>
+          <div class="form-group" style="margin:0"><label class="form-label">시작일</label><input class="form-input" id="season-start" type="date" style="width:150px"></div>
+          <div class="form-group" style="margin:0"><label class="form-label">종료일(선택)</label><input class="form-input" id="season-end" type="date" style="width:150px"></div>
+          <button class="btn btn-primary" onclick="doAddSeason()">시즌 추가</button>
+        </div>
+        ${getSeasons().length?`<div style="margin-top:8px;display:flex;flex-direction:column;gap:4px">${getSeasons().map(s=>`<div style="display:flex;align-items:center;gap:8px;font-size:13px"><strong>${(s.name||'-').replace(/</g,'&lt;')}</strong><span style="color:var(--text-muted)">${s.startDate||'?'} ~ ${s.endDate||'진행중'}</span><button class="btn btn-red btn-sm" style="padding:1px 7px" onclick="doDelSeason('${s.id}','${(s.name||'').replace(/'/g,'')}')">삭제</button></div>`).join('')}</div>`:''}
+        <div style="font-size:11px;color:var(--text-muted);margin-top:6px">시즌 구간(출제일 기준) 안 숙제만 제출률에 집계돼요. 지난 시즌을 골라 그때 얼마나 했는지 볼 수 있어요.</div>
+      </div>`:''}
+    </div>
     <div class="card">
       <div class="card-title">반 선택</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -3074,7 +3115,7 @@ function studentStats(st){
   if(!st) return {hwRate:'-',retryRate:'-',attRate:'-',recent:'-'};
   const myClassIds=st.classIds||(st.classId?[st.classId]:[]);
   const myAsgn=getAssignments().filter(a=>myClassIds.includes(a.classId));
-  const myAsgnHw=myAsgn.filter(asnInHwWindow);   // 제출률은 새 교재(hwStart) 이후만
+  const myAsgnHw=myAsgn.filter(a=>asnInSeason(a,selectedSeason()));   // 제출률은 선택 시즌 구간만
   const mySubs=getSubmissions().filter(s=>s.studentId===st.id);
   const hwRate=myAsgnHw.length?Math.round(myAsgnHw.reduce((sum,a)=>sum+subCompletion(mySubs.find(s=>s.assignmentId===a.id)),0)/myAsgnHw.length)+'%':'-';
   const retrySubs=mySubs.filter(s=>s.needsRetry).length;
@@ -3199,7 +3240,8 @@ async function init(){
     loadMockExams(),     // 모의고사 (자가 등록)
     loadMockSubs(),      // 모의고사 학생 제출
     loadMakeups(),       // 보강 일정
-    loadAbsences()       // 결석 기록
+    loadAbsences(),      // 결석 기록
+    loadSeasons()        // 제출률 시즌(집계 기간)
   ].map(p=>Promise.resolve(p).catch(e=>console.warn('일부 데이터 로드 실패(무시):',e))));
   rDashboard();
   pruneOldFirebase();            // 3개월 지난 사진·기록 자동 정리 (백그라운드)
