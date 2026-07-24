@@ -162,7 +162,7 @@ async function loadAll(){
   P_EXAMS=e.docs.map(d=>({id:d.id,...d.data()}));
   P_EVENTS=ev.docs.map(d=>({id:d.id,...d.data()}));
   P_TODOS=td.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.done?1:0)-(b.done?1:0)||(a.ts||0)-(b.ts||0));
-  P_STUDENTS=st.docs.map(d=>({id:d.id,...d.data()}));
+  P_STUDENTS=st.docs.map(d=>({id:d.id,...d.data()})).filter(s=>((s.status||'재원')==='재원'));  // 휴원·퇴원 제외
 }
 // ===== 직보(시험 전 직접보강) 자동 생성 =====
 //  규칙: 학생의 수학시험일 전 N일(기본 3) 동안 직보.
