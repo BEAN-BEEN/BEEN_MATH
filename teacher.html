@@ -681,6 +681,7 @@ function schoolInfoHtml(){
 
 // 📝 모의고사 (학생 자가 등록) — 점수만 / 답 자동채점(문항별 배점) 선택
 let mockEditId=null;
+let mockScoreOpenId=null;   // 선생님 점수 입력 열려있는 모의고사
 function mockKeyRowsHtml(n, keyArr){
   const map={}; (keyArr||[]).forEach(q=>{ map[q.no]=q; });
   let rows='';
@@ -737,10 +738,52 @@ function mockExamCardHtml(){
         <td><strong>${m.title}</strong></td><td style="color:var(--text-muted)">${m.date||'-'}</td>
         <td>${m.mode==='auto'?'<span class="badge b-primary">자동채점</span>':'<span class="badge b-gray">점수만</span>'}</td>
         <td>${m.maxScore||'-'}</td><td>${ms.length}명</td><td>${avg!=null?`<strong>${avg}점</strong>`:'-'}</td>
-        <td style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="mockEditId='${m.id}';rGrades();window.scrollTo({top:0,behavior:'smooth'})">수정</button> <button class="btn btn-red btn-sm" onclick="doDelMock('${m.id}','${(m.title||'').replace(/'/g,'')}')">삭제</button></td>
+        <td style="white-space:nowrap"><button class="btn btn-primary btn-sm" onclick="mockScoreOpenId=mockScoreOpenId==='${m.id}'?null:'${m.id}';rGrades();${''}">✍️ 점수 입력</button> <button class="btn btn-outline btn-sm" onclick="mockEditId='${m.id}';rGrades();window.scrollTo({top:0,behavior:'smooth'})">수정</button> <button class="btn btn-red btn-sm" onclick="doDelMock('${m.id}','${(m.title||'').replace(/'/g,'')}')">삭제</button></td>
       </tr>`;}).join('')}</tbody>
     </table></div>`:'<div style="margin-top:12px;font-size:13px;color:var(--text-muted)">아직 등록된 모의고사가 없어요. 만들면 학생이 ‘성적’ 탭에서 직접 점수를 등록해요.</div>'}
+  </div>${mockScoreOpenId?mockScoreRosterHtml(mockScoreOpenId):''}`;
+}
+// ✍️ 선생님 모의고사 점수 입력 로스터 (재원 학생 명단에 점수+등급)
+function mockScoreRosterHtml(mockId){
+  const m=getMockExams().find(x=>x.id===mockId); if(!m) return '';
+  const byStu={}; getMockSubs().filter(s=>s.mockId===mockId).forEach(s=>{ byStu[s.studentId]=s; });
+  const sts=getStudents().filter(isActiveStudent).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const esc=s=>(s||'').replace(/"/g,'&quot;');
+  return `<div class="card" style="border-left:4px solid var(--primary)">
+    <div class="card-title">✍️ ${m.title} 점수 입력 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(만점 ${m.maxScore||100} · 빈칸은 미입력/미응시로 둠)</span></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>학생</th><th>학교</th><th>점수</th><th>등급</th></tr></thead>
+      <tbody>${sts.map(s=>{ const ex=byStu[s.id]||{}; return `<tr>
+        <td><strong>${s.name}</strong></td>
+        <td style="color:var(--text-muted);font-size:12px">${s.school||''}</td>
+        <td><input class="form-input mscore-${mockId}" data-sid="${s.id}" data-name="${esc(s.name)}" type="number" value="${ex.score!=null?ex.score:''}" style="width:80px;padding:5px 8px"></td>
+        <td><input class="form-input msgrade-${mockId}" data-sid="${s.id}" value="${esc(ex.grade||'')}" placeholder="예: 2등급" style="width:96px;padding:5px 8px"></td>
+      </tr>`; }).join('')}</tbody>
+    </table></div>
+    <div class="btn-row" style="margin-top:10px">
+      <button class="btn btn-primary" onclick="doSaveMockScores('${mockId}')">전체 저장 💾</button>
+      <button class="btn btn-outline" onclick="mockScoreOpenId=null;rGrades()">닫기</button>
+    </div>
   </div>`;
+}
+async function doSaveMockScores(mockId){
+  const m=getMockExams().find(x=>x.id===mockId); if(!m) return;
+  const gradeMap={}; document.querySelectorAll('.msgrade-'+mockId).forEach(el=>{ gradeMap[el.dataset.sid]=el.value.trim(); });
+  const existing={}; getMockSubs().filter(s=>s.mockId===mockId).forEach(s=>{ existing[s.studentId]=s; });
+  let n=0;
+  try{
+    for(const el of [...document.querySelectorAll('.mscore-'+mockId)]){
+      const sid=el.dataset.sid, v=el.value.trim();
+      if(v==='') continue;   // 빈칸은 건너뜀
+      const ex=existing[sid];
+      if(ex){ await db.collection('mockSubs').doc(ex.id).update({score:parseInt(v,10)||0, grade:gradeMap[sid]||'', maxScore:m.maxScore||100}); }
+      else{ await db.collection('mockSubs').add({ mockId, mockTitle:m.title||'', studentId:sid, studentName:el.dataset.name||'', score:parseInt(v,10)||0, grade:gradeMap[sid]||'', maxScore:m.maxScore||100, mode:'score', byTeacher:true, ts:Date.now() }); }
+      n++;
+    }
+    await loadMockSubs();
+    showToast(`${n}명 점수 저장 완료 💾`,'success');
+    rGrades();
+  }catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
 async function doSaveMock(){
   const title=document.getElementById('mock-title').value.trim();
