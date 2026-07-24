@@ -552,6 +552,7 @@ function clsDayLabel(c){ return clsDays(c).map(w=>WD_LABEL[w]).filter(Boolean).j
 let S_CLASSES=[], ALL_CLASSES=[], S_ASSIGNMENTS=[], S_SUBMISSIONS=[], S_ATTENDANCE=[], S_EXAMS=[], S_EXAMSUBS=[], S_QUESTIONS=[], S_NOTICES=[], S_REVIEWS=[], S_REVIEWSUBS=[];
 // 제출 전 임시 상태: 찍은 사진 누적 / 고른 오답번호 / 오답 직접입력 (과제ID별) — 화면 다시 그려도 유지
 let PENDING_PHOTOS={}, PENDING_WRONG={}, PENDING_FREE={};
+let S_ABSENCES=[];   // 내 결석 기록 (선생님이 표시) — 출석률 차감용
 let S_SCHOOL='', S_ENROLL='', S_SCHOOLEXAM=null, S_MATHEVENTS=[], S_SCHOOL_EXAMS=[], S_MAKEUPS=[], ALL_MAKEUPS=[], ALL_SCHOOL_EXAMS=[];
 let calScope='mine'; // 'mine' = 내 일정만, 'all' = 전체 학교
 let S_MOCKEXAMS=[], S_MOCKSUBS=[];
@@ -577,6 +578,7 @@ async function loadStudentData(){
   const pRep = sid ? db.collection('reports').doc(sid).get() : null;
   const pMe  = sid ? db.collection('students').doc(sid).get() : null;
   const pMks = sid ? db.collection('mockSubs').where('studentId','==',sid).get() : null;
+  const pAbs = sid ? db.collection('absences').where('studentId','==',sid).get() : null;
 
   const cs = await pClasses;
   ALL_CLASSES = cs.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.order!=null?a.order:99)-(b.order!=null?b.order:99));
@@ -634,6 +636,7 @@ async function loadStudentData(){
     }catch(e){ S_MAKEUPS=[]; ALL_MAKEUPS=[]; }
     const mk = await pMock; S_MOCKEXAMS = mk.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
     const mks = await pMks; S_MOCKSUBS = mks.docs.map(d=>({id:d.id,...d.data()}));
+    try{ const ab = await pAbs; S_ABSENCES = ab.docs.map(d=>({id:d.id,...d.data()})).sort((x,y)=>(y.date||'').localeCompare(x.date||'')); }catch(e){ S_ABSENCES=[]; }
   } else { S_SUBMISSIONS=[]; S_REVIEWSUBS=[]; S_EXAMSUBS=[]; S_QUESTIONS=[]; S_REPORT=null; S_SCHOOLEXAM=null; S_MOCKEXAMS=[]; S_MOCKSUBS=[]; }
   try{ const nt = await pNotices; S_NOTICES = nt.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.ts||0)-(a.ts||0)); }
   catch(e){ S_NOTICES=[]; }
@@ -701,30 +704,28 @@ function getAssignments(){
     return { ...a, status, isOap, wrongNos, corrections, oapOk, oapRedo, oapOffline, oapEntered, oapDone, oapPhotoDone, oapConfirmed, oapNeedsStudent, oapAwaitTeacher, hasPhoto, photos:(sub&&sub.photos)||[], submittedAt:sub?sub.submittedAt:null, teacherChecked:sub?!!sub.checked:false, needsRetry:sub?!!sub.needsRetry:false, offline:sub?!!sub.offline:false, late:sub?!!sub.late:false, retryDone:sub?!!sub.retryDone:false, rejected:sub?!!sub.rejected:false, rejectReason:sub?(sub.rejectReason||''):'', evalPct:sub?(sub.evalPct||''):'', evalTag:sub?(sub.evalTag||''):'', subId:sub?sub.id:null };
   });
 }
-// 출석 자동 집계: 수업일=숙제 마감일(dueDate), 그날 숙제 중 선생님이 '확인 완료(checked)'한 게 있으면 출석
-function calcAttendance(assignments, subByAsn, today){
+// 출석률 = 결석 기준. 수업일(=숙제 마감일) 중 선생님이 '결석' 표시한 날만 빠짐. 안 빠지면 100%.
+function calcAttendance(assignments, absentSet, today){
   const sessions = new Map();
   assignments.forEach(a=>{
     const d = a.dueDate || a.startDate || a.createdAt || '';
     if(!d || d > today) return;                 // 아직 안 지난(미래) 수업일은 제외
-    const sub = subByAsn[a.id];
-    const checked = !!(sub && sub.checked);
     let cur = sessions.get(d);
-    if(!cur){ cur = { date:d, present:false, names:new Set() }; sessions.set(d, cur); }
+    if(!cur){ cur = { date:d, names:new Set() }; sessions.set(d, cur); }
     if(a.className) cur.names.add(a.className);
-    if(checked) cur.present = true;
   });
   const list = [...sessions.values()]
-    .filter(s => s.date < today || s.present)    // 오늘분은 이미 확인된 것만 반영(당일 미확인은 감점 안 함)
     .sort((x,y)=>(y.date).localeCompare(x.date))
-    .map(s=>({ date:s.date, className:[...s.names].join(', '), present:s.present }));
-  const total = list.length, present = list.filter(s=>s.present).length;
-  return { list, total, present, rate: total?Math.round(present/total*100):0 };
+    .map(s=>({ date:s.date, className:[...s.names].join(', '), absent:absentSet.has(s.date) }));
+  const total = list.length;
+  const absent = Math.min(total, absentSet.size);           // 결석 표시한 만큼 차감
+  const present = Math.max(0, total - absent);
+  return { list, total, present, absent, rate: total?Math.round(present/total*100):null };
 }
 function getAttendance(){
   const today = new Date().toISOString().slice(0,10);
-  const subByAsn = {}; S_SUBMISSIONS.forEach(s=>{ if(s.assignmentId) subByAsn[s.assignmentId]=s; });
-  return calcAttendance(getAssignments(), subByAsn, today);
+  const absentSet = new Set((S_ABSENCES||[]).map(a=>a.date));
+  return calcAttendance(getAssignments(), absentSet, today);
 }
 // 제출률 집계 시작일(hwStart): 새 교재 시작 시 리셋 — 이 날짜(출제일 기준) 이후 숙제만 제출률에 반영
 function classHwStart(classId){ const c=ALL_CLASSES.find(x=>x.id===classId); return (c&&c.hwStart)||''; }
@@ -746,11 +747,11 @@ function getReport(){
   return {
     homeworkRate: hwPct,
     retryRate: 0,
-    attendanceRate: att.rate,
+    attendanceRate: att.rate==null?100:att.rate,
     avgScore: scored.length?Math.round(scored.reduce((s,e)=>s+e.score,0)/scored.length):0,
     teacherComment: (S_REPORT && S_REPORT.teacherComment) || REPORT.teacherComment,
     homeworkReport:{ submitted:hwSub, total:hwTotal, lateCount:asn.filter(a=>a.status==='late').length },
-    attendanceReport:{ present:att.present, late:0, absent:att.total-att.present, makeup:0 },
+    attendanceReport:{ present:att.present, late:0, absent:att.absent, makeup:0 },
     gradeReport:{ labels:recent.map(e=>(e.title||'').slice(0,4)), scores:recent.map(e=>e.score) }
   };
 }
@@ -1079,7 +1080,7 @@ function renderHome() {
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px">
       <div class="stat-card" onclick="navigate('attendance')" style="cursor:pointer;padding:12px">
         <div class="s-label" style="font-size:12px">🗓️ 출석</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-top:6px">출석률 ${att.rate}% · 출석 ${att.present}/${att.total}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:6px">출석률 ${att.rate==null?'100':att.rate}%${att.absent?` · 결석 ${att.absent}회`:' · 결석 없음'}</div>
       </div>
       <div class="stat-card" onclick="navigate('grades')" style="cursor:pointer;padding:12px">
         <div class="s-label" style="font-size:12px">🏆 성적</div>
@@ -1662,29 +1663,29 @@ function showSubmitDone(){
 // ================================================================
 function renderAttendance() {
   const att = getAttendance();
-  const p = att.present, ab = att.total - att.present;
+  const absList = (S_ABSENCES||[]).slice();
 
   document.getElementById('attendanceContent').innerHTML = `
     <div class="monthly-grid">
-      <div class="m-stat"><div class="count" style="color:var(--primary)">${att.rate}%</div><div class="mlabel">출석률</div></div>
-      <div class="m-stat"><div class="count" style="color:var(--green)">${p}</div><div class="mlabel">출석</div></div>
-      <div class="m-stat"><div class="count" style="color:var(--red)">${ab}</div><div class="mlabel">미확인</div></div>
+      <div class="m-stat"><div class="count" style="color:var(--primary)">${att.rate==null?'-':att.rate+'%'}</div><div class="mlabel">출석률</div></div>
+      <div class="m-stat"><div class="count" style="color:var(--green)">${att.present}</div><div class="mlabel">출석</div></div>
+      <div class="m-stat"><div class="count" style="color:var(--red)">${att.absent}</div><div class="mlabel">결석</div></div>
       <div class="m-stat"><div class="count" style="color:var(--orange)">${MAKEUP_SCHEDULES.length}</div><div class="mlabel">보강 예정</div></div>
     </div>
     <div style="font-size:12px;color:var(--text-muted);background:var(--bg);border-radius:10px;padding:10px 12px;margin-bottom:14px">
-      📌 숙제를 제출하고 선생님이 확인하면 그날 수업은 자동으로 <b>출석</b> 처리돼요. (숙제 마감일 기준)
+      📌 결석한 날만 빠지고 나머지는 출석이에요. 빠지지 않으면 <b>100%</b> 예요!
     </div>
     ${MAKEUP_SCHEDULES.map(m=>`
       <div class="alert-card"><div class="a-icon">🔶</div>
         <div><h4>보강 예정: ${m.date} ${m.time}</h4><p>${m.className} · ${m.reason}</p></div>
       </div>`).join('')}
-    <div class="card-title" style="margin-bottom:10px">수업별 출석</div>
-    ${att.list.length ? att.list.map(r=>`
+    <div class="card-title" style="margin-bottom:10px">결석한 날</div>
+    ${absList.length ? absList.map(a=>`
       <div class="att-record">
-        <div class="att-date">${fmtDate(r.date)}</div>
-        <div class="att-class">${r.className}</div>
-        <div>${r.present?'<span class="badge b-green">출석</span>':'<span class="badge b-red">미확인</span>'}</div>
-      </div>`).join('') : '<div style="color:var(--text-muted);padding:20px;text-align:center">아직 집계된 수업이 없어요</div>'}`;
+        <div class="att-date">${fmtDate(a.date)}</div>
+        <div class="att-class">${a.className||''}</div>
+        <div><span class="badge b-red">결석</span></div>
+      </div>`).join('') : '<div style="color:var(--green);padding:20px;text-align:center;font-weight:700">결석 없이 잘 나오고 있어요! 🎉</div>'}`;
 }
 
 // ================================================================
