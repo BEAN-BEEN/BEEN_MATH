@@ -556,7 +556,7 @@ let S_ABSENCES=[];   // 내 결석 기록 (선생님이 표시) — 출석률 �
 let S_SEASONS=[], selSeasonId=null;   // 제출률 집계 시즌(학원 공통) + 내가 보고 있는 시즌
 let S_SCHOOL='', S_ENROLL='', S_SCHOOLEXAM=null, S_MATHEVENTS=[], S_SCHOOL_EXAMS=[], S_MAKEUPS=[], ALL_MAKEUPS=[], ALL_SCHOOL_EXAMS=[];
 let calScope='mine'; // 'mine' = 내 일정만, 'all' = 전체 학교
-let S_MOCKEXAMS=[], S_MOCKSUBS=[], S_NAESIN=[];
+let S_MOCKEXAMS=[], S_MOCKSUBS=[], S_NAESIN=[], S_CLASSHISTORY=[];
 function myClassIds(){ try{ return JSON.parse(localStorage.getItem('bm_classIds')||'[]'); }catch(e){ return STUDENT.classId?[STUDENT.classId]:[]; } }
 async function loadStudentData(){
   const ids = myClassIds();
@@ -586,8 +586,12 @@ async function loadStudentData(){
   const cs = await pClasses;
   ALL_CLASSES = cs.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.order!=null?a.order:99)-(b.order!=null?b.order:99));
   S_CLASSES = ALL_CLASSES.filter(c=>ids.includes(c.id));
+  // 반이동 이력(classHistory): 숙제 출제일에 그 반 소속이었는지로 가름. meDoc를 먼저 받아 이력 반영.
+  S_CLASSHISTORY = [];
+  if(pMe){ try{ const _me = await pMe; if(_me.exists && Array.isArray(_me.data().classHistory)) S_CLASSHISTORY = _me.data().classHistory; }catch(e){ S_CLASSHISTORY=[]; } }
+  const everIds = [...new Set([...ids, ...S_CLASSHISTORY.map(h=>h.classId)])];  // 현재 반 + 지나온 반
   const asn = await pAsn;
-  S_ASSIGNMENTS = asn.docs.map(d=>({id:d.id,...d.data()})).filter(a=>ids.includes(a.classId))
+  S_ASSIGNMENTS = asn.docs.map(d=>({id:d.id,...d.data()})).filter(a=>everIds.includes(a.classId))
     .sort((x,y)=>(y.createdAt||'').localeCompare(x.createdAt||''));
   try{ const rv = await pReviews;
     S_REVIEWS = rv.docs.map(d=>({id:d.id,...d.data()})).filter(r=>ids.includes(r.classId))
@@ -669,13 +673,25 @@ async function submitExamAnswer(examId){
   await loadStudentData();
 }
 
+// 반이동 이력 기준: 숙제 출제일 d에 학생이 반 cid 소속이었는지
+function memberAtDate(cid, d){
+  const hist=(S_CLASSHISTORY||[]).filter(h=>h.classId===cid);
+  if(hist.length){
+    if(!d) return true;                                          // 날짜 없으면 보수적으로 표시
+    return hist.some(h=>(!h.from||d>=h.from)&&(!h.to||d<h.to));  // from 포함, to 미포함(이동일부터 새 반)
+  }
+  return myClassIds().includes(cid);                             // 이력 없는 반 = 현재 소속 기준(기존 동작)
+}
 // 숙제 = Firebase 과제 + 내 제출 상태를 합쳐서 보여줌
 function getAssignments(){
   const today = new Date().toISOString().slice(0,10);
-  return S_ASSIGNMENTS.filter(a=>{   // 등록일(enrollDate) 이전에 낸 숙제는 신입에게 안 보임
-    if(!S_ENROLL) return true;
+  return S_ASSIGNMENTS.filter(a=>{
     const d = a.startDate || a.createdAt || '';
-    return !d || d >= S_ENROLL;
+    // 반이동: 숙제 출제일에 그 반 소속이었나 (이력 없으면 현재 소속 기준)
+    if(!memberAtDate(a.classId, d)) return false;
+    // 등록일(enrollDate) 이전에 낸 숙제는 신입에게 안 보임
+    if(S_ENROLL && d && d < S_ENROLL) return false;
+    return true;
   }).map(a=>{
     const sub = S_SUBMISSIONS.find(s=>s.assignmentId===a.id);
     // 🔢 문제 범위(정수) 또는 자유 범위 라벨이 있는 숙제 = 오답 방식

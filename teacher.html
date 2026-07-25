@@ -1188,11 +1188,26 @@ async function doSaveEdit(){
   const statusMemo=(document.getElementById('es-statusmemo').value||'').trim();
   const enrollDate=(document.getElementById('es-enroll').value||'');
   const patch={name,phone,phoneLast4:last4,parentPhone,classIds,classNames,school,status,statusMemo,enrollDate};
+  // 반이동: 반 구성이 바뀌면 이동일 입력 → classHistory 기록 (이동 전 숙제=이전 반, 이동일부터=새 반)
+  const oldClassIds=s.classIds||(s.classId?[s.classId]:[]);
+  const removedCls=oldClassIds.filter(id=>!classIds.includes(id));
+  const addedCls=classIds.filter(id=>!oldClassIds.includes(id));
+  let moveNote='';
+  if(removedCls.length||addedCls.length){
+    let moveDate=new Date().toISOString().slice(0,10);
+    const inp=prompt('반 이동일을 입력하세요 (YYYY-MM-DD).\n이 날짜 이전 숙제는 이전 반, 이 날짜부터는 새 반 숙제가 학생에게 보입니다.\n(취소하면 오늘 날짜로 기록)', moveDate);
+    if(inp && /^\d{4}-\d{2}-\d{2}$/.test(inp.trim())) moveDate=inp.trim();
+    const hist=Array.isArray(s.classHistory)?s.classHistory.map(h=>({...h})):[];
+    removedCls.forEach(cid=>{ const open=hist.find(h=>h.classId===cid&&!h.to); if(open) open.to=moveDate; else hist.push({classId:cid,from:'',to:moveDate}); });
+    addedCls.forEach(cid=>{ if(!hist.some(h=>h.classId===cid&&!h.to)) hist.push({classId:cid,from:moveDate,to:''}); });
+    patch.classHistory=hist;
+    moveNote=' · 반이동 기록됨('+moveDate+')';
+  }
   // 휴원/퇴원으로 바뀌면 처리일 자동 기록, 재원 복귀 시 처리일 제거
   const wasStatus=studentStatus(s);
   if(status!=='재원'){ if(wasStatus!==status || !s.statusDate) patch.statusDate=new Date().toISOString().slice(0,10); }
   else { patch.statusDate=''; }
-  try{ await updateStudentFS(editStudentId,patch); editStudentId=null; showToast(`${name} 정보 수정 완료 ✓${status!=='재원'?' · '+status+' 처리됨':''}`,'success'); rStudents(); }
+  try{ await updateStudentFS(editStudentId,patch); editStudentId=null; showToast(`${name} 정보 수정 완료 ✓${status!=='재원'?' · '+status+' 처리됨':''}${moveNote}`,'success'); rStudents(); }
   catch(e){ showToast('수정 실패: '+e.message,'error'); }
 }
 function rStudents(){
