@@ -1991,7 +1991,9 @@ function mockRegForm(m){
 }
 async function doSaveMockScore(mockId){
   const m=S_MOCKEXAMS.find(x=>x.id===mockId);
-  const v=document.querySelector('.mockscore-'+mockId).value;
+  const el=document.querySelector('.mockscore-'+mockId);
+  if(!el){ showToast('입력칸을 찾지 못했어요. 새로고침(Ctrl+Shift+R) 후 다시 해주세요','warning'); return; }
+  const v=el.value;
   if(v===''){ showToast('점수를 입력해주세요','warning'); return; }
   try{ await saveMockSub(mockId,{score:parseInt(v),maxScore:m.maxScore||100,mode:'score'}); launchConfetti(); showToast('모의고사 점수 등록 완료! 🎉','success'); renderGrades(); }
   catch(e){ showToast('등록 실패: '+e.message,'error'); }
@@ -2014,8 +2016,10 @@ async function saveMockSub(mockId, data){
 }
 async function mockReopen(mockId){
   const exist=S_MOCKSUBS.find(s=>s.mockId===mockId);
-  if(exist){ await db.collection('mockSubs').doc(exist.id).delete(); await loadStudentData(); }
-  renderGrades();
+  try{
+    if(exist){ await db.collection('mockSubs').doc(exist.id).delete(); await loadStudentData(); }
+    renderGrades();
+  }catch(e){ showToast('수정 준비 실패: '+e.message+' — 새로고침(Ctrl+Shift+R) 후 다시 해주세요','error'); }
 }
 
 // ================================================================
