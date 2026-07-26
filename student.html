@@ -1022,11 +1022,26 @@ function homeGradesHtml(){
         <div style="font-size:9px;color:var(--text-muted);margin-top:4px;text-align:center;line-height:1.2">${(m.title||'').replace(/</g,'&lt;').slice(0,7)}${m.grade?`<br><b>${m.grade}</b>`:''}</div>
       </div>`;}).join('')}</div>`;
   }
-  // 내신 (과목별 중간/기말)
+  // 내신 성적 추이 (과목별 중간 → 기말 변화) — 선생님 화면과 동일 방식
+  const numFromScore=s=>{ const m=String(s==null?'':s).match(/-?\d+(\.\d+)?/); return m?parseFloat(m[0]):null; };
   const bySub={}; naesin.forEach(n=>{ (bySub[n.subject||'과목']=bySub[n.subject||'과목']||{})[n.term]=n; });
-  const naesinHtml=Object.keys(bySub).length?`<div style="margin-top:12px"><div style="font-size:13px;font-weight:800;margin-bottom:4px">🏫 내신</div>${Object.entries(bySub).map(([sub,terms])=>`<div style="display:flex;gap:12px;font-size:13px;padding:3px 0;border-bottom:1px solid var(--border)"><strong style="min-width:74px">${(sub||'').replace(/</g,'&lt;')}</strong>${['중간','기말'].map(t=>terms[t]?`<span>${t} <b style="color:var(--primary)">${terms[t].score||'-'}</b>${terms[t].grade?` (${terms[t].grade})`:''}</span>`:'').join('')}</div>`).join('')}</div>`:'';
+  const nCell=n=> n&&(n.score||n.grade) ? `<b style="color:var(--primary)">${n.score||'-'}</b>${n.grade?`<span style="font-size:11px;color:var(--text-muted)"> ${n.grade}등급</span>`:''}` : `<span style="color:var(--text-muted)">-</span>`;
+  const naesinHtml=Object.keys(bySub).length?`<div style="margin-top:14px"><div style="font-size:13px;font-weight:800;margin-bottom:4px">📈 내신 성적 추이 <span style="font-size:11px;color:var(--text-muted);font-weight:400">(중간 → 기말)</span></div>${Object.entries(bySub).map(([sub,terms])=>{
+      const mid=terms['중간'], fin=terms['기말'], sem=terms['1학기합산'];
+      const mv=numFromScore(mid&&mid.score), fv=numFromScore(fin&&fin.score);
+      const delta=(mv!=null&&fv!=null)?+(fv-mv).toFixed(1):null;
+      const dchip= delta==null?'' : delta>0?`<span style="color:var(--green,#10B981);font-weight:800">▲ ${delta}</span>` : delta<0?`<span style="color:var(--red,#EF4444);font-weight:800">▼ ${Math.abs(delta)}</span>` : `<span style="color:var(--text-muted)">– 0</span>`;
+      return `<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:13px;padding:5px 0;border-bottom:1px solid var(--border)">
+        <strong style="min-width:78px">${(sub||'').replace(/</g,'&lt;')}</strong>
+        <span style="font-size:11px;color:var(--text-muted)">중간</span> ${nCell(mid)}
+        <span style="color:var(--text-muted)">→</span>
+        <span style="font-size:11px;color:var(--text-muted)">기말</span> ${nCell(fin)}
+        ${dchip?`<span style="margin-left:auto">${dchip}</span>`:''}
+        ${sem&&sem.grade?`<span style="${dchip?'margin-left:8px':'margin-left:auto'};font-size:11px;color:var(--text-muted)">합산 <b style="color:var(--primary)">${sem.grade}등급</b></span>`:''}
+      </div>`;
+    }).join('')}</div>`:'';
   const mockList=mocks.length?`<div style="margin-top:10px"><div style="font-size:13px;font-weight:800;margin-bottom:4px">📝 모의고사</div>${mocks.slice().reverse().map(m=>`<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px solid var(--border)"><span>${(m.title||'').replace(/</g,'&lt;')} <span style="font-size:11px;color:var(--text-muted)">${m.date||''}</span></span><span><b>${m.score}</b>점${m.grade?` · <b style="color:var(--primary)">${m.grade}</b>`:''}</span></div>`).join('')}</div>`:'';
-  return `<details style="background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px 16px;margin-bottom:16px">
+  return `<details style="background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px 16px;margin:16px 0">
     <summary style="cursor:pointer;font-weight:800;font-size:15px;list-style:revert">🏆 내 성적 <span style="font-size:12px;color:var(--text-muted);font-weight:400">· 내신 & 모의고사 (눌러서 펼치기)</span></summary>
     ${mocks.length?`<div style="font-size:13px;font-weight:800;margin-top:12px">📈 모의고사 점수 추이</div>${trend}`:''}
     ${mockList}
