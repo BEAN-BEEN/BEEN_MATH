@@ -83,6 +83,22 @@ window.bmAuthReady = new Promise(function(resolve){
   }catch(e){ finish(null); }
 });
 
+// 🔄 로그인(익명인증) 실패 복구 화면 — 각 페이지 init에서 auth가 없을 때 호출. 빈 화면/조용한 실패 방지.
+window.bmAuthRecoveryUI = function(){
+  try{
+    if(firebase.auth && firebase.auth().currentUser) return;   // 사이에 로그인됐으면 무시
+    if(document.getElementById('__authRecover')) return;
+    var d=document.createElement('div'); d.id='__authRecover';
+    d.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(255,255,255,.97);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:28px;font-family:-apple-system,BlinkMacSystemFont,sans-serif';
+    d.innerHTML='<div style="font-size:44px;margin-bottom:10px">📡</div>'+
+      '<div style="font-size:18px;font-weight:800;color:#1E293B;margin-bottom:8px">연결이 원활하지 않아요</div>'+
+      '<div style="font-size:14px;color:#64748b;line-height:1.7;max-width:330px;margin-bottom:20px">로그인 확인에 실패했어요. 네트워크(와이파이↔데이터 전환)를 확인하고 다시 시도해 주세요. 카카오톡 안이라면 <b>크롬/사파리</b>로 열어주세요.</div>'+
+      '<button id="__authRetry" style="background:#5B6CF5;color:#fff;border:none;border-radius:10px;padding:13px 26px;font-size:15px;font-weight:700;cursor:pointer">🔄 다시 시도</button>';
+    document.body.appendChild(d);
+    document.getElementById('__authRetry').onclick=function(){ location.reload(); };
+  }catch(e){}
+};
+
 // 푸시 알림(FCM) 공개 키 (VAPID) — 공개돼도 안전한 값이에요
 const FCM_VAPID_KEY = "BNvh-x2hLucnbXNZILzvs6O2RzhsrUvlrUIbtcS5F3RxQqej25oHhz8zz4s2_HoZ-Ue1EmEJzpSKlzS5VVeJiRo";
 

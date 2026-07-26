@@ -505,12 +505,16 @@
 </div>
 
 <!-- Firebase SDK (compat) -->
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+<link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin>
+<link rel="preconnect" href="https://securetoken.googleapis.com" crossorigin>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
-<script src="firebase-init.js?v=2026072601"></script>
+<script src="firebase-init.js?v=2026072602"></script>
 
 <script>
 // ================================================================
@@ -2523,7 +2527,8 @@ function logout(){
 
 async function init(){
   requireRole('student');   // 학생 아니면 로그인 페이지로
-  await window.bmAuthReady;  // 익명 인증(출입증) 완료 후 데이터 요청
+  const _authUser = await window.bmAuthReady;  // 익명 인증(출입증)
+  if(!_authUser){ window.bmAuthRecoveryUI && window.bmAuthRecoveryUI(); return; }  // 실패 시 복구 화면(빈 화면 방지)
   const info = document.getElementById('sidebarUserInfo');
   if(info) info.textContent = STUDENT.name + ' 학생' + (STUDENT.className ? (' · ' + STUDENT.className) : '');
   buildSidebar();
