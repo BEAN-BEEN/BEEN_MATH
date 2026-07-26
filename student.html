@@ -754,6 +754,18 @@ function asnInHwWindow(a){ const st=classHwStart(a.classId); if(!st) return true
 // 제출률 시즌(학원 공통) — 내가 보고 있는 시즌(없으면 오늘 속한 시즌, 없으면 최근)
 function studentSelSeason(){ if(!S_SEASONS.length) return null; const s=S_SEASONS.find(x=>x.id===selSeasonId); if(s) return s; const t=new Date().toISOString().slice(0,10); return S_SEASONS.find(x=>x.startDate&&x.startDate<=t&&(!x.endDate||x.endDate>=t)) || S_SEASONS[0]; }
 function asnInSeasonS(a, season){ if(!season) return true; const d=a.startDate||a.createdAt||a.dueDate||''; if(!d) return true; return (!season.startDate||d>=season.startDate)&&(!season.endDate||d<=season.endDate); }
+// 📅 기간(시즌) 선택 바 — 숙제/오답/복습 공통. renderFn=다시 그릴 함수명, noun=안내 문구
+function seasonBarHtml(renderFn, noun){
+  if(!S_SEASONS.length) return '';
+  const cur=studentSelSeason();
+  return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+    <span style="font-size:12px;color:var(--text-muted)">📅 기간</span>
+    <select class="form-select" style="max-width:230px;padding:6px 8px;font-size:13px" onchange="selSeasonId=this.value;${renderFn}()">
+      ${S_SEASONS.map(s=>`<option value="${s.id}" ${cur&&cur.id===s.id?'selected':''}>${(s.name||'').replace(/</g,'&lt;')}</option>`).join('')}
+    </select>
+    <span style="font-size:11px;color:var(--text-muted)">기간을 바꿔 이전 ${noun||'것'}도 볼 수 있어요</span>
+  </div>`;
+}
 function getQuestions()   { return S_QUESTIONS; }
 // 한 과제의 완성도(%) — 제출+평가됨이면 그 값, 제출만 했으면 100, 미제출/반려는 0
 function asnCompletion(a){
@@ -1410,13 +1422,14 @@ async function doResetWrong(subId, aid){
 // ================================================================
 function renderWrong(){
   const el=document.getElementById('wrongContent');
-  const asgn=getAssignments().filter(a=>a.isOap && a.oapEntered && (a.wrongNos||[]).length>0)
+  const bar=seasonBarHtml('renderWrong','오답');
+  const asgn=getAssignments().filter(a=>a.isOap && a.oapEntered && (a.wrongNos||[]).length>0 && asnInSeasonS(a, studentSelSeason()))
     .sort((x,y)=>(x.oapConfirmed?1:0)-(y.oapConfirmed?1:0));
-  if(!asgn.length){ el.innerHTML='<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">아직 오답이 없어요 🎉<br><span style="font-size:12px">숙제에서 틀린 문제를 등록하면 여기에 모여요</span></div>'; return; }
+  if(!asgn.length){ el.innerHTML=bar+'<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">이 기간엔 오답이 없어요 🎉<br><span style="font-size:12px">숙제에서 틀린 문제를 등록하면 여기에 모여요</span></div>'; return; }
   let todo=0, wait=0, ok=0;
   asgn.forEach(a=>(a.wrongNos||[]).forEach(n=>{ const off=a.oapOffline&&a.oapOffline[n]; if(a.oapOk[n]) ok++; else if(a.oapRedo[n]||(!a.corrections[n]&&!off)) todo++; else wait++; }));
   const meta={ ok:['var(--green-light)','var(--green)','✅ 확인 완료'], redo:['#FEE2E2','var(--red)','❌ 재오답 — 다시 풀어요'], wait:['#FEF9C3','#854D0E','⏳ 선생님 확인 대기'], offline:['#DBEAFE','#1E40AF','✋ 직접 검사 대기 (선생님께 보여주기)'], todo:['#FEE2E2','var(--red)','✏️ 다시 풀어 사진 올리기'] };
-  el.innerHTML=`
+  el.innerHTML=bar+`
     <div class="hero-banner">
       <h2>📒 다시 풀 오답이 ${todo}개 있어요</h2>
       <p>틀린 문제를 다시 풀어 사진을 올리면 선생님이 확인해줘요.${wait?` 확인 대기 ${wait}개 ·`:''} 완료 ${ok}개</p>
@@ -1435,7 +1448,7 @@ function renderWrong(){
           const off=a.oapOffline&&a.oapOffline[n];
           const st = a.oapOk[n]?'ok':(a.oapRedo[n]?'redo':(a.corrections[n]?'wait':(off?'offline':'todo')));
           const m=meta[st]; const canView=!!a.corrections[n];
-          const upLabel = st==='wait' ? '📷 다시 올리기(수정)' : (st==='redo' ? '📷 다시 올리기' : '📷 사진');
+          const upLabel = (st==='wait'||st==='redo') ? '📷 다시 올리기' : '📷 사진';
           const upCls = st==='redo' ? 'btn-red' : (st==='wait' ? 'btn-outline' : 'btn-orange');
           // 사진 올리기 (ok/offline 상태에선 숨김)
           const upload = (st==='ok'||st==='offline') ? '' : `<input type="file" accept="image/*" id="corr-${a.id}-${n}" style="display:none" onchange="doUploadCorrection('${a.subId}','${a.id}','${n}')"><button class="btn ${upCls} btn-sm" onclick="document.getElementById('corr-${a.id}-${n}').click()">${upLabel}</button>`;
@@ -1467,11 +1480,12 @@ function getReviews(){
   });
 }
 function renderReview(){
-  const revs=getReviews();
+  const bar=seasonBarHtml('renderReview','복습');
+  const revs=getReviews().filter(r=>asnInSeasonS(r, studentSelSeason()));
   const todo=revs.filter(r=>!r.done);
   const el=document.getElementById('reviewContent');
-  if(!revs.length){ el.innerHTML='<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">아직 복습 과제가 없어요 🎉<br><span style="font-size:12px">선생님이 다시 풀 문제를 정해주면 여기에 표시돼요</span></div>'; return; }
-  el.innerHTML=`
+  if(!revs.length){ el.innerHTML=bar+'<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">이 기간엔 복습 과제가 없어요 🎉<br><span style="font-size:12px">선생님이 다시 풀 문제를 정해주면 여기에 표시돼요</span></div>'; return; }
+  el.innerHTML=bar+`
     <div class="hero-banner">
       <h2>🔁 다시 풀 복습이 ${todo.length}개 있어요</h2>
       <p>정해진 번호를 다시 풀고, 번호별로 사진을 올리면 복습 완료예요!</p>
@@ -1598,14 +1612,7 @@ function renderHomework() {
   if (subWaiting.length) html += `<div class="sec-label" style="color:var(--yellow)">📤 제출됨 · 선생님 확인 대기 (${subWaiting.length})</div>` + subWaiting.map(card).join('');
   if (subDone.length) html += `<div class="sec-label" style="color:var(--green)">✅ 확인 완료 (${subDone.length})</div>` + subDone.map(card).join('');
   if (!asgn.length) html = '<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">이 기간에 제출할 숙제가 없어요 🎉</div>';
-  const seasonBar = S_SEASONS.length?`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px">
-    <span style="font-size:12px;color:var(--text-muted)">📅 기간</span>
-    <select class="form-select" style="max-width:230px;padding:6px 8px;font-size:13px" onchange="selSeasonId=this.value;renderHomework()">
-      ${S_SEASONS.map(s=>{const cur=studentSelSeason();return `<option value="${s.id}" ${cur&&cur.id===s.id?'selected':''}>${(s.name||'').replace(/</g,'&lt;')}</option>`;}).join('')}
-    </select>
-    <span style="font-size:11px;color:var(--text-muted)">기간을 바꿔 이전 숙제도 볼 수 있어요</span>
-  </div>`:'';
-  document.getElementById('homeworkContent').innerHTML = seasonBar + html;
+  document.getElementById('homeworkContent').innerHTML = seasonBarHtml('renderHomework','숙제') + html;
   restorePendingUI();
 }
 // 화면을 다시 그린 뒤: 아직 제출 안 한 임시 상태(누적 사진·고른 오답번호·직접입력)를 복원
