@@ -1518,7 +1518,8 @@ async function submitReviewPhoto(rid, no){
   }catch(e){ showToast('업로드 실패: '+e.message,'error'); }
 }
 function renderHomework() {
-  const asgn = getAssignments();
+  const season = studentSelSeason();
+  const asgn = getAssignments().filter(a => asnInSeasonS(a, season));   // 선택한 기간(시즌) 숙제만 — 전체가 너무 많아 분기별로
   const pending = asgn.filter(a => a.status==='pending');
   const late = asgn.filter(a => a.status==='late');
   const submitted = asgn.filter(a => a.status==='submitted');
@@ -1596,8 +1597,15 @@ function renderHomework() {
   const subWaiting = submitted.filter(a=>!a.teacherChecked), subDone = submitted.filter(a=>a.teacherChecked);
   if (subWaiting.length) html += `<div class="sec-label" style="color:var(--yellow)">📤 제출됨 · 선생님 확인 대기 (${subWaiting.length})</div>` + subWaiting.map(card).join('');
   if (subDone.length) html += `<div class="sec-label" style="color:var(--green)">✅ 확인 완료 (${subDone.length})</div>` + subDone.map(card).join('');
-  if (!asgn.length) html = '<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">제출할 숙제가 없어요 🎉</div>';
-  document.getElementById('homeworkContent').innerHTML = html;
+  if (!asgn.length) html = '<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">이 기간에 제출할 숙제가 없어요 🎉</div>';
+  const seasonBar = S_SEASONS.length?`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+    <span style="font-size:12px;color:var(--text-muted)">📅 기간</span>
+    <select class="form-select" style="max-width:230px;padding:6px 8px;font-size:13px" onchange="selSeasonId=this.value;renderHomework()">
+      ${S_SEASONS.map(s=>{const cur=studentSelSeason();return `<option value="${s.id}" ${cur&&cur.id===s.id?'selected':''}>${(s.name||'').replace(/</g,'&lt;')}</option>`;}).join('')}
+    </select>
+    <span style="font-size:11px;color:var(--text-muted)">기간을 바꿔 이전 숙제도 볼 수 있어요</span>
+  </div>`:'';
+  document.getElementById('homeworkContent').innerHTML = seasonBar + html;
   restorePendingUI();
 }
 // 화면을 다시 그린 뒤: 아직 제출 안 한 임시 상태(누적 사진·고른 오답번호·직접입력)를 복원
