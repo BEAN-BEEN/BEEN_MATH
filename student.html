@@ -1234,22 +1234,47 @@ function oapSections(a){
       else{ const v=parseInt(part,10); if(v>0) nums.push(v); } });
     return [...new Set(nums)].sort((x,y)=>x-y);
   };
+  // 접두문자 구간(자이스토리 등): "A1~A101" · "A1, A5~A10" — 문자가 숫자에 '붙어' 있고 파트마다 같은 문자면 {prefix,nums}
+  //  ('중간 1~50'처럼 이름+공백+숫자는 여기서 안 잡히고 기존 이름구간 로직으로 감)
+  const prefixSeg=(txt)=>{
+    let prefix=null, nums=[], ok=true, saw=false;
+    String(txt).split(',').forEach(part=>{ part=part.trim(); if(!part) return; saw=true;
+      const mR=part.match(/^([A-Za-z가-힣]+)(\d+)\s*[~\-]\s*(?:([A-Za-z가-힣]+))?(\d+)$/);   // A1~A101 / A1~101
+      const mS=part.match(/^([A-Za-z가-힣]+)(\d+)$/);                                         // A5
+      if(mR && (mR[3]==null || mR[3].toUpperCase()===mR[1].toUpperCase())){
+        if(prefix===null) prefix=mR[1]; else if(prefix.toUpperCase()!==mR[1].toUpperCase()) ok=false;
+        let x=+mR[2], y=+mR[4]; if(x>y)[x,y]=[y,x]; for(let i=x;i<=y&&i-x<500;i++) nums.push(i);
+      } else if(mS){
+        if(prefix===null) prefix=mS[1]; else if(prefix.toUpperCase()!==mS[1].toUpperCase()) ok=false;
+        nums.push(+mS[2]);
+      } else ok=false;
+    });
+    if(!saw||!ok||prefix===null||!nums.length) return null;
+    return { prefix, nums:[...new Set(nums)].sort((x,y)=>x-y) };
+  };
   const lbl=(a.probLabel||'').trim();
   const circ='①②③④⑤⑥⑦⑧⑨⑩';
   if(lbl && lbl.includes('/')){
     return lbl.split('/').map((seg,i)=>{
-      seg=seg.trim(); let name='', rangeTxt=seg;
+      seg=seg.trim();
+      const pf=prefixSeg(seg);                                   // 문자 접두 구간 우선
+      if(pf) return { name:pf.prefix, prefix:pf.prefix, sep:'', nums:pf.nums };
+      let name='', rangeTxt=seg;
       const nm=seg.match(/^([^\d]*?)\s*([\d].*)$/);   // 앞 비숫자=이름, 나머지=범위 (콜론 유무 무관)
       if(nm){ name=(nm[1]||'').replace(/[:：]/g,'').trim(); rangeTxt=nm[2].trim(); }
+      const pf2=prefixSeg(rangeTxt);                             // "발전 A1~A20"처럼 이름 뒤가 문자구간
+      if(pf2) return { name:name||pf2.prefix, prefix:pf2.prefix, sep:'', nums:pf2.nums };
       const prefix = name || (circ[i]||('구간'+(i+1)));
-      return { name:prefix, prefix, nums:parseRanges(rangeTxt) };
+      return { name:prefix, prefix, sep:'-', nums:parseRanges(rangeTxt) };
     }).filter(s=>s.nums.length);
   }
+  const pf=prefixSeg(lbl);                                       // '/' 없는 단일 문자 접두 구간
+  if(pf) return [{ name:pf.prefix, prefix:pf.prefix, sep:'', nums:pf.nums }];
   let nums=[];
   if(a.probStart&&a.probEnd){ for(let n=a.probStart;n<=a.probEnd&&n-a.probStart<500;n++) nums.push(n); }
   if(lbl && /^[\d\s,~\-]+$/.test(lbl)){ nums=nums.concat(parseRanges(lbl)); }
   nums=[...new Set(nums)].sort((x,y)=>x-y);
-  return nums.length ? [{ name:'', prefix:'', nums }] : [];
+  return nums.length ? [{ name:'', prefix:'', sep:'-', nums }] : [];
 }
 function renderOapCard(a){
   const wrongNos = a.wrongNos||[]; const corrections = a.corrections||{}; const oapOk=a.oapOk||{}; const oapRedo=a.oapRedo||{}; const oapOffline=a.oapOffline||{};
@@ -1297,8 +1322,9 @@ function renderOapCard(a){
     if(showGrid){
       sections.forEach(sec=>{
         if(multi && sec.name) gridHtml+=`<div style="font-size:12px;font-weight:800;color:var(--primary);margin:10px 0 4px">📑 ${sec.name}</div>`;
-        let btns=''; sec.nums.forEach(n=>{ const label=sec.prefix?`${sec.prefix}-${n}`:String(n);
-          btns+=`<button type="button" class="oapnum" data-no="${label}" onclick="toggleWrong('${a.id}',this)">${n}</button>`; });
+        let btns=''; sec.nums.forEach(n=>{ const label=sec.prefix?`${sec.prefix}${sec.sep!=null?sec.sep:'-'}${n}`:String(n);
+          const disp=(sec.prefix&&sec.sep==='')?label:n;   // 문자 접두 구간은 'A1'을 그대로 표시
+          btns+=`<button type="button" class="oapnum" data-no="${label}" onclick="toggleWrong('${a.id}',this)">${disp}</button>`; });
         gridHtml+=`<div class="oapgrid${sec.nums.length>60?' scroll':''}">${btns}</div>`;
       });
       gridHtml=`<div id="oapnums-${a.id}">${gridHtml}</div>`;
