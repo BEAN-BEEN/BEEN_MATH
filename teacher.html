@@ -558,6 +558,7 @@ async function doDelSeason(id,name){ if(!confirm(`"${name}" 시즌을 삭제할�
   try{ await deleteSeasonFS(id); if(gradeSeasonId===id) gradeSeasonId=null; showToast('시즌 삭제','warning'); rClassroom(); }catch(e){ showToast('삭제 실패: '+e.message,'error'); } }
 function absentDatesOf(studentId){ return new Set(getAbsences().filter(a=>a.studentId===studentId).map(a=>a.date)); }
 async function addMakeup(d){ await db.collection('makeups').add({...d, ts:Date.now()}); await loadMakeups(); }
+async function updateMakeupFS(id, patch){ await db.collection('makeups').doc(id).update(patch); await loadMakeups(); }
 async function deleteMakeupFS(id){ await db.collection('makeups').doc(id).delete(); await loadMakeups(); }
 // 학생 명단에 있는 학교 목록(중복 제거) — 빠른 선택용
 function allSchools(){ const set=new Set(); getStudents().forEach(s=>{ if(s.school) set.add(s.school); }); getSchoolExams().forEach(e=>{ if(e.school) set.add(e.school); }); return [...set]; }
@@ -2858,6 +2859,44 @@ function calendarCardHtml(){
     <div style="font-size:12px;color:var(--text-muted);margin-top:10px">🔶 보강·직보 추가는 <strong>내신 관리 → 직보 일정</strong>에서 해요.</div>
   </div>`;
 }
+// 🙋 보강 참석 명단 — 선생님이 '온다고 한 학생'을 체크. 참석자는 makeup 문서의 attendees(학생ID 배열)에 저장
+let mkRosterOpenId=null;
+function makeupRoster(m){
+  const active=STUDENTS_CACHE.filter(isActiveStudent);
+  const nm=(m.className||'').trim();
+  if(nm){ const byName=active.filter(s=>s.name===nm); if(byName.length) return byName; }   // 개인 이름이면 그 학생
+  if(m.school){ const r=active.filter(s=>(s.school||'')===m.school); if(r.length) return r; }  // 직보=학교 전체
+  if(nm){
+    const cls=CLASSES.find(c=>c.name===nm);                                                  // 반 이름이면 그 반
+    if(cls) return active.filter(s=>((s.classIds)||(s.classId?[s.classId]:[])).includes(cls.id));
+    const r=active.filter(s=>(s.classNames||[]).some(n=>n&&(nm.includes(n)||n.includes(nm))));
+    if(r.length) return r;
+  }
+  return active;   // 대상 특정 실패 → 재원 전체
+}
+async function doToggleMakeupAttendee(mid, sid){
+  const m=MAKEUPS_CACHE.find(x=>x.id===mid); if(!m) return;
+  const cur=Array.isArray(m.attendees)?m.attendees.slice():[];
+  const i=cur.indexOf(sid); if(i>=0) cur.splice(i,1); else cur.push(sid);
+  try{ await updateMakeupFS(mid,{attendees:cur}); rNaesin(); }
+  catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+function makeupRosterPanel(m){
+  const roster=makeupRoster(m);
+  const att=Array.isArray(m.attendees)?m.attendees:[];
+  const sorted=roster.slice().sort((a,b)=>{ const ca=att.includes(a.id)?0:1, cb=att.includes(b.id)?0:1; return ca-cb || (a.name||'').localeCompare(b.name||''); });
+  const coming=roster.filter(s=>att.includes(s.id)).length;
+  return `<div class="card" style="margin-top:12px;border-left:4px solid var(--orange)">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <div class="card-title" style="margin:0">🙋 참석 명단 — ${m.date} ${m.className||''} <span style="font-size:12px;color:var(--text-muted);font-weight:400">${m.time||''}</span></div>
+      <div style="display:flex;gap:8px;align-items:center"><span class="badge b-orange">온다고 함 ${coming}명</span><button class="btn btn-outline btn-sm" onclick="mkRosterOpenId=null;rNaesin()">닫기</button></div>
+    </div>
+    ${roster.length?`<div style="display:flex;flex-wrap:wrap;gap:6px">${sorted.map(s=>{ const on=att.includes(s.id);
+      return `<button class="btn btn-sm" style="${on?'background:var(--orange);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="doToggleMakeupAttendee('${m.id}','${s.id}')">${on?'✓ ':''}${s.name}${s.school?`<span style="font-size:10px;opacity:.85"> ${s.school}</span>`:''}</button>`;
+    }).join('')}</div>`:`<div style="font-size:13px;color:var(--text-muted)">대상 학생을 못 찾았어요. 보강 '반/대상'을 반 이름이나 학생 이름으로 맞춰주세요.</div>`}
+    <div style="font-size:11px;color:var(--text-muted);margin-top:8px">학생을 누르면 '온다고 함'으로 표시돼요. 다시 누르면 취소.</div>
+  </div>`;
+}
 // 🔶 직보·보강 관리 (내신 관리 > 직보 일정) — 시간표에서 이동
 function makeupBlockHtml(){
   const makeups=getMakeups();
@@ -2881,10 +2920,12 @@ function makeupBlockHtml(){
         <thead><tr><th>날짜</th><th>반/대상</th><th>시간</th><th>메모</th><th></th></tr></thead>
         <tbody>${makeups.slice().sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(m=>`<tr>
           <td><strong>${m.date}</strong></td><td>${m.className||'-'}</td><td style="color:var(--text-muted)">${m.time||'-'}</td><td style="color:var(--text-muted)">${m.note||'-'}</td>
-          <td><button class="btn btn-red btn-sm" onclick="doDelMakeup('${m.id}')">삭제</button></td>
+          <td style="white-space:nowrap"><button class="btn ${mkRosterOpenId===m.id?'btn-primary':'btn-outline'} btn-sm" onclick="mkRosterOpenId=(mkRosterOpenId==='${m.id}'?null:'${m.id}');rNaesin()">🙋 참석 ${(m.attendees||[]).length}</button>
+            <button class="btn btn-red btn-sm" onclick="doDelMakeup('${m.id}')">삭제</button></td>
         </tr>`).join('')}</tbody>
       </table></div>`:'<div style="margin-top:10px;font-size:13px;color:var(--text-muted)">아직 등록된 보강·직보가 없어요.</div>'}
-  </div>`;
+    </div>
+    ${mkRosterOpenId?(function(){ const m=makeups.find(x=>x.id===mkRosterOpenId); return m?makeupRosterPanel(m):''; })():''}`;
 }
 async function doAddMakeup(){
   const date=document.getElementById('mk-date').value;
