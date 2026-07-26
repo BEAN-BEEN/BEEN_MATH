@@ -66,12 +66,20 @@ window.bmAuthReady = new Promise(function(resolve){
     if(!firebase.auth){ finish(null); return; }
     var A=firebase.auth();
     A.onAuthStateChanged(function(user){ if(user) finish(user); });
-    var trySignIn=function(){ A.signInAnonymously().catch(function(e){ console.warn('익명 인증 실패:', e && (e.code||e.message)); finish(null); }); };
-    // 인앱 브라우저(카카오톡 등)에서 IndexedDB/저장소가 막혀 실패하는 경우 대비:
-    //  LOCAL 저장 시도 → 실패하면 인메모리(NONE)로 전환 후 로그인 (앱은 매번 익명 재발급이라 무방)
     var P=(firebase.auth.Auth && firebase.auth.Auth.Persistence) || {LOCAL:'local',NONE:'none'};
-    A.setPersistence(P.LOCAL).then(trySignIn, function(){ A.setPersistence(P.NONE).then(trySignIn, trySignIn); });
-    setTimeout(function(){ finish(null); }, 8000);   // 안전장치: 응답 없어도 8초 뒤 진행
+    // 인앱 브라우저(카카오톡 등)·사파리 개인정보보호에서 IndexedDB/저장소가 막혀 실패하는 경우 대비.
+    //  ⚠️ 예전 버그: LOCAL 저장은 됐는데 그 다음 로그인이 실패하면 그냥 포기 → 대부분의 로그인 오류 원인.
+    //  이제는 '로그인 실패' 자체도 인메모리(NONE)로 전환해 한 번 더 시도한다 (앱은 매번 익명 재발급이라 무방).
+    var signInMemory=function(){                       // 최후의 보루: 저장소 안 쓰고 인메모리로 로그인
+      A.setPersistence(P.NONE).then(function(){
+        A.signInAnonymously().catch(function(e){ console.warn('익명 인증 최종 실패:', e && (e.code||e.message)); finish(null); });
+      }, function(){ A.signInAnonymously().catch(function(){ finish(null); }); });
+    };
+    var trySignIn=function(){                          // 1차: LOCAL 저장으로 로그인, 실패하면 인메모리 재시도
+      A.signInAnonymously().catch(function(e){ console.warn('익명 인증 1차 실패 → 인메모리 재시도:', e && (e.code||e.message)); signInMemory(); });
+    };
+    A.setPersistence(P.LOCAL).then(trySignIn, function(){ signInMemory(); });
+    setTimeout(function(){ finish(null); }, 12000);   // 안전장치: 응답 없어도 12초 뒤 진행 (느린 모바일 대비 8→12초)
   }catch(e){ finish(null); }
 });
 
