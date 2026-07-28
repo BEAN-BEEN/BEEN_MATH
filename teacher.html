@@ -339,9 +339,11 @@ async function deleteClassFS(id){ await db.collection('classes').doc(id).delete(
 
 // ===== 학생 명단: Firebase Firestore에서 불러옴 (캐시) =====
 let STUDENTS_CACHE=[];
+// 🏫 학교명 통일: "ㅇㅇ고등학교" → "ㅇㅇ고" (앞뒤 공백 제거). 입력·표시·매칭 모두 이걸로 통일.
+function normSchool(v){ return (v||'').trim().replace(/고등학교$/,'고'); }
 async function loadStudents(){
   const snap=await db.collection('students').orderBy('name').get();
-  STUDENTS_CACHE=snap.docs.map(d=>({id:d.id, ...d.data()}));
+  STUDENTS_CACHE=snap.docs.map(d=>{ const x={id:d.id, ...d.data()}; if(x.school) x.school=normSchool(x.school); return x; });
 }
 function getStudents(){return STUDENTS_CACHE;}
 // 재원 = 활성. 휴원·퇴원은 명단·출석·숙제·알림·통계에서 제외(기록은 보존)
@@ -536,7 +538,7 @@ async function doAddNotice(){
 async function doDelNotice(id){ if(!confirm('이 공지를 삭제할까요?'))return; try{ await delNotice(id); showToast('공지를 삭제했어요','warning'); rDashboard(); }catch(e){ showToast('삭제 실패: '+e.message,'error'); } }
 // 🏫 학교별 내신 시험 일정
 let SCHOOLEXAMS_CACHE=[];
-async function loadSchoolExams(){ const s=await db.collection('schoolExams').get(); SCHOOLEXAMS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.mathDate||'').localeCompare(b.mathDate||'')); }
+async function loadSchoolExams(){ const s=await db.collection('schoolExams').get(); SCHOOLEXAMS_CACHE=s.docs.map(d=>{ const x={id:d.id,...d.data()}; if(x.school) x.school=normSchool(x.school); return x; }).sort((a,b)=>(a.mathDate||'').localeCompare(b.mathDate||'')); }
 function getSchoolExams(){ return SCHOOLEXAMS_CACHE; }
 async function addSchoolExam(d){ await db.collection('schoolExams').add({...d, ts:Date.now()}); await loadSchoolExams(); }
 async function updateSchoolExam(id,d){ await db.collection('schoolExams').doc(id).update(d); await loadSchoolExams(); }
@@ -654,7 +656,7 @@ function schoolExamCardHtml(){
   </div>`;
 }
 async function doSaveSchoolExam(){
-  const school=document.getElementById('se-school').value.trim();
+  const school=normSchool(document.getElementById('se-school').value);
   const title=document.getElementById('se-title').value.trim();
   const m1d=document.getElementById('se-m1-date').value, m2d=document.getElementById('se-m2-date').value;
   if(!school||!title){ showToast('학교·시험명을 입력해주세요','error'); return; }
@@ -1205,7 +1207,7 @@ async function doSaveEdit(){
   const parentPhone=document.getElementById('es-parent').value.trim();
   const classIds=[...document.querySelectorAll('.es-class-chk:checked')].map(el=>el.value);
   const classNames=classIds.map(id=>CLASSES.find(c=>c.id===id)?.name).filter(Boolean);
-  const school=document.getElementById('es-school').value.trim();
+  const school=normSchool(document.getElementById('es-school').value);
   if(!name||!phone){showToast('이름과 핸드폰 번호를 입력해주세요','error');return;}
   const last4=phone.replace(/[^0-9]/g,'').slice(-4);
   const status=(document.getElementById('es-status').value||'재원');
@@ -1303,7 +1305,7 @@ async function doAddSt(){
   const parentPhone=document.getElementById('ns-parent').value.trim();
   const classIds=[...document.querySelectorAll('.ns-class-chk:checked')].map(el=>el.value);
   const classNames=classIds.map(id=>CLASSES.find(c=>c.id===id)?.name).filter(Boolean);
-  const school=document.getElementById('ns-school').value.trim();
+  const school=normSchool(document.getElementById('ns-school').value);
   if(!name||!phone){showToast('이름과 핸드폰 번호를 입력해주세요','error');return;}
   const last4=phone.replace(/[^0-9]/g,'').slice(-4);
   if(last4.length<4){showToast('핸드폰 번호를 정확히 입력해주세요','error');return;}
@@ -2985,7 +2987,7 @@ function makeupRoster(m){
   const active=STUDENTS_CACHE.filter(isActiveStudent);
   const nm=(m.className||'').trim();
   if(nm){ const byName=active.filter(s=>s.name===nm); if(byName.length) return byName; }   // 개인 이름이면 그 학생
-  if(m.school){ const r=active.filter(s=>(s.school||'')===m.school); if(r.length) return r; }  // 직보=학교 전체
+  if(m.school){ const ms=normSchool(m.school); const r=active.filter(s=>(s.school||'')===ms); if(r.length) return r; }  // 직보=학교 전체
   if(nm){
     const cls=CLASSES.find(c=>c.name===nm);                                                  // 반 이름이면 그 반
     if(cls) return active.filter(s=>((s.classIds)||(s.classId?[s.classId]:[])).includes(cls.id));

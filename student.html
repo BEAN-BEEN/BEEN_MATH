@@ -617,20 +617,20 @@ async function loadStudentData(){
     const q = await pQ; S_QUESTIONS = q.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
     const rep = await pRep; S_REPORT = rep.exists ? rep.data() : null;
     const meDoc = await pMe;
-    S_SCHOOL = meDoc.exists ? (meDoc.data().school||'') : '';
+    S_SCHOOL = meDoc.exists ? normSchool(meDoc.data().school||'') : '';
     S_ENROLL = meDoc.exists ? (meDoc.data().enrollDate||'') : '';   // 등록일: 이전 숙제는 안 부과
     // 학교 내신 시험: 전체를 한 번만 받아서 (캘린더 전체) + 내 학교 필터 (중복 쿼리 제거)
     try{
       const allSe = await pAllSe;
-      ALL_SCHOOL_EXAMS = allSe.docs.map(d=>({id:d.id,...d.data()}));
+      ALL_SCHOOL_EXAMS = allSe.docs.map(d=>{ const x={id:d.id,...d.data()}; if(x.school) x.school=normSchool(x.school); return x; });
       if(S_SCHOOL){
         const today=new Date().toISOString().slice(0,10);
         const mathOf=e=>(Array.isArray(e.mathDates)&&e.mathDates.length)?e.mathDates.filter(m=>m&&m.date):(e.mathDate?[{label:'수학',date:e.mathDate}]:[]);
         const events=[], mySe=[];
-        allSe.docs.forEach(d=>{ const e=d.data(); if(e.school!==S_SCHOOL) return; mySe.push({id:d.id,...e});
+        allSe.docs.forEach(d=>{ const e=d.data(); const esch=normSchool(e.school); if(esch!==S_SCHOOL) return; mySe.push({id:d.id,...e,school:esch});
           const ms=mathOf(e);
-          ms.forEach(m=>{ if(m.date>=today) events.push({title:e.title,school:e.school,grade:e.grade,startDate:e.startDate,endDate:e.endDate,label:m.label||'수학',date:m.date}); });
-          if(!ms.length && e.startDate && e.startDate>=today) events.push({title:e.title,school:e.school,grade:e.grade,startDate:e.startDate,endDate:e.endDate,label:'시험기간',date:e.startDate,period:true});
+          ms.forEach(m=>{ if(m.date>=today) events.push({title:e.title,school:esch,grade:e.grade,startDate:e.startDate,endDate:e.endDate,label:m.label||'수학',date:m.date}); });
+          if(!ms.length && e.startDate && e.startDate>=today) events.push({title:e.title,school:esch,grade:e.grade,startDate:e.startDate,endDate:e.endDate,label:'시험기간',date:e.startDate,period:true});
         });
         events.sort((a,b)=>(a.date||'').localeCompare(b.date||''));
         S_MATHEVENTS = events; S_SCHOOLEXAM = events[0] || null; S_SCHOOL_EXAMS = mySe;
@@ -641,7 +641,7 @@ async function loadStudentData(){
       const mku = await pMakeups;
       const myNames = [STUDENT.name, ...(S_CLASSES.map(c=>c.name))];
       const mine=m=>!m.className || (m.school && m.school===S_SCHOOL) || myNames.some(n=>n && (m.className.includes(n) || n.includes(m.className)));
-      ALL_MAKEUPS = mku.docs.map(d=>({id:d.id,...d.data(), _mine:false})).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+      ALL_MAKEUPS = mku.docs.map(d=>{ const x={id:d.id,...d.data(), _mine:false}; if(x.school) x.school=normSchool(x.school); return x; }).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
       ALL_MAKEUPS.forEach(m=>m._mine=mine(m));
       S_MAKEUPS = ALL_MAKEUPS.filter(m=>m._mine);
     }catch(e){ S_MAKEUPS=[]; ALL_MAKEUPS=[]; }
@@ -797,6 +797,8 @@ function getReport(){
 }
 
 // 사진 압축 → Blob (용량 ~10배 절약)
+// 🏫 학교명 통일: "ㅇㅇ고등학교" → "ㅇㅇ고" (선생님 포털과 동일 규칙 — 내신/직보 매칭이 어긋나지 않게)
+function normSchool(v){ return (v||'').trim().replace(/고등학교$/,'고'); }
 function compressToBlob(file, maxDim=1280, quality=0.7){
   return new Promise((resolve,reject)=>{
     const img=new Image(), url=URL.createObjectURL(file);
