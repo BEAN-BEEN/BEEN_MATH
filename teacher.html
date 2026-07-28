@@ -2357,15 +2357,25 @@ function studentGradeDash(stId){
   if(!stId) return '<div style="color:var(--text-muted);padding:10px;font-size:13px">학생을 선택하면 시험 점수 추이와 자주 약했던 능력이 한눈에 나와요. (시험이 쌓일수록 정확해져요)</div>';
   const st=getStudents().find(s=>s.id===stId);
   const subs=getExamSubs().filter(s=>s.studentId===stId && s.score!=null);
-  if(!subs.length) return `<div style="color:var(--text-muted);padding:10px;font-size:13px">${st?.name||''} 학생의 채점된 시험이 아직 없어요. 점수를 입력하면 여기 분석이 쌓여요.</div>`;
   const rows=subs.map(s=>{ const e=getExams().find(x=>x.id===s.examId); const max=s.maxScore||(e&&e.maxScore)||100;
     return {title:s.examTitle||(e&&e.title)||'시험', date:(e&&e.date)||'', score:s.score, max, pct:Math.round(s.score/max*100), weak:s.weakAbilities||[], comment:s.comment||''}; })
     .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
-  const avg=Math.round(rows.reduce((a,r)=>a+r.pct,0)/rows.length);
+  // 📝 모의고사 추이 (점수 + 등급) — 선생님도 학생별로 봄
+  const mocks=getMockSubs().filter(s=>s.studentId===stId && s.score!=null).map(s=>{ const m=getMockExams().find(x=>x.id===s.mockId)||{}; const max=s.maxScore||m.maxScore||100;
+    return {title:s.mockTitle||m.title||'모의', date:m.date||'', score:s.score, max, pct:Math.round(s.score/max*100), grade:(s.grade||'').trim()}; })
+    .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  if(!rows.length && !mocks.length) return `<div style="color:var(--text-muted);padding:10px;font-size:13px">${st?.name||''} 학생의 채점된 시험·모의고사가 아직 없어요. 점수를 입력하면 여기 분석이 쌓여요.</div>`;
+  const barColor=p=>p>=80?'var(--green)':(p>=60?'var(--primary)':(p>=40?'var(--yellow)':'var(--red)'));
+  const avg=rows.length?Math.round(rows.reduce((a,r)=>a+r.pct,0)/rows.length):0;
   const freq={}; rows.forEach(r=>(r.weak||[]).forEach(w=>{ if(w) freq[w]=(freq[w]||0)+1; }));
   const weak=Object.entries(freq).sort((a,b)=>b[1]-a[1]);
   const maxFreq=weak.length?weak[0][1]:1;
-  const barColor=p=>p>=80?'var(--green)':(p>=60?'var(--primary)':(p>=40?'var(--yellow)':'var(--red)'));
+  const mockHtml = mocks.length?`<div style="font-size:13px;font-weight:700;margin:16px 0 6px">📝 모의고사 추이 <span style="font-size:11px;color:var(--text-muted);font-weight:400">(점수 · 등급)</span></div>
+    ${mocks.map(m=>`<div style="margin-bottom:7px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px"><span style="color:var(--text-sub)">${m.title} <span style="color:var(--text-muted)">${m.date?('· '+m.date.slice(5)):''}</span></span><span style="font-weight:700;color:${barColor(m.pct)}">${m.score}/${m.max}${m.grade?` · <span style="color:var(--primary)">${m.grade}</span>`:''}</span></div>
+      <div style="height:7px;background:var(--bg);border-radius:4px;overflow:hidden"><div style="height:100%;width:${m.pct}%;background:${barColor(m.pct)};border-radius:4px"></div></div>
+    </div>`).join('')}`:'';
+  if(!rows.length) return mockHtml;   // 내부 시험은 없고 모의고사만 있는 학생
   return `
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
       <div class="rp-stat" style="flex:1;min-width:90px"><div class="rp-val">${avg}<span style="font-size:13px">%</span></div><div class="rp-lbl">평균 득점률</div></div>
@@ -2377,6 +2387,7 @@ function studentGradeDash(stId){
       <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px"><span style="color:var(--text-sub)">${r.title} <span style="color:var(--text-muted)">${r.date?('· '+r.date.slice(5)):''}</span></span><span style="font-weight:700;color:${barColor(r.pct)}">${r.score}/${r.max} (${r.pct}%)</span></div>
       <div style="height:7px;background:var(--bg);border-radius:4px;overflow:hidden"><div style="height:100%;width:${r.pct}%;background:${barColor(r.pct)};border-radius:4px"></div></div>
     </div>`).join('')}
+    ${mockHtml}
     ${weak.length?`<div style="font-size:13px;font-weight:700;margin:14px 0 6px">🎯 자주 부족했던 능력</div>
     ${weak.map(([ab,cnt])=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
       <span style="font-size:12px;min-width:64px">${ab}</span>
