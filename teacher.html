@@ -352,7 +352,25 @@ function getStudentsByClass(cid, includeInactive){
   const inClass=STUDENTS_CACHE.filter(s=>Array.isArray(s.classIds)?s.classIds.includes(cid):s.classId===cid);
   return includeInactive ? inClass : inClass.filter(isActiveStudent);
 }
-function classNamesOf(s){ return Array.isArray(s.classNames)&&s.classNames.length ? s.classNames : (s.className?[s.className]:[]); }
+// 반 표기 = 실제 소속(classIds)에서 실시간으로 이름을 뽑음 → 반 이름 바뀌거나 이동해도 항상 일치.
+// (반이 삭제돼 못 찾을 때만 저장돼 있던 classNames로 대체)
+function classNamesOf(s){
+  const ids=Array.isArray(s.classIds)?s.classIds:(s.classId?[s.classId]:[]);
+  if(ids.length){ const live=ids.map(id=>{ const c=CLASSES.find(x=>x.id===id); return c?c.name:null; }).filter(Boolean); if(live.length) return live; }
+  return Array.isArray(s.classNames)&&s.classNames.length ? s.classNames : (s.className?[s.className]:[]);
+}
+// 반이동 이력(classHistory) 기준: 학생 s가 날짜 d에 반 cid 소속이었나 (이력 없으면 현재 소속)
+function studentInClassAt(s, cid, d){
+  const hist=Array.isArray(s.classHistory)?s.classHistory.filter(h=>h.classId===cid):[];
+  if(hist.length){ if(!d) return true; return hist.some(h=>(!h.from||d>=h.from)&&(!h.to||d<h.to)); }
+  const ids=s.classIds||(s.classId?[s.classId]:[]);
+  return ids.includes(cid);
+}
+// 숙제 a의 인원 명단 = 출제일에 그 반 소속이던 재원생 (반이동해 나간 학생도 지난 숙제엔 그대로 뜸)
+function hwStudents(a){
+  const d=(a&&(a.startDate||a.createdAt||a.dueDate))||'';
+  return STUDENTS_CACHE.filter(s=>isActiveStudent(s) && studentInClassAt(s, a&&a.classId, d));
+}
 
 // 학생 추가/삭제 → Firebase에 저장 (회원가입 없이 선생님이 직접 등록)
 async function addStudentFS(data){ await db.collection('students').add(data); await loadStudents(); }
@@ -1499,7 +1517,7 @@ function doDupAsgn(aid){
 // ✋ 반 미제출 전원 직접확인 (공책 검사) — 배치 처리
 async function doCheckAllOffline(aid){
   const a=getAssignments().find(x=>x.id===aid); if(!a) return;
-  const subs=getSubsByAssignment(aid), sts=getStudentsByClass(a.classId);
+  const subs=getSubsByAssignment(aid), sts=hwStudents(a);
   const missing=sts.filter(st=>!subs.find(s=>s.studentId===st.id));
   if(!missing.length){ showToast('이미 전원 확인됐어요','success'); return; }
   if(!confirm(`미제출 ${missing.length}명을 전원 '직접 확인'으로 처리할까요?\n(공책으로 다 검사했을 때 쓰세요)`)) return;
@@ -1513,7 +1531,7 @@ async function doCheckAllOffline(aid){
 // 🚨 이번 주 미제출 한눈에 (반·숙제별 미제출자 모아보기 + 독촉)
 function hwMissingBoardHtml(){
   const _t=new Date().toISOString().slice(0,10);
-  const items=getAssignments().filter(hwInWeek).map(a=>{ const subs=getSubsByAssignment(a.id), sts=getStudentsByClass(a.classId); return {a, missing:sts.filter(st=>!subs.find(s=>s.studentId===st.id))}; }).filter(x=>x.missing.length>0);
+  const items=getAssignments().filter(hwInWeek).map(a=>{ const subs=getSubsByAssignment(a.id), sts=hwStudents(a); return {a, missing:sts.filter(st=>!subs.find(s=>s.studentId===st.id))}; }).filter(x=>x.missing.length>0);
   items.sort((x,y)=>{ const ox=(x.a.dueDate&&x.a.dueDate<_t)?0:1, oy=(y.a.dueDate&&y.a.dueDate<_t)?0:1; return ox-oy; });
   const total=items.reduce((n,x)=>n+x.missing.length,0);
   if(!hwBoardOpen){
@@ -1603,7 +1621,7 @@ function rHomework(){
     </div>
     ${hwPeriodFilter(asgn).length===0?`<div class="card" style="text-align:center;padding:30px;color:var(--text-muted)">${allAsgn.length===0?'아직 만든 과제가 없어요. 위에서 첫 과제를 만들어보세요!':(asgn.length===0?'이 시즌 구간에 낸 숙제가 없어요. 다른 시즌이나 ‘전체 시즌’을 눌러보세요.':(hwPeriod==='week'?'이번 주에 낸 숙제가 없어요. ‘지난 숙제’ 또는 ‘전체’를 눌러보세요.':'해당하는 숙제가 없어요.'))}</div>`:''}
     ${(function(){let _o='',_lk=null;hwOrder(hwPeriodFilter(asgn)).forEach(function(a){const _k=hwGroupKey(a);if(_k!==_lk){_o+='<div class="sec-label">'+hwGroupHeader(_k)+'</div>';_lk=_k;}_o+=(function(a){
-      const subs=getSubsByAssignment(a.id),sts=getStudentsByClass(a.classId),isOpen=hwOpenId===a.id;
+      const subs=getSubsByAssignment(a.id),sts=hwStudents(a),isOpen=hwOpenId===a.id;
       const missing=Math.max(0, sts.length-subs.length);
       const overdue=a.dueDate && a.dueDate < _today;
       const retryPending=subs.filter(s=>s.needsRetry).length;
@@ -1982,7 +2000,7 @@ function rCheck(){
   let asgn=getAssignments();
   if(checkTodayOnly) asgn=asgn.filter(a=>{ const c=CLASSES.find(x=>x.id===a.classId); return c&&clsHasDay(c,todayKey)&&isClassActive(c); });
   const items=asgn.map(a=>{
-    const subs=getSubsByAssignment(a.id), sts=getStudentsByClass(a.classId);
+    const subs=getSubsByAssignment(a.id), sts=hwStudents(a);
     const missing=sts.filter(st=>!subs.find(s=>s.studentId===st.id));
     return { a, missing, isOap:!!((a.probStart&&a.probEnd)||a.probLabel) };
   }).filter(x=>x.missing.length>0);

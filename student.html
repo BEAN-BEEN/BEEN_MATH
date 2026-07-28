@@ -813,13 +813,19 @@ function compressToBlob(file, maxDim=1280, quality=0.7){
 }
 // 사진 → 압축 → Firebase Storage 업로드 후 다운로드 URL 반환
 async function uploadPhotos(files, folder){
-  const urls=[];
-  for(const f of files){
-    let blob; try{ blob=await compressToBlob(f); }catch(e){ blob=f; }
-    const ref=firebase.storage().ref(folder+'/'+Date.now()+'_'+Math.random().toString(36).slice(2,7)+'.jpg');
-    await ref.put(blob);
-    urls.push(await ref.getDownloadURL());
+  const arr=Array.from(files); const urls=[]; let failN=0;
+  for(let i=0;i<arr.length;i++){
+    const f=arr[i];
+    try{
+      let blob; try{ blob=await compressToBlob(f); }catch(e){ blob=f; }
+      const ref=firebase.storage().ref(folder+'/'+Date.now()+'_'+i+'_'+Math.random().toString(36).slice(2,7)+'.jpg');
+      await ref.put(blob);
+      urls.push(await ref.getDownloadURL());
+    }catch(e){ failN++; console.error('[사진 업로드 실패]', (f&&f.name)||'', (e&&e.message)||e); }
   }
+  // 한 장이 실패해도 나머지는 살림. 전부 실패했을 때만 오류로 처리(호출부에서 잡음).
+  if(arr.length && !urls.length) throw new Error('사진 업로드 실패 — 인터넷 연결을 확인하고 다시 시도해주세요');
+  urls.failedCount=failN;   // 부분 실패 장수(배열 속성) — 숙제 제출 안내용
   return urls;
 }
 // 숙제 제출 → 사진 Storage 업로드 + Firebase 저장 (선생님이 바로 확인)
@@ -831,6 +837,7 @@ async function submitHomework(assignmentId) {
   if(arr.length){ newUrls=await uploadPhotos(arr, 'submissions/'+assignmentId); }
   // 기존 사진에 '추가'(덮어쓰기 아님) — 일부만 올렸다가 나중에 더 올려도 앞 사진 안 사라짐
   const photos=[...((exist&&Array.isArray(exist.photos))?exist.photos:[]), ...newUrls];
+  const failN=newUrls.failedCount||0;   // 이번에 업로드 실패한 장수
   const today=new Date().toISOString().slice(0,10);
   const late = !!(a && a.dueDate && today > a.dueDate);
   const base={ photos, offline:false, late, submittedAt:new Date().toLocaleString('ko-KR'), checked:false, needsRetry:false, retryDone:false, rejected:false, rejectReason:'' };
@@ -841,6 +848,7 @@ async function submitHomework(assignmentId) {
     S_SUBMISSIONS.push({ id:ref.id, ...payload });   // 저장 즉시 로컬 반영 → 새로고침이 느리거나 실패해도 '제출 완료' 표시됨
   }
   try{ await loadStudentData(); }catch(e){ console.warn('제출 후 새로고침 실패(무시):', e); }
+  return failN;
 }
 // ✋ 사진 없이 교실에서 직접 검사받기 요청
 async function submitHomeworkOffline(assignmentId) {
@@ -1721,11 +1729,15 @@ async function doSubmit(id) {
   if(!arr.length){ showToast('사진을 먼저 선택해주세요','warning'); return; }
   showToast('📤 제출 중이에요… 잠시만요','');
   try{
-    await submitHomework(id);
-    delete PENDING_PHOTOS[id];   // 업로드 끝났으니 임시 사진 비움
+    const failN=await submitHomework(id);
+    delete PENDING_PHOTOS[id];   // 성공분은 저장됐으니 임시 사진 비움
     renderHomework();        // 카드 먼저 '제출 완료'로 갱신
-    launchConfetti();
-    showSubmitDone();        // 또렷한 ✅ 제출 완료 확인
+    if(failN>0){
+      showToast(`사진 ${failN}장은 업로드가 안 됐어요 😢 방금 올라간 건 저장됐으니, 안 올라간 사진만 다시 골라 추가 제출해주세요`,'error');
+    }else{
+      launchConfetti();
+      showSubmitDone();        // 또렷한 ✅ 제출 완료 확인
+    }
   }catch(e){ showToast('제출 실패: '+e.message+' — 사진/인터넷 확인 후 다시 시도해주세요','error'); }
 }
 // ✏️ '다시 올리기' 영역 펼치기/접기
