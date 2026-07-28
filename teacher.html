@@ -679,11 +679,12 @@ async function doDelSchoolExam(id,label){ if(!confirm(`"${label}" 내신 일정�
 let naesinTab='school';   // school / jikbo / exam
 let naesinExamTitle='';   // 학교 정보에서 보고 있는 시험(내신) 이름
 function rNaesin(){
-  const tabs=[['school','🏫 학교 정보'],['jikbo','🔶 직보 일정'],['exam','📅 시험 정보']];
+  const tabs=[['school','🏫 학교 정보'],['jikbo','🔶 직보 일정'],['exam','📅 시험 정보'],['bogang','🙋 보강 체크']];
   const tb=document.getElementById('naesinTabs'); if(tb) tb.innerHTML=tabs.map(([k,l])=>`<button class="btn ${naesinTab===k?'btn-primary':'btn-outline'} btn-sm" onclick="naesinTab='${k}';rNaesin()">${l}</button>`).join('');
   const el=document.getElementById('naesinContent'); if(!el) return;
   el.innerHTML = naesinTab==='exam' ? schoolExamCardHtml()
     : naesinTab==='jikbo' ? makeupBlockHtml()
+    : naesinTab==='bogang' ? bogangCheckHtml()
     : schoolInfoHtml();
 }
 // 학생 반 이름에서 등급(T/S/A) 추출 — 여러 반이면 여러 등급
@@ -3068,6 +3069,78 @@ async function doAddMakeup(){
   catch(e){ showToast('추가 실패: '+e.message,'error'); }
 }
 async function doDelMakeup(id){ if(!confirm('이 보강을 삭제할까요?'))return; try{ await deleteMakeupFS(id); showToast('보강을 삭제했어요','warning'); rNaesin(); }catch(e){ showToast('삭제 실패: '+e.message,'error'); } }
+// ================================================================
+// 🙋 보강 체크 — 방학 보충 등 정기 보강. 전체 재원 중 그날 온 학생을 체크(attendees).
+//   · 직보(makeups)와 완전 분리된 bogang 컬렉션. 기본 슬롯 3개(화/수/금) + 필요시 직접 추가.
+// ================================================================
+let BOGANG_CACHE=[];
+let bogangDate=new Date().toISOString().slice(0,10);   // 보고 있는 날짜
+const BOGANG_SLOTS=[   // 기본 정기 보강 슬롯 (wd: 0=일 … 6=토)
+  {wd:2, label:'화 3-5시'},
+  {wd:3, label:'수 4:30-7:30'},
+  {wd:5, label:'금 3-5시'},
+];
+async function loadBogang(){ try{ const s=await db.collection('bogang').get(); BOGANG_CACHE=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.date||'').localeCompare(a.date||'')); }catch(e){ BOGANG_CACHE=[]; } }
+function getBogang(){ return BOGANG_CACHE; }
+async function doAddBogang(date, label){
+  label=(label||'').trim(); if(!date||!label){ showToast('날짜와 보강 이름을 확인해주세요','warning'); return; }
+  if(getBogang().some(b=>b.date===date && b.label===label)){ showToast('이미 있는 보강이에요','warning'); return; }
+  try{ await db.collection('bogang').add({date, label, attendees:[], ts:Date.now()}); await loadBogang(); rNaesin(); }
+  catch(e){ showToast('추가 실패: '+e.message,'error'); }
+}
+async function doAddBogangCustom(){
+  const el=document.getElementById('bg-custom'); const label=el?el.value:'';
+  await doAddBogang(bogangDate, label); if(el) el.value='';
+}
+async function doDelBogang(id){
+  if(!confirm('이 보강을 삭제할까요? (참석 체크도 같이 지워져요)')) return;
+  try{ await db.collection('bogang').doc(id).delete(); await loadBogang(); rNaesin(); showToast('보강을 삭제했어요','warning'); }
+  catch(e){ showToast('삭제 실패: '+e.message,'error'); }
+}
+async function doToggleBogang(bid, sid){
+  const b=getBogang().find(x=>x.id===bid); if(!b) return;
+  const cur=Array.isArray(b.attendees)?b.attendees.slice():[];
+  const i=cur.indexOf(sid); if(i>=0) cur.splice(i,1); else cur.push(sid);
+  b.attendees=cur;   // 즉시 반영 (토글 반응 빠르게)
+  try{ await db.collection('bogang').doc(bid).update({attendees:cur}); rNaesin(); }
+  catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+function bogangCheckHtml(){
+  const wd=new Date(bogangDate+'T00:00:00').getDay();
+  const WD=['일','월','화','수','목','금','토'][wd];
+  const sessions=getBogang().filter(b=>b.date===bogangDate);
+  const active=getActiveStudents().slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const esc=s=>(s||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  const chip=(b,st)=>{ const on=(b.attendees||[]).includes(st.id);
+    return `<button class="btn btn-sm" style="${on?'background:var(--orange);color:#fff':'background:var(--bg);color:var(--text-sub)'};margin:2px" onclick="doToggleBogang('${b.id}','${st.id}')">${on?'✓ ':''}${st.name}${st.school?`<span style="font-size:10px;opacity:.85"> ${st.school}</span>`:''}</button>`; };
+  return `
+    <div class="card" style="padding:14px 16px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:15px;font-weight:800">🙋 보강 체크</span>
+        <input class="form-input" type="date" value="${bogangDate}" onchange="bogangDate=this.value;rNaesin()" style="width:170px">
+        <span class="badge b-gray">${WD}요일</span>
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:8px">방학 보충 등 보강 온 학생을 체크해요. 아래 <strong>기본 슬롯</strong>을 누르면 그날 보강이 생기고, 전체 재원 중 온 학생만 눌러 체크하면 돼요.</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:12px">
+        <span style="font-size:12px;color:var(--text-muted)">➕ 이 날짜에 보강 추가:</span>
+        ${BOGANG_SLOTS.map(s=>`<button class="btn btn-outline btn-sm ${s.wd===wd?'':''}" style="${s.wd===wd?'border-color:var(--orange);color:var(--orange)':''}" onclick="doAddBogang('${bogangDate}','${esc(s.label)}')">${s.label}${s.wd===wd?' ⭐':''}</button>`).join('')}
+        <input class="form-input" id="bg-custom" placeholder="직접 입력 (예: 토 2-4시)" style="width:150px;padding:5px 8px;font-size:13px" onkeydown="if(event.key==='Enter')doAddBogangCustom()">
+        <button class="btn btn-primary btn-sm" onclick="doAddBogangCustom()">추가</button>
+      </div>
+    </div>
+    ${sessions.length===0?`<div class="card" style="text-align:center;padding:26px;color:var(--text-muted)">${bogangDate} (${WD}) 에 만든 보강이 없어요.<br><span style="font-size:12px">위에서 슬롯을 눌러 보강을 만들면 여기서 참석 체크를 할 수 있어요.</span></div>`:''}
+    ${sessions.map(b=>`<div class="card" style="border-left:4px solid var(--orange);margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+        <div><strong style="font-size:15px">${b.label}</strong> <span class="badge b-orange">참석 ${(b.attendees||[]).length}명</span></div>
+        <button class="btn btn-red btn-sm" onclick="doDelBogang('${b.id}')">삭제</button>
+      </div>
+      ${active.length?`<div style="display:flex;flex-wrap:wrap;gap:2px">${active.map(st=>chip(b,st)).join('')}</div>`:'<div style="font-size:13px;color:var(--text-muted)">재원 학생이 없어요.</div>'}
+    </div>`).join('')}
+    ${getBogang().filter(b=>b.date!==bogangDate).length?`<div class="card" style="padding:12px 16px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:8px">🗂 지난 보강 <span style="font-size:11px;color:var(--text-muted);font-weight:400">(날짜 눌러서 보기)</span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">${[...new Set(getBogang().filter(b=>b.date!==bogangDate).map(b=>b.date))].slice(0,14).map(d=>`<button class="btn btn-outline btn-sm" onclick="bogangDate='${d}';rNaesin()">${d} <span style="opacity:.7">(${getBogang().filter(b=>b.date===d).length})</span></button>`).join('')}</div>
+    </div>`:''}`;
+}
 // 🪄 시험 전날 직보 자동 생성 — 수학시험 전날: 그날 학교시험 있으면 2시, 없으면 5시
 async function doAutoMakeups(){
   const today=new Date().toISOString().slice(0,10);
@@ -3431,7 +3504,8 @@ async function init(){
     loadMockSubs(),      // 모의고사 학생 제출
     loadMakeups(),       // 보강 일정
     loadAbsences(),      // 결석 기록
-    loadSeasons()        // 제출률 시즌(집계 기간)
+    loadSeasons(),       // 제출률 시즌(집계 기간)
+    loadBogang()         // 보강 체크(방학 보충 참석)
   ].map(p=>Promise.resolve(p).catch(e=>console.warn('일부 데이터 로드 실패(무시):',e))));
   rDashboard();
   pruneOldFirebase();            // 3개월 지난 사진·기록 자동 정리 (백그라운드)
