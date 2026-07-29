@@ -1928,7 +1928,7 @@ function rWrong(){
         ${topHot}
         ${g.subs.map(s=>{ const wn=(s.wrongNos||[]).map(String); const corr=s.corrections||{}, ok=s.oapOk||{}, redo=s.oapRedo||{}, off=s.oapOffline||{}; const okCnt=wn.filter(n=>ok[n]).length; const pend=wn.length-okCnt;
           return `<details ${wrongOpen[s.id]?'open':''} ontoggle="wrongOpen['${s.id}']=this.open" style="border-top:1px solid var(--border)">
-            <summary style="cursor:pointer;font-weight:700;padding:9px 4px">${s.studentName||'학생'} <span style="font-size:12px;color:var(--text-muted);font-weight:400">· 오답 ${wn.length}개 · 확인 ${okCnt}/${wn.length}</span> ${pend>0?`<span class="badge b-yellow" style="font-size:10px">남음 ${pend}</span>`:`<span class="badge b-green" style="font-size:10px">완료</span>`}</summary>
+            <summary style="cursor:pointer;font-weight:700;padding:9px 4px">${s.studentName||'학생'} <span style="font-size:12px;color:var(--text-muted);font-weight:400">· 오답 ${wn.length}개 · 확인 ${okCnt}/${wn.length}</span> ${pend>0?`<span class="badge b-yellow" style="font-size:10px">남음 ${pend}</span> <button class="btn btn-green btn-sm" style="padding:2px 9px;font-size:11px" onclick="event.stopPropagation();event.preventDefault();doConfirmAllWrong('${s.id}')">✅ 전체 맞음</button>`:`<span class="badge b-green" style="font-size:10px">완료</span>`}</summary>
             <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;padding:4px 0 8px">
               ${wn.map(n=>{ const st = ok[n]?'ok':(redo[n]?'redo':(corr[n]?'wait':(off[n]?'offline':'todo')));
                 const bg={ok:'var(--green-light)',redo:'#FEE2E2',wait:'#FEF9C3',offline:'#DBEAFE',todo:'var(--bg)'}[st];
@@ -1958,6 +1958,18 @@ async function doConfirmWrong(subId,label){
   const ok=Object.assign({},sub.oapOk); ok[label]=true; const redo=Object.assign({},sub.oapRedo); delete redo[label];
   const off=Object.assign({},sub.oapOffline); delete off[label];
   try{ await db.collection('submissions').doc(subId).update({oapOk:ok,oapRedo:redo,oapOffline:off}); await loadSubmissions(); rWrong(); }
+  catch(e){ showToast('처리 실패: '+e.message,'error'); }
+}
+// ✅ 학생 오답 일괄 '맞음' — 오답 많을 때 한 명씩 확인 안 하고 한 번에 (보충 검사 등)
+async function doConfirmAllWrong(subId){
+  const sub=SUBMISSIONS_CACHE.find(s=>s.id===subId); if(!sub) return;
+  const wn=(sub.wrongNos||[]).map(String);
+  const pend=wn.filter(n=>!(sub.oapOk||{})[n]);
+  if(!pend.length){ showToast('이미 다 맞음 처리됐어요','success'); return; }
+  if(!confirm(`${sub.studentName||'학생'} 남은 오답 ${pend.length}개를 전부 '맞음'으로 확인할까요?`)) return;
+  const ok=Object.assign({},sub.oapOk), redo=Object.assign({},sub.oapRedo);
+  wn.forEach(n=>{ ok[n]=true; delete redo[n]; });
+  try{ await db.collection('submissions').doc(subId).update({oapOk:ok, oapRedo:redo}); await loadSubmissions(); rWrong(); showToast(`${sub.studentName||'학생'} 오답 ${pend.length}개 전체 맞음 ✅`,'success'); }
   catch(e){ showToast('처리 실패: '+e.message,'error'); }
 }
 async function doRedoWrong(subId,label){
