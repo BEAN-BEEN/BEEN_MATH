@@ -2355,19 +2355,50 @@ let exEditId=null;
 // 🎯 학생별 약점 대시보드 — 채점된 시험을 모아 점수 추이 + 자주 약했던 능력 집계
 let gradeDashStId='';
 let mockTrendStId='';   // 📝 모의 시험 탭에서 추이 보고 있는 학생
-// 학생별 모의고사 추이(점수·등급)만 — 📝 모의 시험 탭에서 사용
+// 📈 점수·등급 꺾은선 (선생님용). series=[{name,color,pts:[{v, main, sub}|null]}] — main=점수, sub=등급
+function gradeLineChartT(xlabels, series, maxV){
+  const W=340,H=170,pad=34,n=xlabels.length; if(!n||!(maxV>0)) return '';
+  const xFor=i=> n===1? W/2 : pad + i*(W-2*pad)/(n-1);
+  const yFor=v=> H-pad - (Math.max(0,Math.min(maxV,v))/maxV)*(H-2*pad);
+  const grid=[0,.25,.5,.75,1].map(f=>{ const g=Math.round(maxV*f), y=yFor(g).toFixed(1);
+    return `<line x1="${pad}" y1="${y}" x2="${W-pad}" y2="${y}" stroke="#E2E8F0" stroke-width="1"/><text x="${pad-6}" y="${(+y+3).toFixed(1)}" font-size="9" fill="#94A3B8" text-anchor="end">${g}</text>`; }).join('');
+  const xlab=xlabels.map((l,i)=>`<text x="${xFor(i).toFixed(1)}" y="${H-8}" font-size="9" fill="#64748B" text-anchor="middle">${String(l||'').replace(/</g,'&lt;').slice(0,10)}</text>`).join('');
+  const lines=series.map(s=>{
+    const pts=[]; (s.pts||[]).forEach((p,i)=>{ if(p&&p.v!=null) pts.push(`${xFor(i).toFixed(1)},${yFor(p.v).toFixed(1)}`); });
+    const poly=pts.length>1?`<polyline points="${pts.join(' ')}" fill="none" stroke="${s.color}" stroke-width="2.5" stroke-linejoin="round"/>`:'';
+    const dots=(s.pts||[]).map((p,i)=>{ if(!p||p.v==null) return ''; const x=xFor(i).toFixed(1), y=yFor(p.v);
+      return `<circle cx="${x}" cy="${y.toFixed(1)}" r="3.5" fill="${s.color}"/>`
+        + `<text x="${x}" y="${(y-11).toFixed(1)}" font-size="10.5" font-weight="800" fill="${s.color}" text-anchor="middle">${p.main==null?'':String(p.main).replace(/</g,'&lt;')}</text>`
+        + (p.sub?`<text x="${x}" y="${(y-2).toFixed(1)}" font-size="8.5" fill="#64748B" text-anchor="middle">${String(p.sub).replace(/</g,'&lt;')}</text>`:'');
+    }).join('');
+    return poly+dots;
+  }).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;overflow:visible">${grid}${xlab}${lines}</svg>`;
+}
+// 학생별 성적 추이 (내신·모의 꺾은선, 점수·등급 포인트) — 📝 모의 시험 탭에서 사용
 function mockTrendHtml(stId){
-  if(!stId) return '<div style="color:var(--text-muted);padding:10px;font-size:13px">학생을 선택하면 모의고사 점수·등급 추이가 나와요.</div>';
+  if(!stId) return '<div style="color:var(--text-muted);padding:10px;font-size:13px">학생을 선택하면 내신·모의고사 점수·등급 추이가 꺾은선으로 나와요.</div>';
   const st=getStudents().find(s=>s.id===stId);
-  const mocks=getMockSubs().filter(s=>s.studentId===stId && s.score!=null).map(s=>{ const m=getMockExams().find(x=>x.id===s.mockId)||{}; const max=s.maxScore||m.maxScore||100;
-    return {title:s.mockTitle||m.title||'모의', date:m.date||'', score:s.score, max, pct:Math.round(s.score/max*100), grade:(s.grade||'').trim()}; })
+  const numFromScore=s=>{ const m=String(s==null?'':s).match(/-?\d+(\.\d+)?/); return m?parseFloat(m[0]):null; };
+  // 📝 모의고사 (시간순)
+  const mocks=getMockSubs().filter(s=>s.studentId===stId && s.score!=null).map(s=>{ const m=getMockExams().find(x=>x.id===s.mockId)||{};
+    return {title:s.mockTitle||m.title||'모의', date:m.date||'', score:s.score, grade:(s.grade||'').trim()}; })
     .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
-  if(!mocks.length) return `<div style="color:var(--text-muted);padding:10px;font-size:13px">${st?.name||''} 학생의 등록된 모의고사 점수가 아직 없어요. (학생 자가 등록 또는 위에서 선생님이 점수 입력)</div>`;
-  const barColor=p=>p>=80?'var(--green)':(p>=60?'var(--primary)':(p>=40?'var(--yellow)':'var(--red)'));
-  return mocks.map(m=>`<div style="margin-bottom:7px">
-    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px"><span style="color:var(--text-sub)">${m.title} <span style="color:var(--text-muted)">${m.date?('· '+m.date.slice(5)):''}</span></span><span style="font-weight:700;color:${barColor(m.pct)}">${m.score}/${m.max}${m.grade?` · <span style="color:var(--primary)">${m.grade}</span>`:''}</span></div>
-    <div style="height:7px;background:var(--bg);border-radius:4px;overflow:hidden"><div style="height:100%;width:${m.pct}%;background:${barColor(m.pct)};border-radius:4px"></div></div>
-  </div>`).join('');
+  const mockMax=Math.max(100, ...mocks.map(m=>+m.score||0));
+  const mockChart = mocks.length ? gradeLineChartT(
+    mocks.map(m=>(m.title||'').replace('모의고사','').trim()||m.date||'모의'),
+    [{name:'모의', color:'#5B6CF5', pts:mocks.map(m=>({v:+m.score, main:m.score, sub:m.grade||''}))}], mockMax) : '';
+  // 🏫 내신 (과목별 중간→기말)
+  const naesin=NAESIN_CACHE.filter(n=>n.studentId===stId);
+  const bySub={}; naesin.forEach(n=>{ (bySub[n.subject||'과목']=bySub[n.subject||'과목']||{})[n.term]=n; });
+  const cols=['#5B6CF5','#10B981','#F59E0B','#F43F5E','#8B5CF6','#16A6A6','#EC4899'];
+  const subjs=Object.keys(bySub);
+  const naesinSeries=subjs.map((sub,i)=>({ name:sub, color:cols[i%cols.length], pts:['중간','기말'].map(t=>{ const nn=bySub[sub][t]; const v=numFromScore(nn&&nn.score); return v==null?null:{v, main:nn.score, sub:nn.grade?`${nn.grade}등급`:''}; }) }));
+  const naesinChart = naesinSeries.some(s=>s.pts.some(p=>p)) ? gradeLineChartT(['중간','기말'], naesinSeries, 100)
+    + (subjs.length>1?`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:2px">${naesinSeries.map(s=>`<span style="font-size:11px;color:var(--text-muted)"><span style="display:inline-block;width:9px;height:9px;background:${s.color};border-radius:2px;margin-right:3px"></span>${(s.name||'').replace(/</g,'&lt;')}</span>`).join('')}</div>`:'') : '';
+  if(!mockChart && !naesinChart) return `<div style="color:var(--text-muted);padding:10px;font-size:13px">${st?.name||''} 학생의 등록된 내신·모의 점수가 아직 없어요. (학생 자가 등록 또는 선생님이 점수 입력)</div>`;
+  return `${mockChart?`<div style="font-size:13px;font-weight:800;margin:6px 0 2px">📝 모의고사 추이 <span style="font-size:11px;color:var(--text-muted);font-weight:400">(점수·등급)</span></div>${mockChart}`:''}
+    ${naesinChart?`<div style="font-size:13px;font-weight:800;margin:16px 0 2px">🏫 내신 추이 <span style="font-size:11px;color:var(--text-muted);font-weight:400">(과목별 중간→기말 · 점수·등급)</span></div>${naesinChart}`:''}`;
 }
 function studentGradeDash(stId){
   if(!stId) return '<div style="color:var(--text-muted);padding:10px;font-size:13px">학생을 선택하면 시험 점수 추이와 자주 약했던 능력이 한눈에 나와요. (시험이 쌓일수록 정확해져요)</div>';
@@ -2556,7 +2587,7 @@ function rGrades(){
     `:''}
     ${gradeTab==='mock'?`${mockExamCardHtml()}
     <div class="card" style="border-left:4px solid var(--primary)">
-      <div class="card-title">📈 학생별 모의고사 추이 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(점수 · 등급)</span></div>
+      <div class="card-title">📈 학생별 성적 추이 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(내신 · 모의 꺾은선 · 점수·등급)</span></div>
       <div class="form-group" style="max-width:360px">
         <label class="form-label">학생 선택</label>
         <select class="form-select" id="mt-student" onchange="mockTrendStId=this.value; document.getElementById('mockTrend').innerHTML=mockTrendHtml(mockTrendStId)">
