@@ -2354,6 +2354,21 @@ async function doSaveAtt(){
 let exEditId=null;
 // 🎯 학생별 약점 대시보드 — 채점된 시험을 모아 점수 추이 + 자주 약했던 능력 집계
 let gradeDashStId='';
+let mockTrendStId='';   // 📝 모의 시험 탭에서 추이 보고 있는 학생
+// 학생별 모의고사 추이(점수·등급)만 — 📝 모의 시험 탭에서 사용
+function mockTrendHtml(stId){
+  if(!stId) return '<div style="color:var(--text-muted);padding:10px;font-size:13px">학생을 선택하면 모의고사 점수·등급 추이가 나와요.</div>';
+  const st=getStudents().find(s=>s.id===stId);
+  const mocks=getMockSubs().filter(s=>s.studentId===stId && s.score!=null).map(s=>{ const m=getMockExams().find(x=>x.id===s.mockId)||{}; const max=s.maxScore||m.maxScore||100;
+    return {title:s.mockTitle||m.title||'모의', date:m.date||'', score:s.score, max, pct:Math.round(s.score/max*100), grade:(s.grade||'').trim()}; })
+    .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  if(!mocks.length) return `<div style="color:var(--text-muted);padding:10px;font-size:13px">${st?.name||''} 학생의 등록된 모의고사 점수가 아직 없어요. (학생 자가 등록 또는 위에서 선생님이 점수 입력)</div>`;
+  const barColor=p=>p>=80?'var(--green)':(p>=60?'var(--primary)':(p>=40?'var(--yellow)':'var(--red)'));
+  return mocks.map(m=>`<div style="margin-bottom:7px">
+    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px"><span style="color:var(--text-sub)">${m.title} <span style="color:var(--text-muted)">${m.date?('· '+m.date.slice(5)):''}</span></span><span style="font-weight:700;color:${barColor(m.pct)}">${m.score}/${m.max}${m.grade?` · <span style="color:var(--primary)">${m.grade}</span>`:''}</span></div>
+    <div style="height:7px;background:var(--bg);border-radius:4px;overflow:hidden"><div style="height:100%;width:${m.pct}%;background:${barColor(m.pct)};border-radius:4px"></div></div>
+  </div>`).join('');
+}
 function studentGradeDash(stId){
   if(!stId) return '<div style="color:var(--text-muted);padding:10px;font-size:13px">학생을 선택하면 시험 점수 추이와 자주 약했던 능력이 한눈에 나와요. (시험이 쌓일수록 정확해져요)</div>';
   const st=getStudents().find(s=>s.id===stId);
@@ -2539,7 +2554,18 @@ function rGrades(){
     </div>
     ${gradeView==='추이'?naesinTrendHtml():naesinPanelHtml()}
     `:''}
-    ${gradeTab==='mock'?mockExamCardHtml():''}
+    ${gradeTab==='mock'?`${mockExamCardHtml()}
+    <div class="card" style="border-left:4px solid var(--primary)">
+      <div class="card-title">📈 학생별 모의고사 추이 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(점수 · 등급)</span></div>
+      <div class="form-group" style="max-width:360px">
+        <label class="form-label">학생 선택</label>
+        <select class="form-select" id="mt-student" onchange="mockTrendStId=this.value; document.getElementById('mockTrend').innerHTML=mockTrendHtml(mockTrendStId)">
+          <option value="">학생을 선택하세요</option>
+          ${getStudents().slice().sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(s=>`<option value="${s.id}" ${mockTrendStId===s.id?'selected':''}>${s.name}${s.school?(' · '+s.school):''}</option>`).join('')}
+        </select>
+      </div>
+      <div id="mockTrend">${mockTrendHtml(mockTrendStId)}</div>
+    </div>`:''}
     ${gradeTab==='daily'?`
     <div class="card" style="border-left:4px solid var(--purple)">
       <div class="card-title">🎯 학생별 약점 대시보드 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(점수 추이 + 자주 약했던 능력)</span></div>
