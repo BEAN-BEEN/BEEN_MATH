@@ -1428,9 +1428,9 @@ async function doSaveWrong(aid){
   catch(e){ showToast('등록 실패: '+e.message,'error'); }
 }
 async function doAllCorrect(aid){
-  if(!confirm('정말 다 맞았어요? 🤨\n(오답 없음으로 등록돼요 — 선생님이 확인해요)')) return;
-  try{ await saveWrongNos(aid,[]); clearPendingWrong(aid); showDoubt(); showToast('정말 다 맞았다고?! 🤨 선생님이 확인할게요','warning'); renderHomework(); }
-  catch(e){ showToast('실패: '+e.message,'error'); }
+  // 🤨 학생이 스스로 '다 맞았어요'로 제출은 못 하게 — 장난 모션만 보여주고, 진짜 맞았는지는 선생님이 직접 확인
+  showDoubt();
+  showToast('오~ 진짜 다 맞았어?! 🤨 그건 선생님이 직접 확인할게요 (여기선 제출 안 돼요)','warning');
 }
 async function doUploadCorrection(subId, aid, no){
   no=String(no);
