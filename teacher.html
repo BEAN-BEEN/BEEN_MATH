@@ -2369,23 +2369,25 @@ let gradeDashStId='';
 let mockTrendStId='';   // 📝 모의 시험 탭에서 추이 보고 있는 학생
 // 📈 점수·등급 꺾은선 (선생님용). series=[{name,color,pts:[{v, main, sub}|null]}] — main=점수, sub=등급
 function gradeLineChartT(xlabels, series, maxV){
-  const W=340,H=170,pad=34,n=xlabels.length; if(!n||!(maxV>0)) return '';
-  const xFor=i=> n===1? W/2 : pad + i*(W-2*pad)/(n-1);
-  const yFor=v=> H-pad - (Math.max(0,Math.min(maxV,v))/maxV)*(H-2*pad);
+  const W=360,H=180,padL=42,padR=34,padT=30,padB=30,n=xlabels.length; if(!n||!(maxV>0)) return '';
+  const xFor=i=> n===1? W/2 : padL + i*(W-padL-padR)/(n-1);
+  const yFor=v=> (H-padB) - (Math.max(0,Math.min(maxV,v))/maxV)*(H-padT-padB);
   const grid=[0,.25,.5,.75,1].map(f=>{ const g=Math.round(maxV*f), y=yFor(g).toFixed(1);
-    return `<line x1="${pad}" y1="${y}" x2="${W-pad}" y2="${y}" stroke="#E2E8F0" stroke-width="1"/><text x="${pad-6}" y="${(+y+3).toFixed(1)}" font-size="9" fill="#94A3B8" text-anchor="end">${g}</text>`; }).join('');
-  const xlab=xlabels.map((l,i)=>`<text x="${xFor(i).toFixed(1)}" y="${H-8}" font-size="9" fill="#64748B" text-anchor="middle">${String(l||'').replace(/</g,'&lt;').slice(0,10)}</text>`).join('');
+    return `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="#E2E8F0" stroke-width="1"/><text x="${padL-6}" y="${(+y+3).toFixed(1)}" font-size="8" fill="#94A3B8" text-anchor="end">${g}</text>`; }).join('');
+  const xlab=xlabels.map((l,i)=>`<text x="${xFor(i).toFixed(1)}" y="${H-8}" font-size="8" fill="#64748B" text-anchor="middle">${String(l||'').replace(/</g,'&lt;').slice(0,12)}</text>`).join('');
   const lines=series.map(s=>{
     const pts=[]; (s.pts||[]).forEach((p,i)=>{ if(p&&p.v!=null) pts.push(`${xFor(i).toFixed(1)},${yFor(p.v).toFixed(1)}`); });
-    const poly=pts.length>1?`<polyline points="${pts.join(' ')}" fill="none" stroke="${s.color}" stroke-width="2.5" stroke-linejoin="round"/>`:'';
-    const dots=(s.pts||[]).map((p,i)=>{ if(!p||p.v==null) return ''; const x=xFor(i).toFixed(1), y=yFor(p.v);
-      return `<circle cx="${x}" cy="${y.toFixed(1)}" r="3.5" fill="${s.color}"/>`
-        + `<text x="${x}" y="${(y-11).toFixed(1)}" font-size="10.5" font-weight="800" fill="${s.color}" text-anchor="middle">${p.main==null?'':String(p.main).replace(/</g,'&lt;')}</text>`
-        + (p.sub?`<text x="${x}" y="${(y-2).toFixed(1)}" font-size="8.5" fill="#64748B" text-anchor="middle">${String(p.sub).replace(/</g,'&lt;')}</text>`:'');
+    const poly=pts.length>1?`<polyline points="${pts.join(' ')}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round"/>`:'';
+    const dots=(s.pts||[]).map((p,i)=>{ if(!p||p.v==null) return ''; const x=xFor(i), y=yFor(p.v);
+      const anc = n>1 && i===0 ? 'start' : (n>1 && i===n-1 ? 'end' : 'middle');
+      const tx = anc==='start'? x+5 : (anc==='end'? x-5 : x);
+      return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${s.color}"/>`
+        + `<text x="${tx.toFixed(1)}" y="${(y-9).toFixed(1)}" font-size="8.5" font-weight="800" fill="${s.color}" text-anchor="${anc}">${p.main==null?'':String(p.main).replace(/</g,'&lt;')}</text>`
+        + (p.sub?`<text x="${tx.toFixed(1)}" y="${(y-1).toFixed(1)}" font-size="7" fill="#64748B" text-anchor="${anc}">${String(p.sub).replace(/</g,'&lt;')}</text>`:'');
     }).join('');
     return poly+dots;
   }).join('');
-  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;overflow:visible">${grid}${xlab}${lines}</svg>`;
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:440px;height:auto;overflow:visible">${grid}${xlab}${lines}</svg>`;
 }
 // 학생별 성적 추이 (내신·모의 꺾은선, 점수·등급 포인트) — 📝 모의 시험 탭에서 사용
 function mockTrendHtml(stId){
