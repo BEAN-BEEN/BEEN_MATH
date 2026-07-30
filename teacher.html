@@ -3465,6 +3465,38 @@ function studentStats(st){
   const recent=myScores.length?myScores[0].score+'점':'-';
   return {hwRate,retryRate,attRate,recent};
 }
+// ✨ 리포트 코멘트 자동 초안 — 성적 추이 + 자주 틀린 능력 + 오답량 + 성실도로 문장 생성 (선생님이 다듬어 저장)
+function autoReportComment(stId){
+  const st=getStudents().find(s=>s.id===stId); if(!st) return '';
+  const nm=st.name||'학생', stat=studentStats(st), parts=[];
+  const numFromScore=s=>{ const m=String(s==null?'':s).match(/-?\d+(\.\d+)?/); return m?parseFloat(m[0]):null; };
+  // 📝 모의고사 추이
+  const mocks=getMockSubs().filter(s=>s.studentId===stId && s.score!=null).map(s=>{ const m=getMockExams().find(x=>x.id===s.mockId)||{}; return {date:m.date||'', score:+s.score, grade:(s.grade||'').trim()}; }).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  if(mocks.length>=2){ const f=mocks[0], l=mocks[mocks.length-1], d=l.score-f.score;
+    if(d>=3) parts.push(`모의고사 성적이 ${f.score}→${l.score}점으로 꾸준히 오르고 있어요 📈${l.grade?` (현재 ${l.grade})`:''}. 노력이 결과로 이어지고 있어요!`);
+    else if(d<=-3) parts.push(`최근 모의고사가 ${f.score}→${l.score}점으로 다소 주춤했어요. 부족한 부분을 함께 점검하며 다시 끌어올려볼게요.`);
+    else parts.push(`모의고사는 ${l.score}점 안팎으로 꾸준히 유지되고 있어요${l.grade?` (${l.grade})`:''}.`);
+  } else if(mocks.length===1){ parts.push(`모의고사 ${mocks[0].score}점${mocks[0].grade?`(${mocks[0].grade})`:''}을 기록했어요. 다음 시험과 비교해 추이를 지켜볼게요.`); }
+  // 🏫 내신 추이(과목별 중간→기말 상승)
+  const naesin=NAESIN_CACHE.filter(n=>n.studentId===stId), bySub={};
+  naesin.forEach(n=>{ (bySub[n.subject||'과목']=bySub[n.subject||'과목']||{})[n.term]=n; });
+  const naeUp=[]; Object.entries(bySub).forEach(([sub,t])=>{ const mv=numFromScore(t['중간']&&t['중간'].score), fv=numFromScore(t['기말']&&t['기말'].score); if(mv!=null&&fv!=null&&(fv-mv)>=3) naeUp.push(`${sub} ${mv}→${fv}점`); });
+  if(naeUp.length) parts.push(`내신도 ${naeUp.join(', ')}으로 올라, 학교 시험 대비가 잘 되고 있어요!`);
+  // 🎯 자주 틀린 능력(weakAbilities) — '이 부분이 부족'
+  const freq={}; getExamSubs().filter(s=>s.studentId===stId).forEach(s=>(s.weakAbilities||[]).forEach(w=>{ if(w) freq[w]=(freq[w]||0)+1; }));
+  const weak=Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,2).map(x=>x[0]);
+  if(weak.length) parts.push(`다만 ${weak.map(w=>`‘${w}’`).join(', ')} 쪽에서 자주 막혀서, 이 부분을 집중적으로 연습하면 한 단계 더 올라갈 수 있어요.`);
+  // ✏️ 오답량 — 실수/양치기 신호
+  const oapSubs=getSubmissions().filter(s=>s.studentId===stId && Array.isArray(s.wrongNos));
+  const totalWrong=oapSubs.reduce((n,s)=>n+s.wrongNos.length,0);
+  if(oapSubs.length && totalWrong/oapSubs.length>=8) parts.push(`오답이 한 번에 많이 나오는 편이라, 틀린 문제를 그날 바로 다시 푸는 습관을 함께 잡아가고 있어요.`);
+  // 🙂 성실도 마무리
+  const hw=parseInt(stat.hwRate)||0, att=parseInt(stat.attRate)||0, good=[];
+  if(hw>=80) good.push('숙제'); if(att>=90) good.push('출석');
+  if(good.length) parts.push(`${good.join('·')}도 성실하게 잘 해주고 있어요.`);
+  parts.push(`${nm} 앞으로도 꼼꼼히 확인하며 챙기겠습니다. 😊`);
+  return parts.join(' ');
+}
 function rReport(){
   const sts=getStudents(),reports=getReports(),sel=sts.find(s=>s.id===rpStId),existing=reports.find(r=>r.studentId===rpStId);
   const stat=studentStats(sel);
@@ -3488,10 +3520,14 @@ function rReport(){
           <div class="rp-stat"><div class="rp-val">${stat.attRate}</div><div class="rp-lbl">출석률</div></div>
           <div class="rp-stat"><div class="rp-val">${stat.recent}</div><div class="rp-lbl">최근 성적</div></div>
         </div>
-        <div class="form-group"><label class="form-label">혜빈쌤 코멘트 ✍️</label><textarea class="form-textarea" id="rp-comment" style="min-height:120px" placeholder="학생에게 남기는 종합 피드백...">${existing?.teacherComment||''}</textarea></div>
+        <div style="font-size:13px;font-weight:800;margin:4px 0 8px">📈 성적 추이 <span style="font-size:11px;color:var(--text-muted);font-weight:400">(리포트에 함께 저장돼 학생·학부모에게 보여요)</span></div>
+        ${mockTrendHtml(rpStId)}
+        <div class="form-group" style="margin-top:14px"><label class="form-label">혜빈쌤 코멘트 ✍️</label><textarea class="form-textarea" id="rp-comment" style="min-height:130px" placeholder="학생에게 남기는 종합 피드백...">${existing?.teacherComment||''}</textarea></div>
         <div class="btn-row">
+          <button class="btn btn-outline" onclick="var el=document.getElementById('rp-comment'); if(el.value.trim() && !confirm('현재 코멘트를 지우고 자동 초안으로 바꿀까요?')) return; el.value=autoReportComment(rpStId); el.focus()">✨ 자동 코멘트 초안</button>
           <button class="btn btn-primary" onclick="doSaveRp()">💾 리포트 완성하기</button>
         </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:6px">✨ 초안은 성적 추이·자주 틀린 능력·오답량·성실도로 자동 생성돼요. 꼭 읽어보고 다듬어서 저장하세요.</div>
         <div style="margin-top:10px;font-size:12px;color:var(--text-muted)">💡 리포트 완성 시 학생 포털 "학습 리포트" 탭에 반영됩니다.</div>
       </div>
       ${existing?`<div class="card" style="background:var(--green-light);border:1px solid var(--green)"><div class="card-title" style="color:var(--green)">✅ 저장된 리포트</div><p style="font-size:13px;color:#065F46;line-height:1.7">${existing.teacherComment}</p><div style="font-size:11px;color:var(--green);margin-top:8px">저장일: ${existing.savedAt}</div></div>`:''}`:''}`;

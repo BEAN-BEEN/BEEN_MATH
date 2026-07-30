@@ -1048,6 +1048,42 @@ function gradeLineChartSvg(xlabels, series, maxV){
   }).join('');
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;overflow:visible">${grid}${xlab}${lines}</svg>`;
 }
+// 📈 점수·등급 꺾은선 (선생님 포털과 동일) — 리포트 출력용. series=[{name,color,pts:[{v,main,sub}|null]}]
+function gradeLineChartT(xlabels, series, maxV){
+  const W=360,H=180,padL=42,padR=34,padT=30,padB=30,n=xlabels.length; if(!n||!(maxV>0)) return '';
+  const xFor=i=> n===1? W/2 : padL + i*(W-padL-padR)/(n-1);
+  const yFor=v=> (H-padB) - (Math.max(0,Math.min(maxV,v))/maxV)*(H-padT-padB);
+  const grid=[0,.25,.5,.75,1].map(f=>{ const g=Math.round(maxV*f), y=yFor(g).toFixed(1);
+    return `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="#E2E8F0" stroke-width="1"/><text x="${padL-6}" y="${(+y+3).toFixed(1)}" font-size="8" fill="#94A3B8" text-anchor="end">${g}</text>`; }).join('');
+  const xlab=xlabels.map((l,i)=>`<text x="${xFor(i).toFixed(1)}" y="${H-8}" font-size="8" fill="#64748B" text-anchor="middle">${String(l||'').replace(/</g,'&lt;').slice(0,12)}</text>`).join('');
+  const lines=series.map(s=>{
+    const pts=[]; (s.pts||[]).forEach((p,i)=>{ if(p&&p.v!=null) pts.push(`${xFor(i).toFixed(1)},${yFor(p.v).toFixed(1)}`); });
+    const poly=pts.length>1?`<polyline points="${pts.join(' ')}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round"/>`:'';
+    const dots=(s.pts||[]).map((p,i)=>{ if(!p||p.v==null) return ''; const x=xFor(i), y=yFor(p.v);
+      const anc = n>1 && i===0 ? 'start' : (n>1 && i===n-1 ? 'end' : 'middle');
+      const tx = anc==='start'? x+5 : (anc==='end'? x-5 : x);
+      return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${s.color}"/>`
+        + `<text x="${tx.toFixed(1)}" y="${(y-9).toFixed(1)}" font-size="8.5" font-weight="800" fill="${s.color}" text-anchor="${anc}">${p.main==null?'':String(p.main).replace(/</g,'&lt;')}</text>`
+        + (p.sub?`<text x="${tx.toFixed(1)}" y="${(y-1).toFixed(1)}" font-size="7" fill="#64748B" text-anchor="${anc}">${String(p.sub).replace(/</g,'&lt;')}</text>`:'');
+    }).join('');
+    return poly+dots;
+  }).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:340px;height:auto;overflow:visible;display:block">${grid}${xlab}${lines}</svg>`;
+}
+// 📈 학습 리포트 출력용 성적 추이 카드 (모의 + 내신, 점수·등급 포인트)
+function reportTrendCharts(){
+  const numFromScore=s=>{ const m=String(s==null?'':s).match(/-?\d+(\.\d+)?/); return m?parseFloat(m[0]):null; };
+  const mocks=(S_MOCKSUBS||[]).map(s=>{ const m=(S_MOCKEXAMS||[]).find(x=>x.id===s.mockId)||{}; return {title:m.title||'모의', date:m.date||'', score:s.score, grade:(s.grade||'').trim()}; }).filter(x=>x.score!=null).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const mockMax=Math.max(100, ...mocks.map(m=>+m.score||0));
+  const mockChart=mocks.length?gradeLineChartT(mocks.map(m=>(m.title||'').replace('모의고사','').trim()||m.date||'모의'),[{name:'모의',color:'#5B6CF5',pts:mocks.map(m=>({v:+m.score,main:m.score,sub:m.grade||''}))}],mockMax):'';
+  const bySub={}; (S_NAESIN||[]).forEach(n=>{ (bySub[n.subject||'과목']=bySub[n.subject||'과목']||{})[n.term]=n; });
+  const cols=['#5B6CF5','#10B981','#F59E0B','#F43F5E','#8B5CF6','#16A6A6','#EC4899'], subjs=Object.keys(bySub);
+  const naesinSeries=subjs.map((sub,i)=>({name:sub,color:cols[i%cols.length],pts:['중간','기말'].map(t=>{ const nn=bySub[sub][t]; const v=numFromScore(nn&&nn.score); return v==null?null:{v,main:nn.score,sub:nn.grade?`${nn.grade}등급`:''}; })}));
+  const naesinChart=naesinSeries.some(s=>s.pts.some(p=>p))?gradeLineChartT(['중간','기말'],naesinSeries,100)+(subjs.length>1?`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:2px">${naesinSeries.map(s=>`<span style="font-size:11px;color:var(--text-muted)"><span style="display:inline-block;width:9px;height:9px;background:${s.color};border-radius:2px;margin-right:3px"></span>${(s.name||'').replace(/</g,'&lt;')}</span>`).join('')}</div>`:''):'';
+  if(!mockChart && !naesinChart) return '';
+  const card=(title,sub,chart)=>`<div style="border:1px solid var(--border);border-radius:12px;padding:11px 13px;background:var(--bg)"><div style="font-size:12px;font-weight:800;color:var(--text-sub);margin-bottom:6px">${title} <span style="font-weight:400;color:var(--text-muted);font-size:10.5px">${sub}</span></div>${chart}</div>`;
+  return `<div class="card"><div class="card-title">📈 성적 추이</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,360px));gap:12px;justify-content:start">${mockChart?card('📝 모의고사','점수·등급',mockChart):''}${naesinChart?card('🏫 내신','과목별 중간→기말',naesinChart):''}</div></div>`;
+}
 // 🏆 대시보드 성적 카드 (내신 + 모의고사 · 꺾은선 추이) — 기본 접힘(보고 싶은 학생만 펼침)
 function homeGradesHtml(){
   const mocks=(S_MOCKSUBS||[]).map(s=>{ const m=(S_MOCKEXAMS||[]).find(x=>x.id===s.mockId)||{}; return {title:m.title||'모의고사', date:m.date||'', score:s.score, max:s.maxScore||m.maxScore||100, grade:s.grade||''}; }).filter(x=>x.score!=null).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
@@ -2069,6 +2105,7 @@ function renderReport() {
       <div class="rp-stat"><div class="rval">${r.attendanceRate}<span class="runit">%</span></div><div class="rlabel">출석률</div></div>
       <div class="rp-stat"><div class="rval">${r.avgScore}<span class="runit">점</span></div><div class="rlabel">평균 점수</div></div>
     </div>
+    ${reportTrendCharts()}
     <div class="card">
       <div class="card-title">📝 숙제 리포트</div>
       <div style="display:flex;gap:20px;flex-wrap:wrap">
