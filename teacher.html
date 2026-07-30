@@ -3557,7 +3557,7 @@ function rCurriculum(){
         <thead><tr>
           <th style="background:var(--bg);position:sticky;left:0;z-index:2">주차</th>
           <th style="background:var(--bg)">날짜</th>
-          ${classes.map(c=>`<th style="white-space:nowrap;min-width:150px;text-align:left;padding:6px 8px">${(c.name||'').replace(/</g,'&lt;')}${c.subject?`<div style="font-size:10px;color:var(--text-muted);font-weight:400">${(c.subject||'').replace(/</g,'&lt;')}</div>`:''}</th>`).join('')}
+          ${classes.map(c=>`<th style="white-space:nowrap;min-width:150px;text-align:left;padding:6px 8px">${(c.name||'').replace(/</g,'&lt;')} <span style="font-size:9px;color:var(--text-muted);font-weight:400">${classIsHomeroom(c)?'담임':'부담임'}</span>${c.subject?`<div style="font-size:10px;color:var(--text-muted);font-weight:400">${(c.subject||'').replace(/</g,'&lt;')}</div>`:''}<div style="font-size:10px;color:var(--primary);font-weight:600">${clsDayLabel(c)||'요일 미정'}${c.slot?' '+c.slot:''}${(c.startTime&&c.endTime)?` ${c.startTime}~${c.endTime}`:''}</div></th>`).join('')}
         </tr></thead>
         <tbody>${body}</tbody>
       </table></div>
