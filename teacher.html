@@ -3469,10 +3469,21 @@ function addDays(dateStr,k){ const n=new Date(dateStr+'T00:00:00'); n.setDate(n.
 function mdLabel(d){ const p=(d||'').split('-'); return p.length===3?`${+p[1]}/${+p[2]}`:d; }
 function curPlan(classId, weekStart){ return CURRICULUM_CACHE.find(c=>c.classId===classId && c.weekStart===weekStart); }
 function progOf(classId, date){ return PROGLOG_CACHE.find(p=>p.classId===classId && p.date===date); }
-async function doSaveCurr(){
-  if(!currClassId){ showToast('반을 먼저 선택해주세요','warning'); return; }
-  const content=(document.getElementById('curr-plan')||{}).value||''; const cls=CLASSES.find(c=>c.id===currClassId);
-  try{ await db.collection('curriculum').doc(currClassId+'_'+currWeek).set({classId:currClassId, className:cls?.name||'', weekStart:currWeek, content:content.trim(), ts:Date.now()},{merge:true}); await loadCurriculum(); showToast('주차 계획 저장 ✓','success'); rCurriculum(); }
+let CURR_TERM={startDate:'', weeks:13};   // 진도표 학기: 시작일(월요일)·주 수
+async function loadCurrTerm(){ try{ const d=await db.collection('settings').doc('curriculumTerm').get(); if(d.exists){ const x=d.data(); CURR_TERM={startDate:x.startDate||'', weeks:x.weeks||13}; } }catch(e){} }
+async function doSaveCurrTerm(){
+  const sd=document.getElementById('term-start').value;
+  const wk=Math.max(1,Math.min(40,parseInt(document.getElementById('term-weeks').value)||13));
+  CURR_TERM={startDate:mondayOf(sd||''), weeks:wk};
+  try{ await db.collection('settings').doc('curriculumTerm').set(CURR_TERM,{merge:true}); showToast('학기 설정 저장 ✓','success'); rCurriculum(); }
+  catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+// 그리드 셀 입력 → 자동 저장 (재렌더 없이 캐시만 갱신 → 입력 포커스 유지)
+async function doSaveCurrCell(classId, weekStart, val){
+  const cls=CLASSES.find(c=>c.id===classId), content=(val||'').trim(), id=classId+'_'+weekStart;
+  const ex=CURRICULUM_CACHE.find(c=>c.classId===classId&&c.weekStart===weekStart);
+  if(ex) ex.content=content; else CURRICULUM_CACHE.push({id,classId,weekStart,content});
+  try{ await db.collection('curriculum').doc(id).set({classId, className:cls?.name||'', weekStart, content, ts:Date.now()},{merge:true}); }
   catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
 async function doSaveProg(date){
@@ -3486,42 +3497,40 @@ async function doSaveProg(date){
   }catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
 function rCurriculum(){
-  if(!currWeek) currWeek=mondayOf('');
-  if((!currClassId || !CLASSES.find(c=>c.id===currClassId)) && CLASSES.length) currClassId=CLASSES[0].id;
   if(!CLASSES.length){ document.getElementById('curriculumContent').innerHTML='<div class="card" style="text-align:center;padding:30px;color:var(--text-muted)">먼저 반을 만들어주세요 (관리 → 반별 관리)</div>'; return; }
-  const weekEnd=addDays(currWeek,6), cls=CLASSES.find(c=>c.id===currClassId), plan=curPlan(currClassId,currWeek);
-  const esc=s=>(s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;');
-  const WD=['월','화','수','목','금','토','일'], today=new Date().toISOString().slice(0,10);
-  const M={mon:0,tue:1,wed:2,thu:3,fri:4,sat:5,sun:6};
-  const classDayIdx = cls?clsDays(cls).map(d=>M[d]).filter(x=>x!=null):[];
+  if(!CURR_TERM.startDate) CURR_TERM.startDate=mondayOf('');
+  const start=mondayOf(CURR_TERM.startDate), weeks=CURR_TERM.weeks||13, thisMon=mondayOf('');
+  const esc=s=>(s||'').replace(/"/g,'&quot;');
+  const classes=CLASSES.slice().sort((a,b)=>((a.subject||'')+'').localeCompare((b.subject||'')+'') || (a.order||0)-(b.order||0) || ((a.name||'')>(b.name||'')?1:-1));
+  let body='';
+  for(let i=0;i<weeks;i++){ const ws=addDays(start,i*7), we=addDays(ws,6), cur=ws===thisMon;
+    body+=`<tr>
+      <td style="text-align:center;font-weight:800;position:sticky;left:0;background:${cur?'#E7EAFE':'var(--bg)'};z-index:1">${i+1}${cur?'<div style="font-size:9px;color:var(--primary)">이번주</div>':''}</td>
+      <td style="white-space:nowrap;font-size:11px;color:var(--text-muted);background:${cur?'#E7EAFE':'var(--bg)'}">${mdLabel(ws)}~${mdLabel(we)}</td>
+      ${classes.map(c=>{ const p=curPlan(c.id,ws); return `<td style="padding:1px;${cur?'background:#F3F5FF':''}"><input value="${esc(p?.content||'')}" onchange="doSaveCurrCell('${c.id}','${ws}',this.value)" placeholder="-" style="width:100%;min-width:150px;border:1px solid transparent;border-radius:6px;padding:6px 7px;font-size:12px;background:transparent" onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='transparent'"></td>`; }).join('')}
+    </tr>`;
+  }
   document.getElementById('curriculumContent').innerHTML=`
     <div class="card" style="padding:12px 16px;margin-bottom:12px">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <select class="form-select" style="max-width:220px" onchange="currClassId=this.value;rCurriculum()">${CLASSES.map(c=>`<option value="${c.id}" ${c.id===currClassId?'selected':''}>${c.name}</option>`).join('')}</select>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-          <button class="btn btn-outline btn-sm" onclick="currWeek=addDays(currWeek,-7);rCurriculum()">← 지난주</button>
-          <strong style="font-size:14px">${mdLabel(currWeek)} ~ ${mdLabel(weekEnd)}</strong>
-          <button class="btn btn-outline btn-sm" onclick="currWeek=addDays(currWeek,7);rCurriculum()">다음주 →</button>
-          <button class="btn btn-outline btn-sm" onclick="currWeek=mondayOf('');rCurriculum()">이번주</button>
-        </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:14px;font-weight:800">🗓 학기 설정</span>
+        <label style="font-size:12px;color:var(--text-muted)">시작일(월)</label>
+        <input class="form-input" type="date" id="term-start" value="${start}" style="width:150px">
+        <label style="font-size:12px;color:var(--text-muted)">주 수</label>
+        <input class="form-input" type="number" id="term-weeks" value="${weeks}" min="1" max="40" style="width:76px">
+        <button class="btn btn-primary btn-sm" onclick="doSaveCurrTerm()">적용</button>
+        <span style="font-size:11px;color:var(--text-muted)">칸에 바로 입력하면 자동 저장돼요 · 학생도 자기 반 진도표를 봐요</span>
       </div>
     </div>
-    <div class="card" style="border-left:4px solid var(--primary)">
-      <div class="card-title">🗓 이번 주 계획 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(${cls?.name||''} · ${mdLabel(currWeek)}~${mdLabel(weekEnd)})</span></div>
-      <textarea class="form-textarea" id="curr-plan" style="min-height:80px" placeholder="이번 주 나갈 진도 계획 (예: 삼각함수 그래프 1~3단원 / 쎈 p.120~150)">${esc(plan?.content||'')}</textarea>
-      <button class="btn btn-primary" style="margin-top:8px" onclick="doSaveCurr()">💾 계획 저장</button>
-    </div>
-    <div class="card">
-      <div class="card-title">📝 진도 기록 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(그날 실제 나간 진도 + 짧은 코멘트)</span></div>
-      ${[0,1,2,3,4,5,6].map(i=>{ const d=addDays(currWeek,i), isCD=classDayIdx.includes(i), p=progOf(currClassId,d);
-        return `<div style="border-top:1px solid var(--border);padding:10px 2px;${isCD?'':'opacity:.55'}">
-          <div style="font-size:13px;font-weight:700;margin-bottom:5px">${WD[i]} ${mdLabel(d)} ${isCD?'<span class="badge b-primary" style="font-size:10px">수업일</span>':''} ${d===today?'<span class="badge b-green" style="font-size:10px">오늘</span>':''} ${p?'<span class="badge b-green" style="font-size:10px">✓기록</span>':''}</div>
-          <input class="form-input" id="prog-content-${d}" placeholder="나간 진도" value="${esc(p?.content||'')}" style="margin-bottom:5px">
-          <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <input class="form-input" id="prog-comment-${d}" placeholder="수업 코멘트 (선택)" value="${esc(p?.comment||'')}" style="flex:1;min-width:160px">
-            <button class="btn btn-outline btn-sm" onclick="doSaveProg('${d}')">저장</button>
-          </div>
-        </div>`; }).join('')}
+    <div class="card" style="padding:8px">
+      <div class="table-wrap"><table style="font-size:12px;border-collapse:collapse">
+        <thead><tr>
+          <th style="background:var(--bg);position:sticky;left:0;z-index:2">주차</th>
+          <th style="background:var(--bg)">날짜</th>
+          ${classes.map(c=>`<th style="white-space:nowrap;min-width:150px;text-align:left;padding:6px 8px">${(c.name||'').replace(/</g,'&lt;')}${c.subject?`<div style="font-size:10px;color:var(--text-muted);font-weight:400">${(c.subject||'').replace(/</g,'&lt;')}</div>`:''}</th>`).join('')}
+        </tr></thead>
+        <tbody>${body}</tbody>
+      </table></div>
     </div>`;
 }
 function studentStats(st){
@@ -3694,7 +3703,8 @@ async function init(){
     loadSeasons(),       // 제출률 시즌(집계 기간)
     loadBogang(),        // 보강 체크(방학 보충 참석)
     loadCurriculum(),    // 진도표 주차 계획
-    loadProgLog()        // 진도 기록(일자별)
+    loadProgLog(),       // 진도 기록(일자별)
+    loadCurrTerm()       // 진도표 학기(시작일·주수)
   ].map(p=>Promise.resolve(p).catch(e=>console.warn('일부 데이터 로드 실패(무시):',e))));
   rDashboard();
   pruneOldFirebase();            // 3개월 지난 사진·기록 자동 정리 (백그라운드)

@@ -383,6 +383,14 @@
       <div class="content-area" id="gradesContent"></div>
     </div>
 
+    <div class="section" id="sec-curriculum">
+      <div class="page-header">
+        <div class="page-title">진도표</div>
+        <div class="page-subtitle">우리 반 주차별 진도 계획</div>
+      </div>
+      <div class="content-area" id="curriculumContent"></div>
+    </div>
+
     <!-- 학습 리포트 -->
     <div class="section" id="sec-report">
       <div class="page-header">
@@ -928,6 +936,7 @@ const NAV_ITEMS = [
   { id:'review',       label:'복습' },
   { id:'attendance',   label:'출석' },
   { id:'grades',       label:'성적' },
+  { id:'curriculum',   label:'진도표' },
   { id:'report',       label:'학습 리포트' },
   { id:'questions',    label:'질문실' },
   { id:'videos',       label:'수업 영상' },
@@ -937,7 +946,7 @@ const NAV_ITEMS = [
   { id:'teacher',      label:'혜빈쌤' }
 ];
 const PAGE_TITLES = {
-  home:'홈', homework:'숙제', wrong:'오답', review:'복습', attendance:'출석', grades:'성적', report:'학습 리포트',
+  home:'홈', homework:'숙제', wrong:'오답', review:'복습', attendance:'출석', grades:'성적', curriculum:'진도표', report:'학습 리포트',
   questions:'질문실', videos:'수업 영상', materials:'자료실', schedule:'시간표',
   consultation:'상담 신청', teacher:'혜빈쌤'
 };
@@ -963,7 +972,7 @@ function navigate(sec) {
   window.scrollTo(0,0);
 }
 function renderSection(s) {
-  const map = { home:renderHome, homework:renderHomework, wrong:renderWrong, review:renderReview, attendance:renderAttendance, grades:renderGrades, report:renderReport, questions:renderQuestions, videos:renderVideos, materials:renderMaterials, schedule:renderSchedule, consultation:renderConsultation, teacher:renderTeacher };
+  const map = { home:renderHome, homework:renderHomework, wrong:renderWrong, review:renderReview, attendance:renderAttendance, grades:renderGrades, curriculum:renderCurriculum, report:renderReport, questions:renderQuestions, videos:renderVideos, materials:renderMaterials, schedule:renderSchedule, consultation:renderConsultation, teacher:renderTeacher };
   map[s]?.();
 }
 
@@ -2096,6 +2105,37 @@ async function mockReopen(mockId){
 // ================================================================
 // REPORT
 // ================================================================
+// 📚 진도표 (우리 반 주차별 계획, 읽기전용) — 처음 열 때 lazy load
+let S_CURRICULUM=null, S_CURR_TERM=null;
+async function loadCurrForStudent(){
+  try{
+    const [c,t]=await Promise.all([db.collection('curriculum').get(), db.collection('settings').doc('curriculumTerm').get()]);
+    const ids=myClassIds();
+    S_CURRICULUM=c.docs.map(d=>({id:d.id,...d.data()})).filter(x=>ids.includes(x.classId));
+    S_CURR_TERM=t.exists?t.data():{startDate:'',weeks:13};
+  }catch(e){ S_CURRICULUM=[]; S_CURR_TERM={startDate:'',weeks:13}; }
+}
+function renderCurriculum(){
+  const el=document.getElementById('curriculumContent'); if(!el) return;
+  if(S_CURRICULUM===null){ el.innerHTML='<div class="card" style="padding:20px;color:var(--text-muted)">진도표 불러오는 중…</div>'; loadCurrForStudent().then(renderCurriculum); return; }
+  const term=S_CURR_TERM||{startDate:'',weeks:13};
+  const p2=x=>String(x).padStart(2,'0');
+  const monOf=ds=>{ const n=ds?new Date(ds+'T00:00:00'):new Date(); const dow=(n.getDay()+6)%7; n.setDate(n.getDate()-dow); return `${n.getFullYear()}-${p2(n.getMonth()+1)}-${p2(n.getDate())}`; };
+  const addD=(ds,k)=>{ const n=new Date(ds+'T00:00:00'); n.setDate(n.getDate()+k); return `${n.getFullYear()}-${p2(n.getMonth()+1)}-${p2(n.getDate())}`; };
+  const md=d=>{ const p=(d||'').split('-'); return p.length===3?`${+p[1]}/${+p[2]}`:d; };
+  const start=monOf(term.startDate||''), weeks=term.weeks||13, thisMon=monOf('');
+  const myCls=(S_CLASSES||[]);
+  if(!myCls.length){ el.innerHTML='<div class="card" style="text-align:center;padding:30px;color:var(--text-muted)">배정된 반이 없어요.</div>'; return; }
+  el.innerHTML=myCls.map(c=>{
+    let rows='';
+    for(let i=0;i<weeks;i++){ const ws=addD(start,i*7), we=addD(ws,6), cur=ws===thisMon;
+      const plan=(S_CURRICULUM||[]).find(x=>x.classId===c.id && x.weekStart===ws);
+      rows+=`<tr ${cur?'style="background:var(--primary-light)"':''}><td style="text-align:center;font-weight:800">${i+1}${cur?'<div style="font-size:9px;color:var(--primary)">이번주</div>':''}</td><td style="white-space:nowrap;font-size:11px;color:var(--text-muted)">${md(ws)}~${md(we)}</td><td style="font-size:13px">${((plan&&plan.content)?plan.content:'-').replace(/</g,'&lt;')}</td></tr>`;
+    }
+    return `<div class="card"><div class="card-title">📚 ${(c.name||'').replace(/</g,'&lt;')} 진도표${c.subject?` <span style="font-size:12px;color:var(--text-muted);font-weight:400">${(c.subject||'').replace(/</g,'&lt;')}</span>`:''}</div>
+      <div class="table-wrap"><table style="width:100%;font-size:13px"><thead><tr><th style="width:48px">주차</th><th style="width:96px">날짜</th><th style="text-align:left">진도</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  }).join('');
+}
 function renderReport() {
   const r = getReport();
   document.getElementById('reportContent').innerHTML = `
