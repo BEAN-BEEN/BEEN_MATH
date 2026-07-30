@@ -2387,7 +2387,7 @@ function gradeLineChartT(xlabels, series, maxV){
     }).join('');
     return poly+dots;
   }).join('');
-  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:440px;height:auto;overflow:visible">${grid}${xlab}${lines}</svg>`;
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:340px;height:auto;overflow:visible;display:block">${grid}${xlab}${lines}</svg>`;
 }
 // 학생별 성적 추이 (내신·모의 꺾은선, 점수·등급 포인트) — 📝 모의 시험 탭에서 사용
 function mockTrendHtml(stId){
@@ -2411,8 +2411,14 @@ function mockTrendHtml(stId){
   const naesinChart = naesinSeries.some(s=>s.pts.some(p=>p)) ? gradeLineChartT(['중간','기말'], naesinSeries, 100)
     + (subjs.length>1?`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:2px">${naesinSeries.map(s=>`<span style="font-size:11px;color:var(--text-muted)"><span style="display:inline-block;width:9px;height:9px;background:${s.color};border-radius:2px;margin-right:3px"></span>${(s.name||'').replace(/</g,'&lt;')}</span>`).join('')}</div>`:'') : '';
   if(!mockChart && !naesinChart) return `<div style="color:var(--text-muted);padding:10px;font-size:13px">${st?.name||''} 학생의 등록된 내신·모의 점수가 아직 없어요. (학생 자가 등록 또는 선생님이 점수 입력)</div>`;
-  return `${mockChart?`<div style="font-size:13px;font-weight:800;margin:6px 0 2px">📝 모의고사 추이 <span style="font-size:11px;color:var(--text-muted);font-weight:400">(점수·등급)</span></div>${mockChart}`:''}
-    ${naesinChart?`<div style="font-size:13px;font-weight:800;margin:16px 0 2px">🏫 내신 추이 <span style="font-size:11px;color:var(--text-muted);font-weight:400">(과목별 중간→기말 · 점수·등급)</span></div>${naesinChart}`:''}`;
+  const chartCard=(title, sub, chart)=>`<div style="border:1px solid var(--border);border-radius:12px;padding:11px 13px;background:var(--bg)">
+    <div style="font-size:12px;font-weight:800;color:var(--text-sub);margin-bottom:6px">${title} <span style="font-weight:400;color:var(--text-muted);font-size:10.5px">${sub}</span></div>
+    ${chart}
+  </div>`;
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,360px));gap:12px;justify-content:start;margin-top:6px">
+    ${mockChart?chartCard('📝 모의고사','점수·등급', mockChart):''}
+    ${naesinChart?chartCard('🏫 내신','과목별 중간→기말', naesinChart):''}
+  </div>`;
 }
 function studentGradeDash(stId){
   if(!stId) return '<div style="color:var(--text-muted);padding:10px;font-size:13px">학생을 선택하면 시험 점수 추이와 자주 약했던 능력이 한눈에 나와요. (시험이 쌓일수록 정확해져요)</div>';
