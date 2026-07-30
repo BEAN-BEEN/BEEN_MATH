@@ -277,6 +277,10 @@
       <div class="page-header"><div class="page-title">리포트</div></div>
       <div class="content-area" id="reportContent"></div>
     </div>
+    <div class="section" id="sec-curriculum">
+      <div class="page-header"><div class="page-title">진도표</div></div>
+      <div class="content-area" id="curriculumContent"></div>
+    </div>
   </main>
 </div>
 
@@ -925,6 +929,7 @@ const NAV=[
   {id:'homework',label:'숙제 관리'},
   {id:'grades',label:'성적 관리'},
   {id:'naesin',label:'내신 관리'},
+  {id:'curriculum',label:'진도표'},
   {id:'videos',label:'수업 영상 관리'},{id:'materials',label:'자료실 관리'},
   {id:'schedule',label:'시간표 관리'},
   {id:'report',label:'리포트'}
@@ -946,7 +951,7 @@ function navigate(s){
   curSec=s;renderSection(s);window.scrollTo(0,0);closeMob();
 }
 function renderSection(s){
-  ({dashboard:rDashboard,manage:rManage,homework:rHomeworkHub,grades:rGrades,naesin:rNaesin,videos:rVideos,materials:rMaterials,schedule:rSchedule,report:rReport,
+  ({dashboard:rDashboard,manage:rManage,homework:rHomeworkHub,grades:rGrades,naesin:rNaesin,curriculum:rCurriculum,videos:rVideos,materials:rMaterials,schedule:rSchedule,report:rReport,
     students:rStudents,classroom:rClassroom,attendance:rAttendance,questions:rQuestions,consultation:rConsultation})[s]?.();
 }
 // 관리 하위탭: 학생 관리 / 반별 관리
@@ -2168,6 +2173,7 @@ function todayRosterHtml(todayCls, subs){
     }).join('');
     return `<div class="card" style="margin-top:14px;border-left:4px solid ${absN?'var(--red)':'var(--border)'}">
       <div class="card-title">🗓️ ${c.name}${absN?` <span class="badge b-red">결석 ${absN}</span>`:''} <span style="font-size:12px;color:var(--text-muted);font-weight:400">${a?`· 📘 ${a.title}`:'· 오늘 마감 숙제 없음'}</span></div>
+      ${(function(){ const pl=curPlan(c.id, mondayOf('')); return pl&&pl.content?`<div style="font-size:12px;color:var(--primary);font-weight:700;margin-bottom:6px;background:var(--primary-light);border-radius:8px;padding:6px 10px">📚 오늘 나갈 진도: ${(pl.content||'').replace(/</g,'&lt;')}</div>`:''; })()}
       <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">빠진 학생만 <strong>결석</strong>을 누르면 돼요 → 그 학생이 숙제 올렸는지(📷/미제출) 옆에 같이 보여요. 출석률은 결석한 만큼만 내려가요.</div>
       ${sts.length?rows:'<div style="color:var(--text-muted);padding:8px">배정된 학생이 없어요</div>'}
     </div>`;
@@ -3450,6 +3456,74 @@ function subMap(subs){ const m={}; subs.forEach(s=>{ if(s.assignmentId) m[s.assi
 // 제출률 집계 시작일(hwStart): 새 교재 시작 시 리셋 — 이 날짜(출제일 기준) 이후 숙제만 제출률에 반영
 function classHwStart(classId){ const c=CLASSES.find(x=>x.id===classId); return (c&&c.hwStart)||''; }
 function asnInHwWindow(a){ const st=classHwStart(a.classId); if(!st) return true; const d=a.startDate||a.createdAt||a.dueDate||''; return !d || d>=st; }
+// ================================================================
+// 📚 진도표 (반별 주차 계획 + 진도 기록) — 1단계
+// ================================================================
+let CURRICULUM_CACHE=[], PROGLOG_CACHE=[];
+let currClassId='', currWeek='';   // 진도표에서 보고 있는 반 / 주(월요일 YYYY-MM-DD)
+async function loadCurriculum(){ try{ const s=await db.collection('curriculum').get(); CURRICULUM_CACHE=s.docs.map(d=>({id:d.id,...d.data()})); }catch(e){ CURRICULUM_CACHE=[]; } }
+async function loadProgLog(){ try{ const s=await db.collection('progressLog').get(); PROGLOG_CACHE=s.docs.map(d=>({id:d.id,...d.data()})); }catch(e){ PROGLOG_CACHE=[]; } }
+function cPad(x){ return String(x).padStart(2,'0'); }
+function mondayOf(dateStr){ const n=dateStr?new Date(dateStr+'T00:00:00'):new Date(); const dow=(n.getDay()+6)%7; n.setDate(n.getDate()-dow); return `${n.getFullYear()}-${cPad(n.getMonth()+1)}-${cPad(n.getDate())}`; }
+function addDays(dateStr,k){ const n=new Date(dateStr+'T00:00:00'); n.setDate(n.getDate()+k); return `${n.getFullYear()}-${cPad(n.getMonth()+1)}-${cPad(n.getDate())}`; }
+function mdLabel(d){ const p=(d||'').split('-'); return p.length===3?`${+p[1]}/${+p[2]}`:d; }
+function curPlan(classId, weekStart){ return CURRICULUM_CACHE.find(c=>c.classId===classId && c.weekStart===weekStart); }
+function progOf(classId, date){ return PROGLOG_CACHE.find(p=>p.classId===classId && p.date===date); }
+async function doSaveCurr(){
+  if(!currClassId){ showToast('반을 먼저 선택해주세요','warning'); return; }
+  const content=(document.getElementById('curr-plan')||{}).value||''; const cls=CLASSES.find(c=>c.id===currClassId);
+  try{ await db.collection('curriculum').doc(currClassId+'_'+currWeek).set({classId:currClassId, className:cls?.name||'', weekStart:currWeek, content:content.trim(), ts:Date.now()},{merge:true}); await loadCurriculum(); showToast('주차 계획 저장 ✓','success'); rCurriculum(); }
+  catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+async function doSaveProg(date){
+  if(!currClassId){ showToast('반을 먼저 선택해주세요','warning'); return; }
+  const content=(document.getElementById('prog-content-'+date)||{}).value||''; const comment=(document.getElementById('prog-comment-'+date)||{}).value||'';
+  const id=currClassId+'_'+date, cls=CLASSES.find(c=>c.id===currClassId);
+  try{
+    if(!content.trim() && !comment.trim()){ await db.collection('progressLog').doc(id).delete().catch(()=>{}); }
+    else { await db.collection('progressLog').doc(id).set({classId:currClassId, className:cls?.name||'', date, content:content.trim(), comment:comment.trim(), ts:Date.now()},{merge:true}); }
+    await loadProgLog(); showToast(mdLabel(date)+' 진도 저장 ✓','success'); rCurriculum();
+  }catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+function rCurriculum(){
+  if(!currWeek) currWeek=mondayOf('');
+  if((!currClassId || !CLASSES.find(c=>c.id===currClassId)) && CLASSES.length) currClassId=CLASSES[0].id;
+  if(!CLASSES.length){ document.getElementById('curriculumContent').innerHTML='<div class="card" style="text-align:center;padding:30px;color:var(--text-muted)">먼저 반을 만들어주세요 (관리 → 반별 관리)</div>'; return; }
+  const weekEnd=addDays(currWeek,6), cls=CLASSES.find(c=>c.id===currClassId), plan=curPlan(currClassId,currWeek);
+  const esc=s=>(s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  const WD=['월','화','수','목','금','토','일'], today=new Date().toISOString().slice(0,10);
+  const M={mon:0,tue:1,wed:2,thu:3,fri:4,sat:5,sun:6};
+  const classDayIdx = cls?clsDays(cls).map(d=>M[d]).filter(x=>x!=null):[];
+  document.getElementById('curriculumContent').innerHTML=`
+    <div class="card" style="padding:12px 16px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <select class="form-select" style="max-width:220px" onchange="currClassId=this.value;rCurriculum()">${CLASSES.map(c=>`<option value="${c.id}" ${c.id===currClassId?'selected':''}>${c.name}</option>`).join('')}</select>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-outline btn-sm" onclick="currWeek=addDays(currWeek,-7);rCurriculum()">← 지난주</button>
+          <strong style="font-size:14px">${mdLabel(currWeek)} ~ ${mdLabel(weekEnd)}</strong>
+          <button class="btn btn-outline btn-sm" onclick="currWeek=addDays(currWeek,7);rCurriculum()">다음주 →</button>
+          <button class="btn btn-outline btn-sm" onclick="currWeek=mondayOf('');rCurriculum()">이번주</button>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="border-left:4px solid var(--primary)">
+      <div class="card-title">🗓 이번 주 계획 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(${cls?.name||''} · ${mdLabel(currWeek)}~${mdLabel(weekEnd)})</span></div>
+      <textarea class="form-textarea" id="curr-plan" style="min-height:80px" placeholder="이번 주 나갈 진도 계획 (예: 삼각함수 그래프 1~3단원 / 쎈 p.120~150)">${esc(plan?.content||'')}</textarea>
+      <button class="btn btn-primary" style="margin-top:8px" onclick="doSaveCurr()">💾 계획 저장</button>
+    </div>
+    <div class="card">
+      <div class="card-title">📝 진도 기록 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(그날 실제 나간 진도 + 짧은 코멘트)</span></div>
+      ${[0,1,2,3,4,5,6].map(i=>{ const d=addDays(currWeek,i), isCD=classDayIdx.includes(i), p=progOf(currClassId,d);
+        return `<div style="border-top:1px solid var(--border);padding:10px 2px;${isCD?'':'opacity:.55'}">
+          <div style="font-size:13px;font-weight:700;margin-bottom:5px">${WD[i]} ${mdLabel(d)} ${isCD?'<span class="badge b-primary" style="font-size:10px">수업일</span>':''} ${d===today?'<span class="badge b-green" style="font-size:10px">오늘</span>':''} ${p?'<span class="badge b-green" style="font-size:10px">✓기록</span>':''}</div>
+          <input class="form-input" id="prog-content-${d}" placeholder="나간 진도" value="${esc(p?.content||'')}" style="margin-bottom:5px">
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <input class="form-input" id="prog-comment-${d}" placeholder="수업 코멘트 (선택)" value="${esc(p?.comment||'')}" style="flex:1;min-width:160px">
+            <button class="btn btn-outline btn-sm" onclick="doSaveProg('${d}')">저장</button>
+          </div>
+        </div>`; }).join('')}
+    </div>`;
+}
 function studentStats(st){
   if(!st) return {hwRate:'-',retryRate:'-',attRate:'-',recent:'-'};
   const myClassIds=st.classIds||(st.classId?[st.classId]:[]);
@@ -3618,7 +3692,9 @@ async function init(){
     loadMakeups(),       // 보강 일정
     loadAbsences(),      // 결석 기록
     loadSeasons(),       // 제출률 시즌(집계 기간)
-    loadBogang()         // 보강 체크(방학 보충 참석)
+    loadBogang(),        // 보강 체크(방학 보충 참석)
+    loadCurriculum(),    // 진도표 주차 계획
+    loadProgLog()        // 진도 기록(일자별)
   ].map(p=>Promise.resolve(p).catch(e=>console.warn('일부 데이터 로드 실패(무시):',e))));
   rDashboard();
   pruneOldFirebase();            // 3개월 지난 사진·기록 자동 정리 (백그라운드)
