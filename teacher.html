@@ -3486,6 +3486,34 @@ async function doSaveCurrCell(classId, weekStart, val){
   try{ await db.collection('curriculum').doc(id).set({classId, className:cls?.name||'', weekStart, content, ts:Date.now()},{merge:true}); }
   catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
+// 진도표 열(반) 선택 — 누른 반만 표에 보임. localStorage에 저장.
+let currShowCols=null, currRoleEdit=false;
+function getCurrCols(){
+  if(!currShowCols){ try{ const s=JSON.parse(localStorage.getItem('bm_currCols')||'null'); currShowCols=Array.isArray(s)?s:null; }catch(e){ currShowCols=null; } }
+  if(!currShowCols || !currShowCols.length) currShowCols=CLASSES.map(c=>c.id);   // 처음엔 전체
+  return currShowCols;
+}
+function setCurrCols(ids){ currShowCols=ids; try{ localStorage.setItem('bm_currCols', JSON.stringify(ids)); }catch(e){} rCurriculum(); }
+function toggleCurrCol(id){ const cur=getCurrCols().slice(); const i=cur.indexOf(id); if(i>=0) cur.splice(i,1); else cur.push(id); setCurrCols(cur); }
+function currRoleSet(role){ let ids; if(role==='homeroom') ids=CLASSES.filter(c=>c.homeroom===true).map(c=>c.id); else if(role==='assistant') ids=CLASSES.filter(c=>c.homeroom===false).map(c=>c.id); else ids=CLASSES.map(c=>c.id);
+  if(!ids.length){ showToast(role==='homeroom'?'담임반으로 지정된 반이 없어요 (⚙️에서 지정)':'부담임반으로 지정된 반이 없어요 (⚙️에서 지정)','warning'); return; } setCurrCols(ids); }
+async function doSetHomeroom(classId, val){ try{ await updateClassFS(classId,{homeroom:(c=>c&&c.homeroom===val?null:val)(CLASSES.find(x=>x.id===classId))}); rCurriculum(); }catch(e){ showToast('저장 실패: '+e.message,'error'); } }
+function curriculumFilterBar(allClasses, showIds){
+  const chip=c=>{ const on=showIds.includes(c.id); const role=c.homeroom===true?' <span style="font-size:9px;opacity:.85">담임</span>':(c.homeroom===false?' <span style="font-size:9px;opacity:.7">부담임</span>':''); return `<button class="btn btn-sm" style="${on?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="toggleCurrCol('${c.id}')">${on?'✓ ':''}${(c.name||'').replace(/</g,'&lt;')}${role}</button>`; };
+  const panel = currRoleEdit?`<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px"><div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">각 반을 담임/부담임으로 지정하면 위 '담임반/부담임반' 버튼으로 빠르게 골라요. (다시 누르면 해제)</div><div style="display:flex;flex-wrap:wrap;gap:8px">${allClasses.map(c=>`<div style="display:flex;align-items:center;gap:4px;border:1px solid var(--border);border-radius:8px;padding:4px 8px"><span style="font-size:12px;font-weight:600">${(c.name||'').replace(/</g,'&lt;')}</span><button class="btn btn-sm" style="padding:2px 7px;${c.homeroom===true?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="doSetHomeroom('${c.id}',true)">담임</button><button class="btn btn-sm" style="padding:2px 7px;${c.homeroom===false?'background:var(--orange);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="doSetHomeroom('${c.id}',false)">부담임</button></div>`).join('')}</div></div>`:'';
+  return `<div class="card" style="padding:10px 14px;margin-bottom:10px">
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+      <span style="font-size:12px;font-weight:700">반 보기</span>
+      <button class="btn btn-outline btn-sm" onclick="currRoleSet('homeroom')">담임반</button>
+      <button class="btn btn-outline btn-sm" onclick="currRoleSet('assistant')">부담임반</button>
+      <button class="btn btn-outline btn-sm" onclick="currRoleSet('all')">전체</button>
+      <span style="width:1px;height:16px;background:var(--border);margin:0 4px"></span>
+      <button class="btn btn-outline btn-sm" onclick="currRoleEdit=!currRoleEdit;rCurriculum()">${currRoleEdit?'닫기':'⚙️ 담임/부담임 지정'}</button>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${allClasses.map(chip).join('')}</div>
+    ${panel}
+  </div>`;
+}
 async function doSaveProg(date){
   if(!currClassId){ showToast('반을 먼저 선택해주세요','warning'); return; }
   const content=(document.getElementById('prog-content-'+date)||{}).value||''; const comment=(document.getElementById('prog-comment-'+date)||{}).value||'';
@@ -3501,7 +3529,9 @@ function rCurriculum(){
   if(!CURR_TERM.startDate) CURR_TERM.startDate=mondayOf('');
   const start=mondayOf(CURR_TERM.startDate), weeks=CURR_TERM.weeks||13, thisMon=mondayOf('');
   const esc=s=>(s||'').replace(/"/g,'&quot;');
-  const classes=CLASSES.slice().sort((a,b)=>((a.subject||'')+'').localeCompare((b.subject||'')+'') || (a.order||0)-(b.order||0) || ((a.name||'')>(b.name||'')?1:-1));
+  const allClasses=CLASSES.slice().sort((a,b)=>((a.subject||'')+'').localeCompare((b.subject||'')+'') || (a.order||0)-(b.order||0) || ((a.name||'')>(b.name||'')?1:-1));
+  const showIds=getCurrCols();
+  const classes=allClasses.filter(c=>showIds.includes(c.id));
   let body='';
   for(let i=0;i<weeks;i++){ const ws=addDays(start,i*7), we=addDays(ws,6), cur=ws===thisMon;
     body+=`<tr>
@@ -3522,7 +3552,8 @@ function rCurriculum(){
         <span style="font-size:11px;color:var(--text-muted)">칸에 바로 입력하면 자동 저장돼요 · 학생도 자기 반 진도표를 봐요</span>
       </div>
     </div>
-    <div class="card" style="padding:8px">
+    ${curriculumFilterBar(allClasses, showIds)}
+    ${classes.length?`<div class="card" style="padding:8px">
       <div class="table-wrap"><table style="font-size:12px;border-collapse:collapse">
         <thead><tr>
           <th style="background:var(--bg);position:sticky;left:0;z-index:2">주차</th>
@@ -3531,7 +3562,7 @@ function rCurriculum(){
         </tr></thead>
         <tbody>${body}</tbody>
       </table></div>
-    </div>`;
+    </div>`:`<div class="card" style="text-align:center;padding:26px;color:var(--text-muted)">표시할 반을 위에서 체크하세요 (담임반/부담임반/전체 또는 반 이름 클릭)</div>`}`;
 }
 function studentStats(st){
   if(!st) return {hwRate:'-',retryRate:'-',attRate:'-',recent:'-'};
