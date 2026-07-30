@@ -3528,7 +3528,8 @@ function rCurriculum(){
   if(!CURR_TERM.startDate) CURR_TERM.startDate=mondayOf('');
   const start=mondayOf(CURR_TERM.startDate), weeks=CURR_TERM.weeks||13, thisMon=mondayOf('');
   const esc=s=>(s||'').replace(/"/g,'&quot;');
-  const allClasses=CLASSES.slice().sort((a,b)=>((a.subject||'')+'').localeCompare((b.subject||'')+'') || (a.order||0)-(b.order||0) || ((a.name||'')>(b.name||'')?1:-1));
+  const WDIDX={mon:0,tue:1,wed:2,thu:3,fri:4,sat:5,sun:6}, wdOf=c=>{ const d=clsDays(c)[0]; return WDIDX[d]!=null?WDIDX[d]:9; };
+  const allClasses=CLASSES.slice().sort((a,b)=> wdOf(a)-wdOf(b) || (a.slot||'').localeCompare(b.slot||'') || (a.order||0)-(b.order||0) || ((a.name||'')>(b.name||'')?1:-1));   // 요일순(적기 편하게)
   const showIds=getCurrCols();
   const classes=allClasses.filter(c=>showIds.includes(c.id));
   let body='';
