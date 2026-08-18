@@ -1055,6 +1055,44 @@ async function doRegisterAnalyzedExam(){
 // ================================================================
 // DASHBOARD
 // ================================================================
+// 📊 이번 달 요약 — 담당 인원 / 신입 / 휴원 / 퇴원
+function monthSummaryHtml(){
+  const ym=new Date().toISOString().slice(0,7);
+  const all=getStudents();
+  const active=all.filter(isActiveStudent).length;
+  const newN=all.filter(s=>(s.enrollDate||'').slice(0,7)===ym).length;
+  const restN=all.filter(s=>studentStatus(s)==='휴원').length;
+  const outN=all.filter(s=>studentStatus(s)==='퇴원' && (s.statusDate||'').slice(0,7)===ym).length;
+  const cell=(label,val,color)=>`<div style="flex:1;min-width:62px;text-align:center;background:var(--bg);border-radius:10px;padding:8px 4px">
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:2px">${label}</div><div style="font-size:19px;font-weight:800;color:${color}">${val}<span style="font-size:11px;font-weight:600;color:var(--text-muted)">명</span></div></div>`;
+  return `<div class="card" style="margin:0">
+    <div class="card-title" style="font-size:15px">📊 이번 달 요약</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      ${cell('담당 인원',active,'var(--primary)')}${cell('신입생',newN,'var(--green)')}${cell('휴원생',restN,'var(--orange)')}${cell('퇴원생',outN,'var(--red)')}
+    </div></div>`;
+}
+// ✅ 내 체크리스트 — 선생님 개인 할 일 (settings/myTodos)
+let MYTODOS=[];
+async function loadMyTodos(){ try{ const d=await db.collection('settings').doc('myTodos').get(); MYTODOS=(d.exists&&Array.isArray(d.data().items))?d.data().items:[]; }catch(e){ MYTODOS=[]; } }
+async function saveMyTodos(){ try{ await db.collection('settings').doc('myTodos').set({items:MYTODOS, ts:Date.now()},{merge:true}); }catch(e){ showToast('저장 실패: '+e.message,'error'); } }
+async function doAddTodo(){ const el=document.getElementById('todo-new'); const t=(el?el.value:'').trim(); if(!t) return; MYTODOS.push({id:'t'+Date.now(), text:t, done:false}); if(el) el.value=''; await saveMyTodos(); rDashboard(); }
+async function doToggleTodo(id){ const t=MYTODOS.find(x=>x.id===id); if(t) t.done=!t.done; await saveMyTodos(); rDashboard(); }
+async function doDelTodo(id){ MYTODOS=MYTODOS.filter(x=>x.id!==id); await saveMyTodos(); rDashboard(); }
+function myTodosHtml(){
+  const esc=s=>(s||'').replace(/</g,'&lt;');
+  return `<div class="card" style="margin:0">
+    <div class="card-title" style="font-size:15px">✅ 내 체크리스트 <span style="font-size:11px;color:var(--text-muted);font-weight:400">(오늘 처리할 내 업무)</span></div>
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <input class="form-input" id="todo-new" placeholder="할 일 추가" style="flex:1;padding:6px 9px;font-size:12px" onkeydown="if(event.key==='Enter')doAddTodo()">
+      <button class="btn btn-primary btn-sm" onclick="doAddTodo()">추가</button>
+    </div>
+    ${MYTODOS.length?MYTODOS.map(t=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border)">
+      <button class="btn btn-sm" style="padding:1px 7px;${t.done?'background:var(--green);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="doToggleTodo('${t.id}')">${t.done?'✓':'○'}</button>
+      <span style="flex:1;font-size:13px;${t.done?'text-decoration:line-through;color:var(--text-muted)':''}">${esc(t.text)}</span>
+      <button class="btn btn-sm" style="padding:1px 6px;background:transparent;color:var(--text-muted)" onclick="doDelTodo('${t.id}')">✕</button>
+    </div>`).join(''):'<div style="font-size:12px;color:var(--text-muted);padding:6px 0">할 일을 추가해보세요</div>'}
+  </div>`;
+}
 function rDashboard(){
   const sts=getStudents(),qs=getQuestions();
   // 삭제된 숙제의 옛 제출(고아 데이터)은 제외하고 집계
@@ -1078,7 +1116,25 @@ function rDashboard(){
 
 
   document.getElementById('dashboardContent').innerHTML=`
-    <div class="card" style="border:2px solid var(--primary);background:linear-gradient(180deg,var(--primary-light),var(--surface))">
+   <div style="display:grid;grid-template-columns:minmax(0,1fr);gap:14px" id="dashGrid">
+    <div style="display:flex;flex-direction:column;gap:14px" id="dashLeft">
+      ${monthSummaryHtml()}
+      ${myTodosHtml()}
+      <div class="card" style="border-left:4px solid var(--yellow);margin:0">
+        <div class="card-title" style="font-size:15px">📢 공지사항 <span style="font-size:11px;color:var(--text-muted);font-weight:400">(학생 홈에 표시)</span></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+          <input class="form-input" id="notice-text" style="flex:1;min-width:140px;padding:6px 9px;font-size:12px" placeholder="예: 현충일에도 정상 수업">
+          <button class="btn btn-primary btn-sm" onclick="doAddNotice()">올리기</button>
+        </div>
+        ${getNotices().length?getNotices().map(n=>`
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 9px;background:var(--yellow-light);border-radius:8px;margin-bottom:5px">
+            <div style="font-size:12px;color:#92400E"><strong>📢</strong> ${n.text} <span style="font-size:10px;color:var(--text-muted)">· ${n.createdAt||''}</span></div>
+            <button class="btn btn-red btn-sm" style="padding:2px 7px;font-size:11px" onclick="doDelNotice('${n.id}')">삭제</button>
+          </div>`).join(''):'<div style="font-size:12px;color:var(--text-muted)">올린 공지가 없어요.</div>'}
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px" id="dashMain">
+    <div class="card" style="border:2px solid var(--primary);background:linear-gradient(180deg,var(--primary-light),var(--surface));margin:0">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px">
         <div class="card-title" style="margin:0;font-size:17px">📚 숙제 · 오답 · 복습 <span style="font-size:12px;color:var(--text-muted);font-weight:400">— 빠짐없이 끝까지 챙겨요</span></div>
         <button class="btn btn-primary btn-sm" onclick="goHw('homework')">숙제 관리로 →</button>
@@ -1113,35 +1169,63 @@ function rDashboard(){
       <span style="font-size:12px;color:var(--text-muted)">— 학생이 직접 '알림 켜기'를 눌러야 새 숙제 알림을 받아요</span>
       ${(typeof bmCanInstallUI==='function'&&bmCanInstallUI())?`<button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="bmInstallClick()">📲 홈 화면에 추가</button>`:''}
     </div>
-    <div class="card" style="border-left:4px solid var(--yellow)">
-      <div class="card-title">📢 공지사항 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(학생 홈 화면 상단에 표시돼요)</span></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-        <input class="form-input" id="notice-text" style="flex:1;min-width:200px" placeholder="예: 6월 6일 현충일에도 정상 수업합니다!">
-        <button class="btn btn-primary" onclick="doAddNotice()">공지 올리기</button>
-      </div>
-      ${getNotices().length?getNotices().map(n=>`
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;background:var(--yellow-light);border-radius:8px;margin-bottom:6px">
-          <div style="font-size:13px;color:#92400E"><strong>📢</strong> ${n.text} <span style="font-size:11px;color:var(--text-muted)">· ${n.createdAt||''}</span></div>
-          <button class="btn btn-red btn-sm" onclick="doDelNotice('${n.id}')">삭제</button>
-        </div>`).join(''):'<div style="font-size:13px;color:var(--text-muted)">올린 공지가 없어요. 휴일 정상수업 안내 등을 올려보세요.</div>'}
-    </div>
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:2px">
       <span style="font-size:16px;font-weight:800">📅 오늘 수업 <span style="font-size:13px;color:var(--text-muted);font-weight:600">(${todayCls.length}반 · 결석 ${getAbsences().filter(a=>a.date===today.toISOString().slice(0,10)).length})</span></span>
       ${todayCls.length?`<button class="btn btn-outline btn-sm" onclick="doRemindToday()">🔔 오늘 반 알림</button>`:''}
     </div>
     ${todayRosterHtml(todayCls, subs)}
-    <div class="card" style="margin-top:16px">
-      <div class="card-title">📬 최근 제출 숙제 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(사진 보고 바로 확인하세요)</span></div>
-      <div class="table-wrap"><table>
-        <thead><tr><th>학생</th><th>반</th><th>숙제명</th><th>제출시간</th><th>사진</th><th>확인</th></tr></thead>
-        <tbody>${subs.slice().sort((a,b)=>{const ac=(a.checked||a.byTeacher)?1:0,bc=(b.checked||b.byTeacher)?1:0;return ac!==bc?ac-bc:(b.ts||0)-(a.ts||0);}).slice(0,6).map(s=>{
-          const at=typeof s.submittedAt==='string'?s.submittedAt:(s.submittedAt&&s.submittedAt.seconds?new Date(s.submittedAt.seconds*1000).toLocaleString('ko-KR'):'-');
-          const photoCell=s.offline?'<span style="font-size:12px;color:var(--text-muted)">✋공책</span>':`<button class="btn btn-outline btn-sm" onclick="openSubPhotos('${s.id}')">📷 ${(s.photos&&s.photos.length)||0}</button>`;
-          const checkCell=s.rejected?'<span class="badge b-red">🔁반려됨</span>':(s.byTeacher?'<span class="badge b-green">✓직접확인</span>':`<button class="btn ${s.checked?'btn-green':'btn-outline'} btn-sm" onclick="dashCheck('${s.id}')">${s.checked?'✓확인됨':'확인'}</button>`);
-          return `<tr><td><strong>${s.studentName||'-'}</strong></td><td>${s.className?`<span class="chip">${s.className}</span>`:'-'}</td><td>${s.assignmentTitle||'-'}</td><td style="color:var(--text-muted)">${at}</td><td>${photoCell}</td><td>${checkCell}</td></tr>`;}).join('')||'<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted)">아직 제출된 숙제가 없어요</td></tr>'}</tbody>
-      </table></div>
-      <button class="btn btn-outline btn-sm" style="margin-top:10px;width:100%;justify-content:center" onclick="navigate('homework')">숙제 관리에서 전체 보기·평가 →</button>
-    </div>`;
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px" id="dashRight">
+      ${absentMakeupHtml()}
+      <div class="card" style="margin:0">
+        <div class="card-title" style="font-size:15px">📬 최근 제출 숙제</div>
+        ${subs.slice().sort((a,b)=>{const ac=(a.checked||a.byTeacher)?1:0,bc=(b.checked||b.byTeacher)?1:0;return ac!==bc?ac-bc:(b.ts||0)-(a.ts||0);}).slice(0,6).map(s=>{
+          const photoCell=s.offline?'<span style="font-size:11px;color:var(--text-muted)">✋공책</span>':`<button class="btn btn-outline btn-sm" style="padding:1px 7px;font-size:11px" onclick="openSubPhotos('${s.id}')">📷${(s.photos&&s.photos.length)||0}</button>`;
+          const checkCell=s.rejected?'<span class="badge b-red" style="font-size:10px">반려</span>':(s.byTeacher?'<span class="badge b-green" style="font-size:10px">✓직접</span>':`<button class="btn ${s.checked?'btn-green':'btn-outline'} btn-sm" style="padding:1px 7px;font-size:11px" onclick="dashCheck('${s.id}')">${s.checked?'✓확인':'확인'}</button>`);
+          return `<div style="display:flex;align-items:center;gap:6px;padding:6px 0;border-top:1px solid var(--border);flex-wrap:wrap">
+            <strong style="font-size:12px;min-width:52px">${s.studentName||'-'}</strong>
+            ${s.className?`<span class="chip" style="font-size:10px">${s.className}</span>`:''}
+            <span style="font-size:11px;color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.assignmentTitle||''}</span>
+            ${photoCell}${checkCell}
+          </div>`;}).join('')||'<div style="font-size:12px;color:var(--text-muted);padding:8px 0">아직 제출된 숙제가 없어요</div>'}
+        <button class="btn btn-outline btn-sm" style="margin-top:8px;width:100%;justify-content:center" onclick="navigate('homework')">숙제 관리에서 전체 보기 →</button>
+      </div>
+    </div>
+   </div>`;
+  applyDashLayout();
+}
+// 🖥 화면 넓으면 3단(좌·중앙·우), 좁으면 1단
+function applyDashLayout(){
+  const g=document.getElementById('dashGrid'); if(!g) return;
+  const w=g.clientWidth||window.innerWidth;
+  g.style.gridTemplateColumns = w>=1280 ? '300px minmax(0,1fr) 320px' : (w>=900 ? 'minmax(0,1fr) 320px' : 'minmax(0,1fr)');
+}
+window.addEventListener('resize', function(){ if(document.getElementById('dashGrid')) applyDashLayout(); });
+// 🩹 결석생 보충 현황 — 최근 결석 학생과 보강 참석 여부
+function absentMakeupHtml(){
+  const today=new Date().toISOString().slice(0,10);
+  const from=(function(){ const d=new Date(); d.setDate(d.getDate()-21); return d.toISOString().slice(0,10); })();
+  const abs=getAbsences().filter(a=>a.date>=from && a.date<=today).sort((x,y)=>(y.date||'').localeCompare(x.date||''));
+  const rows=abs.map(a=>{
+    // 결석 이후 보강(bogang) 참석했는지
+    const done=getBogang().some(b=>(b.date||'')>=a.date && Array.isArray(b.attendees) && b.attendees.includes(a.studentId));
+    return {a, done};
+  });
+  const pending=rows.filter(r=>!r.done);
+  return `<div class="card" style="margin:0">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
+      <div class="card-title" style="margin:0;font-size:15px">🩹 결석생 보충</div>
+      <span class="badge ${pending.length?'b-orange':'b-green'}" style="font-size:10px">${pending.length?('처리 필요 '+pending.length):'모두 완료'}</span>
+    </div>
+    <div style="font-size:11px;color:var(--text-muted);margin:2px 0 6px">최근 3주 결석 · 보강 참석하면 자동으로 완료돼요</div>
+    ${rows.length?rows.slice(0,8).map(r=>`<div style="display:flex;align-items:center;gap:6px;padding:6px 0;border-top:1px solid var(--border);flex-wrap:wrap">
+      <strong style="font-size:12px;min-width:52px">${r.a.studentName||'-'}</strong>
+      <span style="font-size:11px;color:var(--text-muted)">${r.a.className||''} · ${(r.a.date||'').slice(5)}</span>
+      <span style="margin-left:auto" class="badge ${r.done?'b-green':'b-orange'}" style="font-size:10px">${r.done?'✓ 보충함':'보충 필요'}</span>
+    </div>`).join(''):'<div style="font-size:12px;color:var(--green);padding:6px 0">최근 결석이 없어요 🎉</div>'}
+    ${rows.length>8?`<div style="font-size:11px;color:var(--text-muted);padding-top:6px">+${rows.length-8}건 더</div>`:''}
+    <button class="btn btn-outline btn-sm" style="margin-top:8px;width:100%;justify-content:center" onclick="naesinTab='bogang';navigate('naesin')">🙋 보강 체크로 →</button>
+  </div>`;
 }
 
 // ================================================================
@@ -3768,7 +3852,8 @@ async function init(){
     loadCurriculum(),    // 진도표 주차 계획
     loadProgLog(),       // 진도 기록(일자별)
     loadCurrTerm(),      // 진도표 학기(시작일·주수)
-    loadClassChecks()    // 반별 오답검사·프린트 체크
+    loadClassChecks(),   // 반별 오답검사·프린트 체크
+    loadMyTodos()        // 내 체크리스트(개인 할 일)
   ].map(p=>Promise.resolve(p).catch(e=>console.warn('일부 데이터 로드 실패(무시):',e))));
   rDashboard();
   pruneOldFirebase();            // 3개월 지난 사진·기록 자동 정리 (백그라운드)
