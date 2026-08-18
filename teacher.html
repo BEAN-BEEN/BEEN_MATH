@@ -689,13 +689,43 @@ function rNaesin(){
   el.innerHTML = naesinTab==='exam' ? schoolExamCardHtml()
     : naesinTab==='jikbo' ? makeupBlockHtml()
     : naesinTab==='bogang' ? bogangCheckHtml()
-    : schoolInfoHtml();
+    : (schoolBooksHtml() + schoolInfoHtml());
 }
 // 학생 반 이름에서 등급(T/S/A) 추출 — 여러 반이면 여러 등급
 function studentTiers(s){
   const set=new Set();
   classNamesOf(s).forEach(nm=>{ const m=String(nm).match(/고\s*\d*\s*([TSA])/); if(m) set.add(m[1]); });
   return set;
+}
+// 📚 학교별 교재·출판사 — 시험과 무관하게 학교 단위로 항상 유지 (schoolBooks 컬렉션)
+let SCHOOLBOOKS_CACHE={};
+async function loadSchoolBooks(){ try{ const s=await db.collection('schoolBooks').get(); SCHOOLBOOKS_CACHE={}; s.docs.forEach(d=>{ SCHOOLBOOKS_CACHE[d.id]={id:d.id,...d.data()}; }); }catch(e){ SCHOOLBOOKS_CACHE={}; } }
+function getSchoolBook(school){ return SCHOOLBOOKS_CACHE[school]||{publisher:'',textbook:'',subMaterial:'',note:''}; }
+async function doSetSchoolBook(school, field, val){
+  const cur=getSchoolBook(school), v=(val||'').trim();
+  SCHOOLBOOKS_CACHE[school]=Object.assign({publisher:'',textbook:'',subMaterial:'',note:''}, cur, {id:school, school, [field]:v});
+  try{ await db.collection('schoolBooks').doc(school).set({school, [field]:v, ts:Date.now()},{merge:true}); }
+  catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+function schoolBooksHtml(){
+  const schools=allSchools().filter(Boolean).sort((a,b)=>a.localeCompare(b));
+  const esc=s=>(s||'').replace(/"/g,'&quot;');
+  const el=s=>(s||'').replace(/</g,'&lt;');
+  if(!schools.length) return `<div class="card"><div class="card-title">📚 학교별 교재·출판사</div><div style="font-size:13px;color:var(--text-muted)">학생 정보에 학교를 입력하면 여기에 학교가 자동으로 떠요.</div></div>`;
+  const f=(school,field,ph,w)=>`<input class="form-input" value="${esc(getSchoolBook(school)[field])}" placeholder="${ph}" style="width:${w};padding:5px 8px;font-size:12px" onchange="doSetSchoolBook('${school.replace(/'/g,'')}','${field}',this.value)">`;
+  return `<div class="card">
+    <div class="card-title">📚 학교별 교재·출판사 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(학교마다 쓰는 교재 — 적어두면 계속 유지돼요)</span></div>
+    <div class="table-wrap"><table style="font-size:12px">
+      <thead><tr><th style="min-width:90px">학교</th><th>출판사</th><th>교과서</th><th>부교재</th><th>메모</th></tr></thead>
+      <tbody>${schools.map(s=>`<tr>
+        <td><strong>${el(s)}</strong> <span style="font-size:10px;color:var(--text-muted)">${getStudents().filter(x=>isActiveStudent(x)&&(x.school||'')===s).length}명</span></td>
+        <td>${f(s,'publisher','예: 비상',  '110px')}</td>
+        <td>${f(s,'textbook','예: 수학Ⅰ',  '130px')}</td>
+        <td>${f(s,'subMaterial','예: 쎈',  '130px')}</td>
+        <td>${f(s,'note','비고',           '150px')}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+  </div>`;
 }
 // 사진형 학교 정보 표 (학교=열, 항목=행, 학생은 등급 T/S/A로 자동)
 function examTitleRank(t){ t=t||''; const h=t.includes('2학기')?2:1; const k=t.includes('기말')?2:1; return (t.includes('중간')||t.includes('기말'))?(h*10+k):99; }
@@ -1226,11 +1256,22 @@ function absentMakeupHtml(){
       <span class="badge ${notSent?'b-orange':'b-green'}" style="font-size:10px">${abs.length?(notSent?('영상 미발송 '+notSent):'영상 모두 발송'):'결석 없음'}</span>
     </div>
     <div style="font-size:11px;color:var(--text-muted);margin:2px 0 6px">최근 3주 결석 · 영상 보냈으면 체크해요</div>
-    ${abs.length?abs.slice(0,10).map(a=>`<div style="padding:7px 0;border-top:1px solid var(--border)">
+    ${abs.length?abs.slice(0,10).map(a=>{
+      // 🔗 결석일 이후 그 반에 올라온 영상 찾기 → 등록 여부 + 이 학생이 봤는지 자동 연결
+      const vid=getVideos().filter(v=>v.classId===a.classId && (v.date||'')>=a.date).sort((x,y)=>(x.date||'').localeCompare(y.date||''))[0];
+      const watched=vid && Array.isArray(vid.viewedBy) && vid.viewedBy.includes(a.studentId);
+      return `<div style="padding:7px 0;border-top:1px solid var(--border)">
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
         <strong style="font-size:12px;min-width:52px">${a.studentName||'-'}</strong>
         <span style="font-size:11px;color:var(--text-muted)">${a.className||''} · ${(a.date||'').slice(5)}</span>
-        <button class="btn btn-sm" style="margin-left:auto;padding:2px 8px;font-size:11px;${a.videoSent?'background:var(--green);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="doToggleVideoSent('${a.id}')">${a.videoSent?'✓ 영상':'영상 발송'}</button>
+        <button class="btn btn-sm" style="margin-left:auto;padding:2px 8px;font-size:11px;${a.videoSent?'background:var(--green);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="doToggleVideoSent('${a.id}')">${a.videoSent?'✓ 안내함':'안내 발송'}</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:5px;margin-top:4px;flex-wrap:wrap">
+        <span style="font-size:10px;color:var(--text-muted)">영상</span>
+        ${vid
+          ? `<span class="badge b-green" style="font-size:9px">✓ 등록</span><span style="font-size:10px;color:var(--text-muted);max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(vid.title||'').replace(/</g,'&lt;')}</span>
+             <span class="badge ${watched?'b-green':'b-orange'}" style="font-size:9px">${watched?'👀 봤음':'아직 안 봄'}</span>`
+          : `<span class="badge b-red" style="font-size:9px">미등록</span><button class="btn btn-outline btn-sm" style="padding:1px 7px;font-size:10px" onclick="navigate('videos')">＋ 영상 올리기</button>`}
       </div>
       <div style="display:flex;align-items:center;gap:4px;margin-top:4px;flex-wrap:wrap">
         <span style="font-size:10px;color:var(--text-muted)">보충</span>
@@ -1238,7 +1279,7 @@ function absentMakeupHtml(){
         <input class="form-input" value="${(a.makeupTime||'').replace(/"/g,'&quot;')}" placeholder="시간(예: 3시)" style="width:88px;padding:2px 6px;font-size:11px" onchange="doSetMakeupPlan('${a.id}','makeupTime',this.value)">
         ${a.makeupDate?'<span class="badge b-green" style="font-size:9px">예정됨</span>':'<span class="badge b-orange" style="font-size:9px">미정</span>'}
       </div>
-    </div>`).join(''):'<div style="font-size:12px;color:var(--green);padding:6px 0">최근 결석이 없어요 🎉</div>'}
+    </div>`;}).join(''):'<div style="font-size:12px;color:var(--green);padding:6px 0">최근 결석이 없어요 🎉</div>'}
     ${abs.length>10?`<div style="font-size:11px;color:var(--text-muted);padding-top:6px">+${abs.length-10}건 더</div>`:''}
   </div>`;
 }
@@ -3958,8 +3999,9 @@ async function init(){
     loadCurriculum(),    // 진도표 주차 계획
     loadProgLog(),       // 진도 기록(일자별)
     loadCurrTerm(),      // 진도표 학기(시작일·주수)
-    loadClassChecks(),   // 반별 오답검사·프린트 체크
-    loadMyTodos()        // 내 체크리스트(개인 할 일)
+    loadClassChecks(),   // 반별 오답 마무리 체크·데일리테스트 기록
+    loadMyTodos(),       // 내 체크리스트(개인 할 일)
+    loadSchoolBooks()    // 학교별 교재·출판사
   ].map(p=>Promise.resolve(p).catch(e=>console.warn('일부 데이터 로드 실패(무시):',e))));
   rDashboard();
   pruneOldFirebase();            // 3개월 지난 사진·기록 자동 정리 (백그라운드)
