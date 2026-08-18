@@ -730,20 +730,47 @@ function examPeriodsOf(rows){
   });
   return out;
 }
+// 🎒 굵직한 일정 (개학·방학·입학·졸업 등) — 시험 외 주요 일정
+const NEIS_MAJOR_RE=/개학|방학|입학|졸업|체육대회|축제|수학여행|수련회|휴업|소풍|현장학습|재량/;
+function majorEventsOf(rows){
+  const t=ymdT(new Date());
+  const seen={}, out=[];
+  rows.filter(r=>NEIS_MAJOR_RE.test(r.EVENT_NM||'') && r.AA_YMD>=t)
+    .sort((a,b)=>(a.AA_YMD||'').localeCompare(b.AA_YMD||''))
+    .forEach(r=>{ const n=(r.EVENT_NM||'').trim(); if(seen[n]) return; seen[n]=1; out.push({d:r.AA_YMD, n}); });
+  return out.slice(0,6);
+}
+// 감지된 시험기간을 내신 일정(schoolExams)에 자동 등록 — 이미 있으면 건너뜀
+async function autoRegisterExams(school, rows){
+  const periods=examPeriodsOf(rows); let n=0;
+  for(const p of periods){
+    const fd=`${p.from.slice(0,4)}-${p.from.slice(4,6)}-${p.from.slice(6,8)}`;
+    const td=`${p.to.slice(0,4)}-${p.to.slice(4,6)}-${p.to.slice(6,8)}`;
+    if(getSchoolExams().some(x=>normSchool(x.school)===school && x.startDate===fd)) continue;
+    try{ await addSchoolExam({school, title:p.title, startDate:fd, endDate:td, grade:'', mathDates:[], mathDate:'', jikboStart:'', autoFromNeis:true}); n++; }catch(e){}
+  }
+  return n;
+}
 async function doLoadNeisSched(){
   if(neisLoading) return; neisLoading=true; rNaesin();
   const schools=allSchools().filter(Boolean);
   const t=new Date(), e=new Date(); e.setDate(e.getDate()+120);
+  let added=0, noExam=[];
   for(const s of schools){
     try{
       const info=await neisCodeOf(s);
       if(!info){ NEIS_SCHED[s]={err:'학교를 못 찾았어요'}; continue; }
       const r=await fetch(`/api/school?type=schedule&atpt=${info.atpt}&code=${info.code}&from=${ymdT(t)}&to=${ymdT(e)}`);
       const j=await r.json();
-      NEIS_SCHED[s]={rows:(j.rows||[]).filter(x=>(x.EVENT_NM||'').trim()), name:info.name};
+      const rows=(j.rows||[]).filter(x=>(x.EVENT_NM||'').trim());
+      NEIS_SCHED[s]={rows, name:info.name};
+      added+=await autoRegisterExams(s, rows);              // 시험기간 자동 등록
+      if(!examPeriodsOf(rows).length) noExam.push(s);       // 시험 일정 없는 학교 모으기
     }catch(err){ NEIS_SCHED[s]={err:(err&&err.message)||'불러오기 실패'}; }
   }
   neisLoading=false; rNaesin();
+  if(added) showToast(`시험 일정 ${added}건 자동 등록됐어요 📅 (수학 시험일은 '시험 정보'에서 채워주세요)`,'success');
+  if(noExam.length) showToast(`${noExam.join(', ')} — 앞으로 등록된 시험 일정이 없어요`,'warning');
 }
 async function doAddExamFromNeis(school, title, from, to){
   const s=(from||''), e=(to||'');
@@ -767,25 +794,36 @@ function neisScheduleHtml(){
     ${!loaded&&!neisLoading?`<div style="font-size:13px;color:var(--text-muted);margin-top:10px">‘📥 불러오기’를 누르면 학생들이 다니는 <strong>${schools.length}개 학교</strong>의 학사일정을 한 번에 가져와요.</div>`:''}
     ${schools.map(s=>{ const d=NEIS_SCHED[s]; if(!d) return '';
       if(d.err) return `<div style="border-top:1px solid var(--border);padding:10px 0"><strong>${el(s)}</strong> <span style="font-size:12px;color:var(--red)">${el(d.err)}</span></div>`;
-      const rows=d.rows||[], periods=examPeriodsOf(rows);
+      const rows=d.rows||[], periods=examPeriodsOf(rows), majors=majorEventsOf(rows);
       const upcoming=rows.filter(r=>r.AA_YMD>=todayS).slice(0,60);
       const byDay={}; upcoming.forEach(r=>{ (byDay[r.AA_YMD]=byDay[r.AA_YMD]||[]).push(r.EVENT_NM); });
       const keys=Object.keys(byDay).sort().slice(0,14);
+      const ddOf=y=>Math.round((new Date(+y.slice(0,4),+y.slice(4,6)-1,+y.slice(6,8))-t0)/86400000);
       return `<div style="border-top:1px solid var(--border);padding:10px 0;margin-top:6px">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
           <strong style="font-size:14px">${el(s)}</strong>
           <span style="font-size:11px;color:var(--text-muted)">${getStudents().filter(x=>isActiveStudent(x)&&(x.school||'')===s).length}명</span>
-          ${periods.length?`<span class="badge b-red" style="font-size:10px">시험기간 ${periods.length}건</span>`:''}
+          ${periods.length?`<span class="badge b-red" style="font-size:10px">시험기간 ${periods.length}건</span>`
+            :'<span class="badge b-gray" style="font-size:10px">시험 일정 없음</span>'}
         </div>
         ${periods.length?`<div style="background:#FEF2F2;border-radius:10px;padding:8px 10px;margin-bottom:6px">
-          ${periods.map(p=>{ const dd=Math.round((new Date(+p.from.slice(0,4),+p.from.slice(4,6)-1,+p.from.slice(6,8))-t0)/86400000);
-            constalready=getSchoolExams().some(x=>normSchool(x.school)===s && x.startDate===`${p.from.slice(0,4)}-${p.from.slice(4,6)}-${p.from.slice(6,8)}`);
+          ${periods.map(p=>{ const dd=ddOf(p.from);
+            const already=getSchoolExams().some(x=>normSchool(x.school)===s && x.startDate===`${p.from.slice(0,4)}-${p.from.slice(4,6)}-${p.from.slice(6,8)}`);
             return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:3px 0">
               <span style="font-size:12px;font-weight:800;color:var(--red)">📕 ${el(p.title)}</span>
               <span style="font-size:11px;color:var(--text-sub)">${p.from.slice(4,6)}/${p.from.slice(6,8)}~${p.to.slice(4,6)}/${p.to.slice(6,8)}</span>
               ${dd>=0?`<span class="badge b-orange" style="font-size:10px">D-${dd}</span>`:''}
-              ${already?'<span class="badge b-green" style="font-size:10px">✓ 등록됨</span>'
-                 :`<button class="btn btn-primary btn-sm" style="padding:1px 8px;font-size:10px;margin-left:auto" onclick="doAddExamFromNeis('${s.replace(/'/g,'')}','${(p.title||'').replace(/'/g,'')}','${p.from}','${p.to}')">＋ 내신 일정 등록</button>`}
+              ${already?'<span class="badge b-green" style="font-size:10px">✓ 자동 등록됨</span>'
+                 :`<button class="btn btn-primary btn-sm" style="padding:1px 8px;font-size:10px;margin-left:auto" onclick="doAddExamFromNeis('${s.replace(/'/g,'')}','${(p.title||'').replace(/'/g,'')}','${p.from}','${p.to}')">＋ 등록</button>`}
+            </div>`; }).join('')}
+        </div>`:`<div style="background:var(--bg);border-radius:10px;padding:8px 10px;margin-bottom:6px;font-size:12px;color:var(--text-muted)">📭 앞으로 120일 안에 <strong>시험 일정이 없어요</strong> — 학교가 아직 안 올렸을 수 있어요</div>`}
+        ${majors.length?`<div style="background:var(--primary-light);border-radius:10px;padding:8px 10px;margin-bottom:6px">
+          <div style="font-size:11px;font-weight:800;color:var(--primary);margin-bottom:3px">🎒 주요 일정</div>
+          ${majors.map(m=>{ const dd=ddOf(m.d);
+            return `<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:2px 0">
+              <span style="color:var(--text-muted);min-width:42px">${+m.d.slice(4,6)}/${+m.d.slice(6,8)}</span>
+              <strong>${el(m.n)}</strong>
+              ${dd>=0&&dd<=60?`<span class="badge ${dd<=7?'b-orange':'b-gray'}" style="font-size:9px;margin-left:auto">${dd===0?'오늘':'D-'+dd}</span>`:''}
             </div>`; }).join('')}
         </div>`:''}
         ${keys.length?`<div style="font-size:12px;line-height:1.85">${keys.map(k=>`<div style="display:flex;gap:8px"><span style="color:var(--text-muted);min-width:44px">${+k.slice(4,6)}/${+k.slice(6,8)}</span><span>${[...new Set(byDay[k])].map(el).join(', ')}</span></div>`).join('')}</div>`
