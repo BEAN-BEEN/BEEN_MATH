@@ -568,7 +568,7 @@ let S_ABSENCES=[];   // 내 결석 기록 (선생님이 표시) — 출석률 �
 let S_SEASONS=[], selSeasonId=null;   // 제출률 집계 시즌(학원 공통) + 내가 보고 있는 시즌
 let S_SCHOOL='', S_ENROLL='', S_SCHOOLEXAM=null, S_MATHEVENTS=[], S_SCHOOL_EXAMS=[], S_MAKEUPS=[], ALL_MAKEUPS=[], ALL_SCHOOL_EXAMS=[];
 let calScope='mine'; // 'mine' = 내 일정만, 'all' = 전체 학교
-let S_MOCKEXAMS=[], S_MOCKSUBS=[], S_NAESIN=[], S_CLASSHISTORY=[];
+let S_MOCKEXAMS=[], S_MOCKSUBS=[], S_NAESIN=[], S_CLASSHISTORY=[], S_VIDEOVIEWS=[];
 function myClassIds(){ try{ return JSON.parse(localStorage.getItem('bm_classIds')||'[]'); }catch(e){ return STUDENT.classId?[STUDENT.classId]:[]; } }
 async function loadStudentData(){
   const ids = myClassIds();
@@ -594,6 +594,7 @@ async function loadStudentData(){
   const pAbs = sid ? db.collection('absences').where('studentId','==',sid).get() : null;
   const pSeasons = db.collection('seasons').get();
   const pNaesin = sid ? db.collection('naesin').where('studentId','==',sid).get() : null;
+  const pVv  = sid ? db.collection('videoViews').where('studentId','==',sid).get() : null;
 
   const cs = await pClasses;
   ALL_CLASSES = cs.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.order!=null?a.order:99)-(b.order!=null?b.order:99));
@@ -657,7 +658,8 @@ async function loadStudentData(){
     const mks = await pMks; S_MOCKSUBS = mks.docs.map(d=>({id:d.id,...d.data()}));
     try{ const ab = await pAbs; S_ABSENCES = ab.docs.map(d=>({id:d.id,...d.data()})).sort((x,y)=>(y.date||'').localeCompare(x.date||'')); }catch(e){ S_ABSENCES=[]; }
     try{ const na = await pNaesin; S_NAESIN = na.docs.map(d=>({id:d.id,...d.data()})); }catch(e){ S_NAESIN=[]; }
-  } else { S_SUBMISSIONS=[]; S_REVIEWSUBS=[]; S_EXAMSUBS=[]; S_QUESTIONS=[]; S_REPORT=null; S_SCHOOLEXAM=null; S_MOCKEXAMS=[]; S_MOCKSUBS=[]; S_NAESIN=[]; }
+    try{ const vv = await pVv; S_VIDEOVIEWS = vv.docs.map(d=>({id:d.id,...d.data()})); }catch(e){ S_VIDEOVIEWS=[]; }
+  } else { S_SUBMISSIONS=[]; S_REVIEWSUBS=[]; S_EXAMSUBS=[]; S_QUESTIONS=[]; S_REPORT=null; S_SCHOOLEXAM=null; S_MOCKEXAMS=[]; S_MOCKSUBS=[]; S_NAESIN=[]; S_VIDEOVIEWS=[]; }
   try{ const se = await pSeasons; S_SEASONS = se.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.startDate||'').localeCompare(a.startDate||'')); }catch(e){ S_SEASONS=[]; }
   try{ const nt = await pNotices; S_NOTICES = nt.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.ts||0)-(a.ts||0)); }
   catch(e){ S_NOTICES=[]; }
@@ -2314,26 +2316,108 @@ function renderVideos() {
   document.getElementById('videosContent').innerHTML = `
     <div class="video-grid">
       ${VIDEOS.map(v=>{ const seen=(v.viewedBy||[]).includes(STUDENT.id);
+        const vv=(S_VIDEOVIEWS||[]).find(x=>x.videoId===v.id);
+        const pct=vv?(vv.pct||0):0;
+        const mm=s=>Math.floor((s||0)/60)+'분';
         return `<div class="video-card" onclick="watchVideo('${v.id}')">
-          <div class="v-thumb" style="background:${v.color||'#6366F1'}"><span>▶️</span></div>
+          <div class="v-thumb" style="background:${v.color||'#6366F1'}"><span>▶️</span>${pct?`<span class="v-dur">${pct}%</span>`:''}</div>
           <div class="v-info">
             <div class="v-title">${v.title}</div>
             <div class="v-meta">${v.className} · ${v.date}${seen?' · <span style="color:var(--green);font-weight:700">✅ 봤어요</span>':''}</div>
+            ${vv?`<div style="margin-top:6px">
+              <div style="height:5px;background:var(--bg);border-radius:3px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${pct>=90?'var(--green)':'var(--primary)'};border-radius:3px"></div></div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:3px">👀 ${mm(vv.watchedSec)} 시청 · ${pct}% 진행${pct>=90?' · 완주 🎉':''}</div>
+            </div>`:''}
           </div>
         </div>`; }).join('')}
     </div>
     ${!VIDEOS.length?'<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">아직 등록된 영상이 없어요</div>':''}`;
 }
-// 영상 열기 + '봤어요' 기록 (선생님이 누가 봤는지 확인)
+// ================================================================
+// ▶️ 포털 내장 재생 + 시청 추적 (영상은 유튜브에서 스트리밍 — 저장 용량 안 씀)
+//   기록: 실제 시청 시간 / 최고 도달 지점 / 구간별(20칸) 시청 → 선생님이 확인
+// ================================================================
+function ytIdOf(url){ const m=String(url||'').match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/|live\/))([A-Za-z0-9_-]{11})/); return m?m[1]:''; }
+let YT_READY=null;
+function ytLoadApi(){
+  if(YT_READY) return YT_READY;
+  YT_READY=new Promise(res=>{
+    if(window.YT && window.YT.Player) return res();
+    const prev=window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady=function(){ if(typeof prev==='function') try{prev();}catch(e){} res(); };
+    const s=document.createElement('script'); s.src='https://www.youtube.com/iframe_api'; document.head.appendChild(s);
+  });
+  return YT_READY;
+}
+let VP={player:null, v:null, timer:null, watched:0, maxPos:0, dur:0, buckets:[], dirty:false};
+async function saveWatch(force){
+  if(!VP.v || (!VP.dirty && !force)) return;
+  VP.dirty=false;
+  const pct=VP.dur? Math.min(100, Math.round(VP.maxPos/VP.dur*100)) : 0;
+  const payload={ videoId:VP.v.id, videoTitle:VP.v.title||'', classId:VP.v.classId||'', className:VP.v.className||'',
+    studentId:STUDENT.id, studentName:STUDENT.name, watchedSec:Math.round(VP.watched), maxPos:Math.round(VP.maxPos),
+    duration:Math.round(VP.dur), pct, buckets:VP.buckets, lastAt:new Date().toLocaleString('ko-KR'), ts:Date.now() };
+  try{ await db.collection('videoViews').doc(VP.v.id+'_'+STUDENT.id).set(payload,{merge:true}); }catch(e){ console.warn('시청 기록 저장 실패', e); }
+}
+function closePlayer(){
+  if(VP.timer){ clearInterval(VP.timer); VP.timer=null; }
+  saveWatch(true);
+  try{ if(VP.player && VP.player.destroy) VP.player.destroy(); }catch(e){}
+  VP.player=null; VP.v=null;
+  const el=document.getElementById('__vpOverlay'); if(el) el.remove();
+  renderVideos();
+}
+async function openPlayer(v, ytid){
+  const prev=(S_VIDEOVIEWS||[]).find(x=>x.videoId===v.id) || {};
+  VP={player:null, v, timer:null, watched:prev.watchedSec||0, maxPos:prev.maxPos||0, dur:prev.duration||0, buckets:(prev.buckets&&prev.buckets.length===20)?prev.buckets.slice():new Array(20).fill(0), dirty:false};
+  const d=document.createElement('div'); d.id='__vpOverlay';
+  d.style.cssText='position:fixed;inset:0;z-index:3000;background:rgba(15,23,42,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:14px';
+  d.innerHTML=`<div style="width:100%;max-width:900px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;color:#fff">
+        <strong style="font-size:15px">${(v.title||'').replace(/</g,'&lt;')}</strong>
+        <button onclick="closePlayer()" style="background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:700;cursor:pointer">닫기 ✕</button>
+      </div>
+      <div style="position:relative;width:100%;padding-top:56.25%;background:#000;border-radius:12px;overflow:hidden">
+        <div id="__ytPlayer" style="position:absolute;inset:0"></div>
+      </div>
+      <div id="__vpStat" style="color:#cbd5e1;font-size:12px;margin-top:8px;text-align:center">불러오는 중…</div>
+    </div>`;
+  document.body.appendChild(d);
+  await ytLoadApi();
+  VP.player=new YT.Player('__ytPlayer',{ videoId:ytid, playerVars:{rel:0, playsinline:1, modestbranding:1},
+    events:{ onReady:e=>{ VP.dur=e.target.getDuration()||VP.dur; updateVpStat(); },
+             onStateChange:e=>{ if(e.data===YT.PlayerState.ENDED){ VP.dirty=true; saveWatch(true); } } } });
+  VP.timer=setInterval(()=>{
+    try{
+      if(!VP.player || !VP.player.getPlayerState) return;
+      if(VP.player.getPlayerState()!==YT.PlayerState.PLAYING) return;
+      const t=VP.player.getCurrentTime()||0;
+      VP.dur=VP.player.getDuration()||VP.dur;
+      VP.watched+=1; VP.dirty=true;
+      if(t>VP.maxPos) VP.maxPos=t;
+      if(VP.dur>0){ const i=Math.min(19, Math.floor(t/VP.dur*20)); VP.buckets[i]=(VP.buckets[i]||0)+1; }
+      updateVpStat();
+      if(Math.round(VP.watched)%15===0) saveWatch();
+    }catch(e){}
+  },1000);
+}
+function updateVpStat(){
+  const el=document.getElementById('__vpStat'); if(!el) return;
+  const mm=s=>Math.floor(s/60)+'분 '+Math.round(s%60)+'초';
+  const pct=VP.dur?Math.min(100,Math.round(VP.maxPos/VP.dur*100)):0;
+  el.textContent=`👀 본 시간 ${mm(VP.watched)} · 진행 ${pct}%${VP.dur?(' · 전체 '+mm(VP.dur)):''}`;
+}
+// 영상 열기 — 유튜브면 내장 재생(추적), 아니면 새 탭
 async function watchVideo(id){
   const v=VIDEOS.find(x=>x.id===id);
   if(!v || !v.url){ showToast('영상 링크가 아직 없어요'); return; }
-  window.open(v.url,'_blank');
   if(!(v.viewedBy||[]).includes(STUDENT.id)){
     v.viewedBy=(v.viewedBy||[]).concat(STUDENT.id);   // 즉시 반영
-    renderVideos();
     try{ await db.collection('videos').doc(id).update({ viewedBy: firebase.firestore.FieldValue.arrayUnion(STUDENT.id) }); }catch(e){}
   }
+  const ytid=ytIdOf(v.url);
+  if(ytid) return openPlayer(v, ytid);
+  window.open(v.url,'_blank'); renderVideos();
 }
 
 // ================================================================

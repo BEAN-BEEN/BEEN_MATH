@@ -907,6 +907,10 @@ async function doDelMock(id,title){
   catch(e){ showToast('삭제 실패: '+e.message,'error'); }
 }
 function getVideos(){ return VIDEOS_CACHE; }
+// 🎬 영상 시청 기록 (학생이 포털에서 본 실제 시간·진행률·구간)
+let VIDEOVIEWS_CACHE=[];
+async function loadVideoViews(){ try{ const s=await db.collection('videoViews').get(); VIDEOVIEWS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})); }catch(e){ VIDEOVIEWS_CACHE=[]; } }
+function getVideoViews(){ return VIDEOVIEWS_CACHE; }
 function getMaterials(){ return MATERIALS_CACHE; }
 function getConsultations(){ return CONSULTS_CACHE; }
 function getReports(){ return REPORTS_CACHE; }
@@ -3190,20 +3194,45 @@ function rVideos(){
     <div class="sec-label">📋 등록된 영상 (${vids.length})</div>
     ${vids.map(v=>{
       const roster=getStudentsByClass(v.classId);
-      const seenN=roster.filter(s=>(v.viewedBy||[]).includes(s.id)).length;
-      const notSeen=roster.filter(s=>!(v.viewedBy||[]).includes(s.id));
+      const views=getVideoViews().filter(x=>x.videoId===v.id);
+      const viewOf=sid=>views.find(x=>x.studentId===sid);
+      const opened=roster.filter(s=>(v.viewedBy||[]).includes(s.id)||viewOf(s.id));
+      const doneN=roster.filter(s=>{const w=viewOf(s.id); return w&&(w.pct||0)>=90;}).length;
+      const justClick=roster.filter(s=>{const w=viewOf(s.id); return (v.viewedBy||[]).includes(s.id) && (!w || (w.watchedSec||0)<30);});
+      const notSeen=roster.filter(s=>!(v.viewedBy||[]).includes(s.id) && !viewOf(s.id));
+      const mm=x=>Math.floor((x||0)/60)+'분';
+      // 🔥 많이 본 구간 (20칸 합산)
+      const buckets=new Array(20).fill(0); views.forEach(w=>{ if(Array.isArray(w.buckets)) w.buckets.forEach((n,i)=>{ buckets[i]+=(n||0); }); });
+      const maxB=Math.max(1,...buckets);
+      const dur=views.reduce((m,w)=>Math.max(m,w.duration||0),0);
+      const heat=buckets.map((n,i)=>{ const h=Math.round(n/maxB*100); const t0=dur?Math.round(dur/20*i):0;
+        return `<div title="${Math.floor(t0/60)}분${t0%60}초~ · ${n}회" style="flex:1;height:26px;display:flex;align-items:flex-end"><div style="width:100%;height:${Math.max(6,h)}%;background:${h>=70?'var(--red)':(h>=35?'var(--orange)':'var(--primary-light)')};border-radius:2px"></div></div>`; }).join('');
       return `<div class="card" style="margin-bottom:10px">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <div style="width:44px;height:34px;background:${v.color||'#6366F1'};border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">▶️</div>
           <div style="flex:1;min-width:120px"><div style="font-size:14px;font-weight:600">${v.title}</div><div style="font-size:12px;color:var(--text-muted);margin-top:2px">${v.className} · ${v.date}</div></div>
-          <span class="badge ${roster.length&&seenN===roster.length?'b-green':'b-orange'}">👀 ${seenN}/${roster.length}</span>
+          <span class="badge ${roster.length&&doneN===roster.length?'b-green':'b-orange'}">🎬 완주 ${doneN}/${roster.length}</span>
+          <span class="badge b-gray">👀 연 학생 ${opened.length}</span>
+          ${justClick.length?`<span class="badge b-red">😑 재생만 ${justClick.length}</span>`:''}
           ${v.url?`<a class="btn btn-outline btn-sm" href="${v.url}" target="_blank" rel="noopener">열기</a>`:''}
-          <button class="btn btn-outline btn-sm" onclick="toggleVidSeen('${v.id}')">누가 봤나</button>
+          <button class="btn btn-outline btn-sm" onclick="toggleVidSeen('${v.id}')">시청 현황</button>
           <button class="btn btn-red btn-sm" onclick="doDelVid('${v.id}')">삭제</button>
         </div>
         <div id="vidseen-${v.id}" style="display:none;margin-top:10px;border-top:1px dashed var(--border);padding-top:8px">
-          <div style="font-size:12px;margin-bottom:4px"><strong style="color:var(--green)">✅ 본 학생 (${seenN})</strong>: ${roster.filter(s=>(v.viewedBy||[]).includes(s.id)).map(s=>s.name).join(', ')||'-'}</div>
-          <div style="font-size:12px"><strong style="color:var(--red)">❌ 안 본 학생 (${notSeen.length})</strong>: ${notSeen.map(s=>s.name).join(', ')||'-'}</div>
+          <div class="table-wrap"><table style="font-size:12px">
+            <thead><tr><th>학생</th><th>시청 시간</th><th>진행률</th><th>상태</th></tr></thead>
+            <tbody>${roster.map(s=>{ const w=viewOf(s.id); const pct=w?(w.pct||0):0;
+              const st=!w&&!(v.viewedBy||[]).includes(s.id) ? '<span class="badge b-red" style="font-size:10px">안 봄</span>'
+                : (pct>=90?'<span class="badge b-green" style="font-size:10px">완주 🎉</span>'
+                : ((w&&(w.watchedSec||0)>=30)?'<span class="badge b-orange" style="font-size:10px">보는 중</span>':'<span class="badge b-red" style="font-size:10px">😑 재생만</span>'));
+              return `<tr><td><strong>${s.name}</strong></td><td>${w?mm(w.watchedSec):'-'}</td>
+                <td>${w?`<div style="display:flex;align-items:center;gap:5px"><div style="flex:1;min-width:50px;height:6px;background:var(--bg);border-radius:3px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${pct>=90?'var(--green)':'var(--primary)'}"></div></div><span>${pct}%</span></div>`:'-'}</td>
+                <td>${st}</td></tr>`; }).join('')}</tbody>
+          </table></div>
+          ${views.length?`<div style="margin-top:10px">
+            <div style="font-size:12px;font-weight:700;margin-bottom:4px">🔥 많이 본 구간 <span style="font-weight:400;color:var(--text-muted)">(왼쪽=시작 · 오른쪽=끝)</span></div>
+            <div style="display:flex;gap:2px;align-items:flex-end">${heat}</div>
+          </div>`:'<div style="font-size:11px;color:var(--text-muted);margin-top:8px">아직 시청 기록이 없어요. 학생이 포털에서 재생하면 쌓여요.</div>'}
         </div>
       </div>`;}).join('')}`;
 }
@@ -4001,7 +4030,8 @@ async function init(){
     loadCurrTerm(),      // 진도표 학기(시작일·주수)
     loadClassChecks(),   // 반별 오답 마무리 체크·데일리테스트 기록
     loadMyTodos(),       // 내 체크리스트(개인 할 일)
-    loadSchoolBooks()    // 학교별 교재·출판사
+    loadSchoolBooks(),   // 학교별 교재·출판사
+    loadVideoViews()     // 영상 시청 기록
   ].map(p=>Promise.resolve(p).catch(e=>console.warn('일부 데이터 로드 실패(무시):',e))));
   rDashboard();
   pruneOldFirebase();            // 3개월 지난 사진·기록 자동 정리 (백그라운드)
