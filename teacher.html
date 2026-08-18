@@ -1210,6 +1210,7 @@ function rDashboard(){
       ${todayCls.length?`<button class="btn btn-outline btn-sm" onclick="doRemindToday()">🔔 오늘 반 알림</button>`:''}
     </div>
     ${todayRosterHtml(todayCls, subs)}
+    ${classCheckBoardHtml()}
     </div>
     <div style="display:flex;flex-direction:column;gap:14px" id="dashRight">
       ${absentMakeupHtml()}
@@ -2336,8 +2337,6 @@ function todayRosterHtml(todayCls, subs){
     const a=dueToday.slice().sort((x,y)=>{const dx=x.startDate||x.createdAt||'',dy=y.startDate||y.createdAt||'';return dy>dx?1:(dy<dx?-1:0);})[0];
     const chk=getClassCheck(c.id);
     let absN=0;
-    const units=classUnits(c.id);   // 단원 열 (1단원, 2단원 …)
-    const unitDone={}; units.forEach(u=>{ unitDone[u.id]=0; });
     const rows=sts.map(st=>{
       const absent=absentSet.has(st.id); if(absent) absN++;
       const sub=a?subs.find(s=>s.studentId===st.id&&s.assignmentId===a.id):null;
@@ -2348,22 +2347,13 @@ function todayRosterHtml(todayCls, subs){
         else if(sub.photos&&sub.photos.length) hw=`<button class="btn btn-outline btn-sm" style="padding:1px 7px" onclick="openSubPhotos('${sub.id}')">📷${sub.photos.length}${sub.checked?' ✓':''}</button>`;
         else hw='<span style="font-size:11px;color:var(--text-muted)">제출</span>';
       }
-      const cells=units.map(u=>{ const on=unitMarked(c.id,u.id,st.id); if(on) unitDone[u.id]++;
-        return `<td style="text-align:center;padding:3px"><button class="btn btn-sm" style="padding:1px 8px;font-size:12px;${on?'background:var(--green);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="doToggleUnit('${c.id}','${u.id}','${st.id}')">${on?'✓':'○'}</button></td>`; }).join('');
-      return `<tr style="${absent?'background:#FEF2F2':''}">
-        <td style="padding:4px 2px"><strong style="font-size:12px">${st.name}</strong>${absent?' <span class="badge b-red" style="font-size:9px">결석</span>':''}</td>
-        <td style="padding:4px 2px">${hw}</td>
-        ${cells}
-        <td style="padding:4px 2px;text-align:right"><button class="btn ${absent?'btn-red':'btn-outline'} btn-sm" style="padding:2px 7px;font-size:11px" onclick="toggleAbsent('${st.id}','${(st.name||'').replace(/'/g,'')}','${c.id}','${(c.name||'').replace(/'/g,'')}')">${absent?'취소':'결석'}</button></td>
-      </tr>`;
+      return `<div style="display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;${absent?'background:#FEF2F2':''}">
+        <strong style="font-size:13px;min-width:58px">${st.name}</strong>
+        ${absent?'<span class="badge b-red" style="font-size:10px">결석</span>':''}
+        ${hw}
+        <button class="btn ${absent?'btn-red':'btn-outline'} btn-sm" style="margin-left:auto;padding:2px 7px;font-size:11px" onclick="toggleAbsent('${st.id}','${(st.name||'').replace(/'/g,'')}','${c.id}','${(c.name||'').replace(/'/g,'')}')">${absent?'결석취소':'결석'}</button>
+      </div>`;
     }).join('');
-    const rosterTable=`<div class="table-wrap"><table style="font-size:12px;width:100%">
-      <thead><tr>
-        <th style="text-align:left">학생</th><th style="text-align:left">숙제</th>
-        ${units.map(u=>`<th style="text-align:center;white-space:nowrap">${(u.name||'').replace(/</g,'&lt;')} <span style="font-size:9px;color:var(--text-muted);font-weight:400">${unitDone[u.id]||0}/${sts.length}</span> <span onclick="doDelUnit('${c.id}','${u.id}')" title="이 단원 삭제" style="cursor:pointer;color:var(--text-muted)">✕</span></th>`).join('')}
-        <th style="text-align:right"><button class="btn btn-outline btn-sm" style="padding:1px 7px;font-size:10px" onclick="doAddUnit('${c.id}')">＋단원</button></th>
-      </tr></thead>
-      <tbody>${rows}</tbody></table></div>`;
     const pl=curPlan(c.id, mondayOf(''));
     const plPrev=curPlan(c.id, addDays(mondayOf(''),-7));
     // 지난 숙제 = 마감일이 오늘 이전인 것 중 가장 최근 / 오늘 출제 = 출제일이 오늘(입력했는지 확인용)
@@ -2405,11 +2395,51 @@ function todayRosterHtml(todayCls, subs){
         <input class="form-input" value="${esc((progOf(c.id,todayStr)||{}).comment)}" placeholder="오늘 수업 메모 (진도표에도 저장돼요)" style="flex:1;padding:4px 8px;font-size:12px" onchange="doSaveClassComment('${c.id}',this.value)">
       </div>
       <details ${dashClsCollapsed[c.id]?'':'open'} ontoggle="dashClsCollapsed['${c.id}']=!this.open">
-        <summary style="cursor:pointer;font-size:11px;color:var(--text-muted);padding:3px 0">학생 명단 접기/펼치기 · <strong>＋단원</strong>으로 단원을 추가하고, 끝낸 학생을 ○ 눌러 체크</summary>
-        ${sts.length?rosterTable:'<div style="color:var(--text-muted);padding:8px">배정된 학생이 없어요</div>'}
+        <summary style="cursor:pointer;font-size:11px;color:var(--text-muted);padding:3px 0">학생 명단 접기/펼치기 · 빠진 학생만 결석을 눌러주세요</summary>
+        ${sts.length?rows:'<div style="color:var(--text-muted);padding:8px">배정된 학생이 없어요</div>'}
       </details>
     </div>`;
   }).join('')+`</div>`;
+}
+// 📋 반별 체크리스트 보드 (대시보드 하단) — 반 선택 → 학생 × 단원 그리드
+let ckBoardClassId='';
+function setCkBoardClass(id){ ckBoardClassId=id; rDashboard(); }
+function classCheckBoardHtml(){
+  const live=CLASSES.filter(c=>isClassActive(c));
+  if(!live.length) return '';
+  const WDIDX={mon:0,tue:1,wed:2,thu:3,fri:4,sat:5,sun:6}, wdOf=c=>{ const d=clsDays(c)[0]; return WDIDX[d]!=null?WDIDX[d]:9; };
+  const list=live.slice().sort((a,b)=>wdOf(a)-wdOf(b)||((a.name||'')>(b.name||'')?1:-1));
+  if(!ckBoardClassId || !list.find(c=>c.id===ckBoardClassId)){
+    const dayKey=['sun','mon','tue','wed','thu','fri','sat'][new Date().getDay()];
+    ckBoardClassId=(list.find(c=>clsHasDay(c,dayKey))||list[0]).id;   // 기본: 오늘 수업 반
+  }
+  const c=list.find(x=>x.id===ckBoardClassId);
+  const sts=getStudentsByClass(c.id);
+  const units=classUnits(c.id);
+  const done={}; units.forEach(u=>{ done[u.id]=sts.filter(s=>unitMarked(c.id,u.id,s.id)).length; });
+  const el=s=>(s||'').replace(/</g,'&lt;');
+  return `<div class="card" style="margin:0">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <div class="card-title" style="margin:0">📋 반별 체크리스트 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(단원별로 누가 마무리했는지)</span></div>
+      <button class="btn btn-primary btn-sm" onclick="doAddUnit('${c.id}')">＋ 단원 추가</button>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 10px">
+      ${list.map(x=>`<button class="btn btn-sm" style="${x.id===c.id?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="setCkBoardClass('${x.id}')">${el(x.name)}<span style="font-size:9px;opacity:.75"> ${clsDayLabel(x)}</span></button>`).join('')}
+    </div>
+    ${!sts.length?'<div style="color:var(--text-muted);padding:12px">이 반에 배정된 학생이 없어요</div>'
+      : !units.length?`<div style="text-align:center;padding:22px;color:var(--text-muted)">아직 단원이 없어요.<br><span style="font-size:12px">위 <strong>＋ 단원 추가</strong>를 눌러 "1단원"처럼 만들어보세요.</span></div>`
+      : `<div class="table-wrap"><table style="font-size:13px;width:100%">
+        <thead><tr>
+          <th style="text-align:left;min-width:70px;position:sticky;left:0;background:var(--bg)">학생</th>
+          ${units.map(u=>`<th style="text-align:center;white-space:nowrap;min-width:78px">${el(u.name)}<div style="font-size:10px;font-weight:400;color:${done[u.id]===sts.length?'var(--green)':'var(--text-muted)'}">${done[u.id]}/${sts.length} <span onclick="doDelUnit('${c.id}','${u.id}')" title="단원 삭제" style="cursor:pointer">✕</span></div></th>`).join('')}
+        </tr></thead>
+        <tbody>${sts.map(st=>`<tr>
+          <td style="position:sticky;left:0;background:var(--surface)"><strong>${el(st.name)}</strong></td>
+          ${units.map(u=>{ const on=unitMarked(c.id,u.id,st.id);
+            return `<td style="text-align:center;padding:3px"><button class="btn btn-sm" style="padding:3px 12px;font-size:13px;${on?'background:var(--green);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="doToggleUnit('${c.id}','${u.id}','${st.id}')">${on?'✓':'○'}</button></td>`; }).join('')}
+        </tr>`).join('')}</tbody>
+      </table></div>`}
+  </div>`;
 }
 // 📋 반별 단원 체크리스트 — classCheck 문서 {units:[{id,name}], marks:{unitId:{sid:true}}, testLog:{date:true}}
 let CLASSCHECK_CACHE={};
