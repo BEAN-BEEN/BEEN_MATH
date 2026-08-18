@@ -187,6 +187,43 @@
     .v-title{font-size:13px;font-weight:600;line-height:1.4;margin-bottom:6px}
     .v-meta{font-size:12px;color:var(--text-muted)}
 
+    /* === 🏫 우리 학교 (모바일 앱 스타일) === */
+    .sch-hero{background:linear-gradient(135deg,var(--primary),#7C8CF8);border-radius:20px;padding:16px 16px 12px;color:#fff;margin-bottom:14px;box-shadow:0 8px 22px rgba(91,108,245,.28)}
+    .sch-hero-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+    .sch-badge{font-size:13px;font-weight:800;background:rgba(255,255,255,.2);padding:5px 12px;border-radius:999px}
+    .sch-datenav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
+    .sch-datenav button{width:36px;height:36px;border-radius:50%;border:none;background:rgba(255,255,255,.18);color:#fff;font-size:20px;cursor:pointer;font-family:inherit;line-height:1}
+    .sch-datenav button:active{background:rgba(255,255,255,.32)}
+    .sch-date{text-align:center;line-height:1.25}
+    .sch-date strong{display:block;font-size:19px;font-weight:800}
+    .sch-date span{font-size:12px;opacity:.9}
+    .sch-tabs{display:flex;gap:6px;background:rgba(255,255,255,.15);padding:4px;border-radius:14px}
+    .sch-tab{flex:1;border:none;background:transparent;color:rgba(255,255,255,.85);font-size:13px;font-weight:700;padding:9px 4px;border-radius:11px;cursor:pointer;font-family:inherit;transition:all .15s}
+    .sch-tab.on{background:#fff;color:var(--primary);box-shadow:0 2px 8px rgba(0,0,0,.12)}
+    .sch-card{background:var(--surface);border-radius:18px;box-shadow:var(--shadow);padding:16px;margin-bottom:12px}
+    .sch-card-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px}
+    .sch-meal-type{font-size:15px;font-weight:800;color:var(--text)}
+    .sch-kcal{font-size:12px;color:var(--text-muted);font-weight:600}
+    .sch-menu{display:flex;flex-wrap:wrap;gap:7px}
+    .sch-chip{background:var(--primary-light);color:var(--primary);font-size:13px;font-weight:600;padding:8px 13px;border-radius:12px}
+    .sch-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--border)}
+    .sch-row.past{opacity:.45}
+    .sch-row-d{min-width:34px;text-align:center;line-height:1.1}
+    .sch-row-d b{display:block;font-size:17px;font-weight:800;color:var(--primary)}
+    .sch-row-d span{font-size:10px;color:var(--text-muted)}
+    .sch-row-t{flex:1;font-size:14px;font-weight:600;color:var(--text)}
+    .sch-dday{font-size:11px;font-weight:800;color:var(--orange);background:var(--orange-light);padding:4px 9px;border-radius:999px;white-space:nowrap}
+    .sch-dday.now{color:#fff;background:var(--red)}
+    .sch-empty{background:var(--surface);border-radius:18px;box-shadow:var(--shadow);padding:40px 20px;text-align:center;font-size:34px;color:var(--text-muted)}
+    .sch-empty div{font-size:15px;font-weight:700;color:var(--text-sub);margin-top:8px}
+    .sch-empty p{font-size:12.5px;color:var(--text-muted);margin-top:5px}
+    .sch-pick{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+    .sch-pick span{font-size:12px;color:var(--text-muted);width:100%}
+    .sch-pick button{background:var(--bg);border:1.5px solid var(--border);color:var(--text-sub);font-size:14px;font-weight:700;padding:11px 16px;border-radius:13px;cursor:pointer;font-family:inherit}
+    .sch-pick button:active{background:var(--primary);color:#fff;border-color:var(--primary)}
+    .sch-mini{background:var(--bg);border:1px solid var(--border);color:var(--text-muted);font-size:11px;padding:4px 10px;border-radius:9px;cursor:pointer;font-family:inherit}
+    .sch-home .sch-chip{font-size:12px;padding:6px 11px}
+
     /* === MATERIALS === */
     .mat-card{background:var(--surface);border-radius:var(--radius-sm);box-shadow:var(--shadow);padding:14px 18px;display:flex;align-items:center;gap:14px;margin-bottom:10px}
     .mat-icon{font-size:28px}
@@ -381,6 +418,14 @@
         <div class="page-subtitle">시험 결과와 성적 추이를 확인하세요</div>
       </div>
       <div class="content-area" id="gradesContent"></div>
+    </div>
+
+    <div class="section" id="sec-school">
+      <div class="page-header">
+        <div class="page-title">우리 학교</div>
+        <div class="page-subtitle">급식 · 학사일정 · 시간표</div>
+      </div>
+      <div class="content-area" id="schoolContent"></div>
     </div>
 
     <div class="section" id="sec-curriculum">
@@ -924,6 +969,7 @@ const ICONS={
   attendance:_svg('<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M9 16l2 2 4-4"/>'),
   grades:_svg('<circle cx="12" cy="8" r="5"/><path d="M8.5 12.5L7 22l5-3 5 3-1.5-9.5"/>'),
   curriculum:_svg('<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><path d="M7 13l2 2 3.5-3.5"/><path d="M14 17h4"/>'),
+  school:_svg('<path d="M3 21h18"/><path d="M5 21V9l7-5 7 5v12"/><path d="M10 21v-5h4v5"/><path d="M9 12h.01M15 12h.01"/>'),
   report:_svg('<path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="7"/><rect x="12" y="7" width="3" height="11"/><rect x="17" y="4" width="3" height="14"/>'),
   questions:_svg('<path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>'),
   videos:_svg('<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 9l5 3-5 3z"/>'),
@@ -939,6 +985,7 @@ const NAV_ITEMS = [
   { id:'review',       label:'복습' },
   { id:'attendance',   label:'출석' },
   { id:'grades',       label:'성적' },
+  { id:'school',       label:'우리 학교' },
   { id:'curriculum',   label:'진도표' },
   { id:'report',       label:'학습 리포트' },
   { id:'questions',    label:'질문실' },
@@ -949,7 +996,7 @@ const NAV_ITEMS = [
   { id:'teacher',      label:'혜빈쌤' }
 ];
 const PAGE_TITLES = {
-  home:'홈', homework:'숙제', wrong:'오답', review:'복습', attendance:'출석', grades:'성적', curriculum:'진도표', report:'학습 리포트',
+  home:'홈', homework:'숙제', wrong:'오답', review:'복습', attendance:'출석', grades:'성적', school:'우리 학교', curriculum:'진도표', report:'학습 리포트',
   questions:'질문실', videos:'수업 영상', materials:'자료실', schedule:'시간표',
   consultation:'상담 신청', teacher:'혜빈쌤'
 };
@@ -975,7 +1022,7 @@ function navigate(sec) {
   window.scrollTo(0,0);
 }
 function renderSection(s) {
-  const map = { home:renderHome, homework:renderHomework, wrong:renderWrong, review:renderReview, attendance:renderAttendance, grades:renderGrades, curriculum:renderCurriculum, report:renderReport, questions:renderQuestions, videos:renderVideos, materials:renderMaterials, schedule:renderSchedule, consultation:renderConsultation, teacher:renderTeacher };
+  const map = { home:renderHome, homework:renderHomework, wrong:renderWrong, review:renderReview, attendance:renderAttendance, grades:renderGrades, school:renderSchool, curriculum:renderCurriculum, report:renderReport, questions:renderQuestions, videos:renderVideos, materials:renderMaterials, schedule:renderSchedule, consultation:renderConsultation, teacher:renderTeacher };
   map[s]?.();
 }
 
@@ -1166,6 +1213,7 @@ function renderHome() {
         <div style="font-size:13px;font-weight:800;color:#854D0E;margin-bottom:6px">📢 공지사항</div>
         ${S_NOTICES.map(n=>`<div style="font-size:14px;color:#713F12;padding:3px 0">• ${n.text}</div>`).join('')}
       </div>`:''}
+    ${schoolHomeCardHtml()}
     ${S_SCHOOLEXAM?(function(){
       const e=S_SCHOOLEXAM, t=new Date(); t.setHours(0,0,0,0);
       const diff=Math.round((new Date(e.date+'T00:00:00')-t)/86400000);
@@ -2108,6 +2156,131 @@ async function mockReopen(mockId){
 // ================================================================
 // REPORT
 // ================================================================
+// ================================================================
+// 🏫 우리 학교 — NEIS 급식·학사일정·시간표 (저장된 학교 그대로 사용)
+// ================================================================
+let SCH={code:null, meals:null, sched:null, tt:null, tab:'meal', date:null, grade:'', cls:''};
+function ymd(d){ const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}`; }
+function ymdDash(s){ return s?`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`:''; }
+function schShift(n){ const d=new Date(SCH.date); d.setDate(d.getDate()+n); SCH.date=d; SCH.meals=null; SCH.tt=null; renderSchool(); }
+async function schApi(params){
+  const qs=Object.keys(params).map(k=>k+'='+encodeURIComponent(params[k])).join('&');
+  const r=await fetch('/api/school?'+qs); const j=await r.json().catch(()=>({rows:[]}));
+  return j.rows||[];
+}
+// 학교코드 조회 — 한 번 찾으면 Firestore(schoolCodes)에 저장해 다음부턴 바로 사용
+async function schResolveCode(){
+  const name=S_SCHOOL; if(!name) return null;
+  try{ const d=await db.collection('schoolCodes').doc(name).get(); if(d.exists) return d.data(); }catch(e){}
+  const rows=await schApi({type:'search', name});
+  if(!rows.length) return null;
+  const r=rows.find(x=>normSchool(x.SCHUL_NM)===name)||rows[0];
+  const info={atpt:r.ATPT_OFCDC_SC_CODE, code:r.SD_SCHUL_CODE, name:r.SCHUL_NM, kind:(r.SCHUL_KND_SC_NM||'')};
+  try{ await db.collection('schoolCodes').doc(name).set(info,{merge:true}); }catch(e){}
+  return info;
+}
+function schKind(info){ const k=(info&&info.kind)||''; return k.includes('초')?'els':(k.includes('중')?'mis':(k.includes('특수')?'sps':'his')); }
+async function renderSchool(){
+  const el=document.getElementById('schoolContent'); if(!el) return;
+  if(!S_SCHOOL){ el.innerHTML=`<div class="sch-empty">🏫<div>학교 정보가 없어요</div><p>선생님께 학교 등록을 요청해주세요</p></div>`; return; }
+  if(!SCH.date) SCH.date=new Date();
+  if(SCH.code===null){ el.innerHTML=`<div class="sch-empty">⏳<div>${S_SCHOOL} 정보를 불러오는 중…</div></div>`; SCH.code=await schResolveCode()||false; return renderSchool(); }
+  if(SCH.code===false){ el.innerHTML=`<div class="sch-empty">🔍<div>‘${S_SCHOOL}’를 찾지 못했어요</div><p>학교 이름이 정확한지 선생님께 확인해주세요</p></div>`; return; }
+  const d=SCH.date, today=new Date(), isToday=ymd(d)===ymd(today);
+  const WD=['일','월','화','수','목','금','토'];
+  const head=`
+    <div class="sch-hero">
+      <div class="sch-hero-top"><span class="sch-badge">🏫 ${(SCH.code.name||S_SCHOOL).replace(/</g,'&lt;')}</span></div>
+      <div class="sch-datenav">
+        <button onclick="schShift(-1)">‹</button>
+        <div class="sch-date"><strong>${d.getMonth()+1}월 ${d.getDate()}일</strong><span>${WD[d.getDay()]}요일${isToday?' · 오늘':''}</span></div>
+        <button onclick="schShift(1)">›</button>
+      </div>
+      <div class="sch-tabs">
+        ${[['meal','🍚 급식'],['sched','📅 학사일정'],['tt','⏰ 시간표']].map(([k,l])=>`<button class="sch-tab ${SCH.tab===k?'on':''}" onclick="SCH.tab='${k}';renderSchool()">${l}</button>`).join('')}
+      </div>
+    </div>`;
+  el.innerHTML=head+`<div id="schBody"><div class="sch-empty">⏳<div>불러오는 중…</div></div></div>`;
+  const body=document.getElementById('schBody');
+  const A={atpt:SCH.code.atpt, code:SCH.code.code};
+  try{
+    if(SCH.tab==='meal'){
+      if(!SCH.meals) SCH.meals=await schApi({type:'meal', ...A, from:ymd(d), to:ymd(d)});
+      const rows=SCH.meals;
+      body.innerHTML = rows.length ? rows.map(m=>{
+        const menu=(m.DDISH_NM||'').split(/<br\s*\/?>/).map(x=>x.replace(/\([0-9.]+\)/g,'').trim()).filter(Boolean);
+        return `<div class="sch-card">
+          <div class="sch-card-h"><span class="sch-meal-type">${m.MMEAL_SC_NM||'급식'}</span><span class="sch-kcal">${(m.CAL_INFO||'').replace('Kcal','kcal')}</span></div>
+          <div class="sch-menu">${menu.map(x=>`<span class="sch-chip">${x.replace(/</g,'&lt;')}</span>`).join('')}</div>
+        </div>`; }).join('')
+        : `<div class="sch-empty">🍽<div>이 날은 급식이 없어요</div><p>주말·방학이거나 아직 등록 전이에요</p></div>`;
+    } else if(SCH.tab==='sched'){
+      const m0=new Date(d.getFullYear(), d.getMonth(), 1), m1=new Date(d.getFullYear(), d.getMonth()+1, 0);
+      if(!SCH.sched || SCH.sched._m!==d.getMonth()){ const rows=await schApi({type:'schedule', ...A, from:ymd(m0), to:ymd(m1)}); rows._m=d.getMonth(); SCH.sched=rows; }
+      const rows=SCH.sched.filter(r=>(r.EVENT_NM||'').trim());
+      const byDay={}; rows.forEach(r=>{ (byDay[r.AA_YMD]=byDay[r.AA_YMD]||[]).push(r.EVENT_NM); });
+      const keys=Object.keys(byDay).sort();
+      const todayS=ymd(today);
+      body.innerHTML = keys.length ? `<div class="sch-card"><div class="sch-card-h"><strong>${d.getMonth()+1}월 학사일정</strong><span class="sch-kcal">${keys.length}일</span></div>
+        ${keys.map(k=>{ const dd=new Date(+k.slice(0,4), +k.slice(4,6)-1, +k.slice(6,8)); const past=k<todayS;
+          const dday=Math.round((dd-new Date(today.getFullYear(),today.getMonth(),today.getDate()))/86400000);
+          return `<div class="sch-row ${past?'past':''}">
+            <div class="sch-row-d"><b>${+k.slice(6,8)}</b><span>${WD[dd.getDay()]}</span></div>
+            <div class="sch-row-t">${[...new Set(byDay[k])].map(e=>e.replace(/</g,'&lt;')).join(', ')}</div>
+            ${dday>0&&dday<=14?`<span class="sch-dday">D-${dday}</span>`:(dday===0?'<span class="sch-dday now">오늘</span>':'')}
+          </div>`; }).join('')}</div>`
+        : `<div class="sch-empty">📭<div>이 달은 등록된 일정이 없어요</div></div>`;
+    } else {
+      const kind=schKind(SCH.code);
+      if(!SCH.grade){ body.innerHTML=`<div class="sch-card"><div class="sch-card-h"><strong>학년·반을 골라주세요</strong></div>
+        <div class="sch-pick"><span>학년</span>${[1,2,3].map(g=>`<button onclick="SCH.grade='${g}';SCH.tt=null;renderSchool()">${g}학년</button>`).join('')}</div></div>`; return; }
+      if(!SCH.cls){ body.innerHTML=`<div class="sch-card"><div class="sch-card-h"><strong>${SCH.grade}학년 — 반을 골라주세요</strong><button class="sch-mini" onclick="SCH.grade='';renderSchool()">학년 변경</button></div>
+        <div class="sch-pick">${Array.from({length:12},(_,i)=>i+1).map(n=>`<button onclick="SCH.cls='${n}';SCH.tt=null;renderSchool()">${n}반</button>`).join('')}</div></div>`; return; }
+      if(!SCH.tt) SCH.tt=await schApi({type:'timetable', ...A, kind, grade:SCH.grade, cls:SCH.cls, from:ymd(d), to:ymd(d)});
+      const rows=SCH.tt.slice().sort((a,b)=>(+a.PERIO)-(+b.PERIO));
+      body.innerHTML=`<div class="sch-card"><div class="sch-card-h"><strong>${SCH.grade}학년 ${SCH.cls}반</strong><button class="sch-mini" onclick="SCH.grade='';SCH.cls='';SCH.tt=null;renderSchool()">변경</button></div>
+        ${rows.length?rows.map(r=>`<div class="sch-row"><div class="sch-row-d"><b>${r.PERIO}</b><span>교시</span></div><div class="sch-row-t">${(r.ITRT_CNTNT||'').replace(/</g,'&lt;')}</div></div>`).join('')
+          :`<div class="sch-empty" style="padding:20px">📭<div>이 날은 시간표가 없어요</div></div>`}</div>`;
+    }
+  }catch(e){ body.innerHTML=`<div class="sch-empty">⚠️<div>불러오지 못했어요</div><p>${(e&&e.message)||''}</p></div>`; }
+}
+// 🍚 홈 요약 카드 (오늘 급식 + 다가오는 학교 일정)
+let SCH_HOME=null;
+async function loadSchoolHome(){
+  if(!S_SCHOOL) return;
+  const info=await schResolveCode(); if(!info) return;
+  const t=new Date(), p=n=>String(n).padStart(2,'0');
+  const td=`${t.getFullYear()}${p(t.getMonth()+1)}${p(t.getDate())}`;
+  const e=new Date(); e.setDate(e.getDate()+21);
+  const ed=`${e.getFullYear()}${p(e.getMonth()+1)}${p(e.getDate())}`;
+  const [meals, sched]=await Promise.all([
+    schApi({type:'meal', atpt:info.atpt, code:info.code, from:td, to:td}),
+    schApi({type:'schedule', atpt:info.atpt, code:info.code, from:td, to:ed})
+  ]);
+  SCH_HOME={meals, sched:sched.filter(r=>(r.EVENT_NM||'').trim())};
+  if(currentSection==='home') renderHome();
+}
+function schoolHomeCardHtml(){
+  if(!S_SCHOOL || !SCH_HOME) return '';
+  const lunch=(SCH_HOME.meals||[]).find(m=>(m.MMEAL_SC_NM||'').includes('중식'))||(SCH_HOME.meals||[])[0];
+  const menu=lunch?(lunch.DDISH_NM||'').split(/<br\s*\/?>/).map(x=>x.replace(/\([0-9.]+\)/g,'').trim()).filter(Boolean):[];
+  const up=(SCH_HOME.sched||[])[0];
+  const t=new Date(), t0=new Date(t.getFullYear(),t.getMonth(),t.getDate());
+  const dday=up?Math.round((new Date(+up.AA_YMD.slice(0,4),+up.AA_YMD.slice(4,6)-1,+up.AA_YMD.slice(6,8))-t0)/86400000):null;
+  return `<div class="card sch-home" onclick="navigate('school')" style="cursor:pointer">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div class="card-title" style="margin:0">🍚 오늘 급식 <span style="font-size:11px;color:var(--text-muted);font-weight:400">${(SCH_HOME.meals&&SCH_HOME.meals.length)?'':'· 없음'}</span></div>
+      <span style="font-size:11px;color:var(--primary);font-weight:700">우리 학교 ›</span>
+    </div>
+    ${menu.length?`<div class="sch-menu">${menu.slice(0,8).map(x=>`<span class="sch-chip">${x.replace(/</g,'&lt;')}</span>`).join('')}</div>`
+      :'<div style="font-size:13px;color:var(--text-muted)">오늘은 급식이 없어요</div>'}
+    ${up?`<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:12px;display:flex;align-items:center;gap:6px">
+      <span style="color:var(--text-muted)">📅 다가오는 일정</span>
+      <strong>${(up.EVENT_NM||'').replace(/</g,'&lt;')}</strong>
+      ${dday!=null?`<span class="sch-dday ${dday===0?'now':''}" style="margin-left:auto">${dday===0?'오늘':'D-'+dday}</span>`:''}
+    </div>`:''}
+  </div>`;
+}
 // 📚 진도표 (우리 반 주차별 계획, 읽기전용) — 처음 열 때 lazy load
 let S_CURRICULUM=null, S_CURR_TERM=null;
 async function loadCurrForStudent(){
@@ -2712,6 +2885,7 @@ async function init(){
   try{ await loadStudentData(); }   // Firebase에서 내 반·숙제·제출 불러오기
   catch(e){ showToast('데이터를 불러오지 못했어요: '+e.message,'error'); }
   renderHome();
+  loadSchoolHome().catch(()=>{});   // 🏫 오늘 급식·학교 일정 (백그라운드 — 늦어도 화면은 먼저 뜸)
 }
 document.addEventListener('DOMContentLoaded', init);
 </script>

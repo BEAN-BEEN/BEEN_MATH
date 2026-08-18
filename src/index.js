@@ -14,12 +14,57 @@ export default {
       if (url.pathname === '/api/analyze' && request.method === 'POST')  return await analyzeExam(request, env);
       if (url.pathname === '/api/feedback' && request.method === 'POST') return await examFeedback(request, env);
       if (url.pathname === '/api/notify' && request.method === 'POST')   return await notify(request, env);
+      if (url.pathname === '/api/school')                                return await schoolApi(url, env);
     } catch (e) {
       return json({ error: e.message }, 500);
     }
     return env.ASSETS.fetch(request); // 정적 파일
   }
 };
+
+// ----------------------------------------------------------------
+// 🏫 학교 정보 (NEIS 교육정보 개방 포털) — 급식 / 학사일정 / 시간표 / 학교검색
+//   키는 Cloudflare 시크릿 NEIS_KEY 에 보관 (학생 화면에 노출 안 됨)
+//   /api/school?type=search&name=송도고
+//   /api/school?type=meal&atpt=E10&code=7310078&from=20260818&to=20260824
+//   /api/school?type=schedule&atpt=&code=&from=&to=
+//   /api/school?type=timetable&atpt=&code=&kind=his&grade=1&cls=3&from=&to=
+// ----------------------------------------------------------------
+async function schoolApi(url, env) {
+  const KEY = env.NEIS_KEY;
+  if (!KEY) return json({ error: 'NEIS_KEY 환경변수가 없어요' }, 500);
+  const q = k => url.searchParams.get(k) || '';
+  const type = q('type');
+  const base = 'https://open.neis.go.kr/hub/';
+  const common = `KEY=${KEY}&Type=json&pIndex=1&pSize=500`;
+  let api, extra = '';
+
+  if (type === 'search') {
+    api = 'schoolInfo'; extra = `&SCHUL_NM=${encodeURIComponent(q('name'))}`;
+  } else if (type === 'meal') {
+    api = 'mealServiceDietInfo';
+    extra = `&ATPT_OFCDC_SC_CODE=${q('atpt')}&SD_SCHUL_CODE=${q('code')}&MLSV_FROM_YMD=${q('from')}&MLSV_TO_YMD=${q('to')}`;
+  } else if (type === 'schedule') {
+    api = 'SchoolSchedule';
+    extra = `&ATPT_OFCDC_SC_CODE=${q('atpt')}&SD_SCHUL_CODE=${q('code')}&AA_FROM_YMD=${q('from')}&AA_TO_YMD=${q('to')}`;
+  } else if (type === 'timetable') {
+    const kind = q('kind') || 'his';   // els(초) / mis(중) / his(고) / sps(특수)
+    api = kind + 'Timetable';
+    extra = `&ATPT_OFCDC_SC_CODE=${q('atpt')}&SD_SCHUL_CODE=${q('code')}&GRADE=${q('grade')}&CLASS_NM=${q('cls')}&TI_FROM_YMD=${q('from')}&TI_TO_YMD=${q('to')}`;
+  } else {
+    return json({ error: 'type이 잘못됐어요' }, 400);
+  }
+
+  const r = await fetch(base + api + '?' + common + extra);
+  const j = await r.json().catch(() => null);
+  if (!j) return json({ rows: [], msg: '응답을 읽지 못했어요' });
+  if (j.RESULT) return json({ rows: [], msg: j.RESULT.MESSAGE || '', code: j.RESULT.CODE || '' });
+  const rows = (j[api] && j[api][1] && j[api][1].row) || [];
+  return new Response(JSON.stringify({ rows }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=1800' }   // 30분 캐시
+  });
+}
 
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json' } });
