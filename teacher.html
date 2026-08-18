@@ -3784,17 +3784,22 @@ let currShowCols=null;
 function getCurrCols(){
   if(currShowCols==null){
     try{ const s=JSON.parse(localStorage.getItem('bm_currCols')||'null'); if(Array.isArray(s)){ currShowCols=s; return currShowCols; } }catch(e){}
-    const hr=CLASSES.filter(c=>classIsHomeroom(c)).map(c=>c.id); currShowCols = hr.length?hr:CLASSES.map(c=>c.id);   // 기본: 담임반
+    const live=CLASSES.filter(c=>isClassActive(c));                       // 끝난 수업은 기본에서 제외
+    const hr=live.filter(c=>classIsHomeroom(c)).map(c=>c.id); currShowCols = hr.length?hr:live.map(c=>c.id);   // 기본: 담임반(진행중)
   }
   return currShowCols;
 }
 function setCurrCols(ids){ currShowCols=ids; try{ localStorage.setItem('bm_currCols', JSON.stringify(ids)); }catch(e){} rCurriculum(); }
 function toggleCurrCol(id){ const cur=getCurrCols().slice(); const i=cur.indexOf(id); if(i>=0) cur.splice(i,1); else cur.push(id); setCurrCols(cur); }
 // 담임/부담임은 반별 관리에서 지정한 값(classIsHomeroom: c.role 기준, 미지정이면 이름 X/Y/Z로 추정)
-function currRoleSet(role){ let ids; if(role==='homeroom') ids=CLASSES.filter(c=>classIsHomeroom(c)).map(c=>c.id); else if(role==='assistant') ids=CLASSES.filter(c=>!classIsHomeroom(c)).map(c=>c.id); else ids=CLASSES.map(c=>c.id);
+function currRoleSet(role){ const live=CLASSES.filter(c=>isClassActive(c));   // 진행중 반만 (끝난 수업 제외)
+  let ids; if(role==='homeroom') ids=live.filter(c=>classIsHomeroom(c)).map(c=>c.id); else if(role==='assistant') ids=live.filter(c=>!classIsHomeroom(c)).map(c=>c.id); else ids=live.map(c=>c.id);
   if(!ids.length){ showToast(role==='all'?'반이 없어요':(role==='homeroom'?'담임반이 없어요 (반별 관리에서 지정)':'부담임반이 없어요 (반별 관리에서 지정)'),'warning'); return; } setCurrCols(ids); }
 function curriculumFilterBar(allClasses, showIds){
   const chip=c=>{ const on=showIds.includes(c.id); const role=` <span style="font-size:9px;opacity:.8">${classIsHomeroom(c)?'담임':'부담임'}</span>`; return `<button class="btn btn-sm" style="${on?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="toggleCurrCol('${c.id}')">${on?'✓ ':''}${(c.name||'').replace(/</g,'&lt;')}${role}</button>`; };
+  const endedChip=c=>{ const on=showIds.includes(c.id); return `<button class="btn btn-sm" style="${on?'background:var(--text-muted);color:#fff':'background:var(--bg);color:var(--text-muted)'};opacity:.75" onclick="toggleCurrCol('${c.id}')" title="${c.endDate||''} 종료">${on?'✓ ':''}${(c.name||'').replace(/</g,'&lt;')}</button>`; };
+  const live=allClasses.filter(c=>isClassActive(c));
+  const ended=allClasses.filter(c=>!isClassActive(c));
   return `<div class="card" style="padding:10px 14px;margin-bottom:10px">
     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
       <span style="font-size:12px;font-weight:700">반 보기</span>
@@ -3803,7 +3808,11 @@ function curriculumFilterBar(allClasses, showIds){
       <button class="btn btn-outline btn-sm" onclick="currRoleSet('all')">전체</button>
       <span style="font-size:11px;color:var(--text-muted);margin-left:4px">담임/부담임은 <strong>반별 관리</strong>에서 설정한 값이에요</span>
     </div>
-    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${allClasses.map(chip).join('')}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${live.map(chip).join('')||'<span style="font-size:12px;color:var(--text-muted)">진행중인 반이 없어요</span>'}</div>
+    ${ended.length?`<div style="margin-top:8px;border-top:1px dashed var(--border);padding-top:7px">
+      <span style="font-size:11px;color:var(--text-muted);margin-right:6px">🗄 끝난 수업 <span style="opacity:.7">(눌러서 지난 진도 보기)</span></span>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:5px">${ended.map(endedChip).join('')}</div>
+    </div>`:''}
   </div>`;
 }
 async function doSaveProg(date){
@@ -3851,7 +3860,7 @@ function rCurriculum(){
         <thead><tr>
           <th style="background:var(--bg);position:sticky;left:0;z-index:2">주차</th>
           <th style="background:var(--bg)">날짜</th>
-          ${classes.map(c=>`<th style="white-space:nowrap;min-width:150px;text-align:left;padding:6px 8px">${(c.name||'').replace(/</g,'&lt;')} <span style="font-size:9px;color:var(--text-muted);font-weight:400">${classIsHomeroom(c)?'담임':'부담임'}</span>${c.subject?`<div style="font-size:10px;color:var(--text-muted);font-weight:400">${(c.subject||'').replace(/</g,'&lt;')}</div>`:''}<div style="font-size:10px;color:var(--primary);font-weight:600">${clsDayLabel(c)||'요일 미정'}${c.slot?' '+c.slot:''}${(c.startTime&&c.endTime)?` ${c.startTime}~${c.endTime}`:''}</div></th>`).join('')}
+          ${classes.map(c=>`<th style="white-space:nowrap;min-width:150px;text-align:left;padding:6px 8px;${isClassActive(c)?'':'opacity:.7'}">${(c.name||'').replace(/</g,'&lt;')} <span style="font-size:9px;color:var(--text-muted);font-weight:400">${classIsHomeroom(c)?'담임':'부담임'}</span>${isClassActive(c)?'':' <span class="badge b-gray" style="font-size:9px">끝난 수업</span>'}${c.subject?`<div style="font-size:10px;color:var(--text-muted);font-weight:400">${(c.subject||'').replace(/</g,'&lt;')}</div>`:''}<div style="font-size:10px;color:var(--primary);font-weight:600">${clsDayLabel(c)||'요일 미정'}${c.slot?' '+c.slot:''}${(c.startTime&&c.endTime)?` ${c.startTime}~${c.endTime}`:''}</div></th>`).join('')}
         </tr></thead>
         <tbody>${body}</tbody>
       </table></div>
