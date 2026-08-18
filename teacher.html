@@ -1119,6 +1119,7 @@ function rDashboard(){
    <div style="display:grid;grid-template-columns:minmax(0,1fr);gap:14px" id="dashGrid">
     <div style="display:flex;flex-direction:column;gap:14px" id="dashLeft">
       ${monthSummaryHtml()}
+      ${dashCalendarHtml()}
       ${myTodosHtml()}
       <div class="card" style="border-left:4px solid var(--yellow);margin:0">
         <div class="card-title" style="font-size:15px">📢 공지사항 <span style="font-size:11px;color:var(--text-muted);font-weight:400">(학생 홈에 표시)</span></div>
@@ -1201,30 +1202,94 @@ function applyDashLayout(){
   g.style.gridTemplateColumns = w>=1280 ? '300px minmax(0,1fr) 320px' : (w>=900 ? 'minmax(0,1fr) 320px' : 'minmax(0,1fr)');
 }
 window.addEventListener('resize', function(){ if(document.getElementById('dashGrid')) applyDashLayout(); });
-// 🩹 결석생 보충 현황 — 최근 결석 학생과 보강 참석 여부
+// 🩹 결석생 — 결석 명단 + 영상 발송 체크만
+async function doToggleVideoSent(absId){
+  const a=getAbsences().find(x=>x.id===absId); if(!a) return;
+  const v=!a.videoSent; a.videoSent=v;   // 즉시 반영
+  try{ await db.collection('absences').doc(absId).set({videoSent:v},{merge:true}); rDashboard(); }
+  catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+async function doSetMakeupPlan(absId, field, val){
+  const a=getAbsences().find(x=>x.id===absId); if(!a) return;
+  a[field]=(val||'').trim();
+  try{ await db.collection('absences').doc(absId).set({[field]:a[field]},{merge:true}); rDashboard(); }
+  catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
 function absentMakeupHtml(){
   const today=new Date().toISOString().slice(0,10);
   const from=(function(){ const d=new Date(); d.setDate(d.getDate()-21); return d.toISOString().slice(0,10); })();
   const abs=getAbsences().filter(a=>a.date>=from && a.date<=today).sort((x,y)=>(y.date||'').localeCompare(x.date||''));
-  const rows=abs.map(a=>{
-    // 결석 이후 보강(bogang) 참석했는지
-    const done=getBogang().some(b=>(b.date||'')>=a.date && Array.isArray(b.attendees) && b.attendees.includes(a.studentId));
-    return {a, done};
-  });
-  const pending=rows.filter(r=>!r.done);
+  const notSent=abs.filter(a=>!a.videoSent).length;
   return `<div class="card" style="margin:0">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
-      <div class="card-title" style="margin:0;font-size:15px">🩹 결석생 보충</div>
-      <span class="badge ${pending.length?'b-orange':'b-green'}" style="font-size:10px">${pending.length?('처리 필요 '+pending.length):'모두 완료'}</span>
+      <div class="card-title" style="margin:0;font-size:15px">🩹 결석생</div>
+      <span class="badge ${notSent?'b-orange':'b-green'}" style="font-size:10px">${abs.length?(notSent?('영상 미발송 '+notSent):'영상 모두 발송'):'결석 없음'}</span>
     </div>
-    <div style="font-size:11px;color:var(--text-muted);margin:2px 0 6px">최근 3주 결석 · 보강 참석하면 자동으로 완료돼요</div>
-    ${rows.length?rows.slice(0,8).map(r=>`<div style="display:flex;align-items:center;gap:6px;padding:6px 0;border-top:1px solid var(--border);flex-wrap:wrap">
-      <strong style="font-size:12px;min-width:52px">${r.a.studentName||'-'}</strong>
-      <span style="font-size:11px;color:var(--text-muted)">${r.a.className||''} · ${(r.a.date||'').slice(5)}</span>
-      <span style="margin-left:auto" class="badge ${r.done?'b-green':'b-orange'}" style="font-size:10px">${r.done?'✓ 보충함':'보충 필요'}</span>
+    <div style="font-size:11px;color:var(--text-muted);margin:2px 0 6px">최근 3주 결석 · 영상 보냈으면 체크해요</div>
+    ${abs.length?abs.slice(0,10).map(a=>`<div style="padding:7px 0;border-top:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <strong style="font-size:12px;min-width:52px">${a.studentName||'-'}</strong>
+        <span style="font-size:11px;color:var(--text-muted)">${a.className||''} · ${(a.date||'').slice(5)}</span>
+        <button class="btn btn-sm" style="margin-left:auto;padding:2px 8px;font-size:11px;${a.videoSent?'background:var(--green);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="doToggleVideoSent('${a.id}')">${a.videoSent?'✓ 영상':'영상 발송'}</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;margin-top:4px;flex-wrap:wrap">
+        <span style="font-size:10px;color:var(--text-muted)">보충</span>
+        <input type="date" class="form-input" value="${a.makeupDate||''}" style="width:132px;padding:2px 6px;font-size:11px" onchange="doSetMakeupPlan('${a.id}','makeupDate',this.value)">
+        <input class="form-input" value="${(a.makeupTime||'').replace(/"/g,'&quot;')}" placeholder="시간(예: 3시)" style="width:88px;padding:2px 6px;font-size:11px" onchange="doSetMakeupPlan('${a.id}','makeupTime',this.value)">
+        ${a.makeupDate?'<span class="badge b-green" style="font-size:9px">예정됨</span>':'<span class="badge b-orange" style="font-size:9px">미정</span>'}
+      </div>
     </div>`).join(''):'<div style="font-size:12px;color:var(--green);padding:6px 0">최근 결석이 없어요 🎉</div>'}
-    ${rows.length>8?`<div style="font-size:11px;color:var(--text-muted);padding-top:6px">+${rows.length-8}건 더</div>`:''}
-    <button class="btn btn-outline btn-sm" style="margin-top:8px;width:100%;justify-content:center" onclick="naesinTab='bogang';navigate('naesin')">🙋 보강 체크로 →</button>
+    ${abs.length>10?`<div style="font-size:11px;color:var(--text-muted);padding-top:6px">+${abs.length-10}건 더</div>`:''}
+  </div>`;
+}
+// 📆 미니 달력 (대시보드 왼쪽) — 수업/보강/시험 점으로 표시
+let dashCalY=null, dashCalM=null;
+function dashCalShift(d){ const x=new Date(dashCalY, dashCalM+d, 1); dashCalY=x.getFullYear(); dashCalM=x.getMonth(); rDashboard(); }
+function dashCalendarHtml(){
+  const now=new Date(), pad=n=>String(n).padStart(2,'0');
+  if(dashCalY==null){ dashCalY=now.getFullYear(); dashCalM=now.getMonth(); }
+  const todayStr=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  const firstDow=new Date(dashCalY,dashCalM,1).getDay(), dim=new Date(dashCalY,dashCalM+1,0).getDate();
+  const wdKeys=['sun','mon','tue','wed','thu','fri','sat'];
+  const exams=getSchoolExams(), makeups=getMakeups();
+  const cells=[]; for(let i=0;i<firstDow;i++) cells.push(null); for(let d=1;d<=dim;d++) cells.push(d); while(cells.length%7) cells.push(null);
+  const dowLbl=['일','월','화','수','목','금','토'];
+  const cell=d=>{
+    if(!d) return '<div></div>';
+    const dow=new Date(dashCalY,dashCalM,d).getDay();
+    const ds=`${dashCalY}-${pad(dashCalM+1)}-${pad(d)}`;
+    const hasCls=CLASSES.some(c=>clsHasDay(c,wdKeys[dow]) && isClassActive(c,ds));
+    const hasMk=makeups.some(m=>m.date===ds);
+    const inExam=exams.some(e=>e.startDate&&e.endDate&&ds>=e.startDate&&ds<=e.endDate);
+    const isMath=exams.some(e=>examMathDates(e).some(m=>m.date===ds));
+    const isToday=ds===todayStr;
+    const col=dow===0?'#EF4444':(dow===6?'#2563EB':'var(--text-sub)');
+    return `<div title="${ds}" style="min-height:30px;border-radius:6px;padding:2px 0;text-align:center;background:${isToday?'var(--primary)':(inExam?'#FEF2F2':'transparent')}">
+      <div style="font-size:11px;font-weight:${isToday?'800':'600'};color:${isToday?'#fff':col}">${d}</div>
+      <div style="display:flex;justify-content:center;gap:2px;height:5px;align-items:center">
+        ${hasCls?`<span style="width:4px;height:4px;border-radius:50%;background:${isToday?'#fff':'var(--primary)'}"></span>`:''}
+        ${hasMk?`<span style="width:4px;height:4px;border-radius:50%;background:var(--orange)"></span>`:''}
+        ${isMath?`<span style="width:4px;height:4px;border-radius:50%;background:#DC2626"></span>`:''}
+      </div></div>`;
+  };
+  return `<div class="card" style="margin:0">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:6px">
+      <div class="card-title" style="margin:0;font-size:15px">📆 ${dashCalY}.${dashCalM+1}</div>
+      <div style="display:flex;gap:4px">
+        <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px" onclick="dashCalShift(-1)">◀</button>
+        <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px" onclick="dashCalY=null;rDashboard()">오늘</button>
+        <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px" onclick="dashCalShift(1)">▶</button>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px">
+      ${dowLbl.map((l,i)=>`<div style="text-align:center;font-size:10px;font-weight:700;color:${i===0?'#EF4444':(i===6?'#2563EB':'var(--text-muted)')}">${l}</div>`).join('')}
+      ${cells.map(cell).join('')}
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:10px;color:var(--text-muted);margin-top:6px">
+      <span><span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--primary)"></span> 수업</span>
+      <span><span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--orange)"></span> 보강</span>
+      <span><span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:#DC2626"></span> 시험</span>
+    </div>
   </div>`;
 }
 
@@ -2224,11 +2289,11 @@ function todayRosterHtml(todayCls, subs){
     const dueToday=clsAsgns.filter(a=>a.dueDate===todayStr);
     const a=dueToday.slice().sort((x,y)=>{const dx=x.startDate||x.createdAt||'',dy=y.startDate||y.createdAt||'';return dy>dx?1:(dy<dx?-1:0);})[0];
     const chk=getClassCheck(c.id);
-    let absN=0, oapN=0, prN=0;
+    let absN=0, oapN=0, testN=0;
     const rows=sts.map(st=>{
       const absent=absentSet.has(st.id); if(absent) absN++;
       const oap=!!(chk.oap&&chk.oap[st.id]); if(oap) oapN++;
-      const pr=!!(chk.print&&chk.print[st.id]); if(pr) prN++;
+      const tst=!!(chk.test&&chk.test[st.id]); if(tst) testN++;
       const sub=a?subs.find(s=>s.studentId===st.id&&s.assignmentId===a.id):null;
       let hw='';
       if(a){
@@ -2244,26 +2309,35 @@ function todayRosterHtml(todayCls, subs){
         ${hw}
         <div style="margin-left:auto;display:flex;gap:4px;align-items:center;flex-wrap:wrap">
           ${mini(oap,'oap','오답')}
-          ${mini(pr,'print','프린트')}
+          ${mini(tst,'test','테스트')}
           <button class="btn ${absent?'btn-red':'btn-outline'} btn-sm" style="padding:2px 7px;font-size:11px" onclick="toggleAbsent('${st.id}','${(st.name||'').replace(/'/g,'')}','${c.id}','${(c.name||'').replace(/'/g,'')}')">${absent?'결석취소':'결석'}</button>
         </div>
       </div>`;
     }).join('');
     const pl=curPlan(c.id, mondayOf(''));
+    const plPrev=curPlan(c.id, addDays(mondayOf(''),-7));
+    // 지난 숙제 = 마감일이 오늘 이전인 것 중 가장 최근
+    const prevAsgn=clsAsgns.filter(x=>x.dueDate && x.dueDate<todayStr).sort((x,y)=>(y.dueDate||'').localeCompare(x.dueDate||''))[0];
     const timeLbl=c.startTime&&c.endTime?(c.startTime+'~'+c.endTime):(c.slot||'');
     const esc=s=>(s||'').replace(/"/g,'&quot;');
+    const el=s=>(s||'').replace(/</g,'&lt;');
+    const line=(icon,label,val,strong)=>`<div style="display:flex;gap:6px;font-size:12px;padding:2px 0"><span style="min-width:66px;color:var(--text-muted);font-size:11px">${icon} ${label}</span><span style="flex:1;${strong?'font-weight:700;color:var(--primary)':'color:var(--text-sub)'}">${val||'<span style="color:var(--text-muted);font-weight:400">-</span>'}</span></div>`;
     return `<div class="card" style="border-left:4px solid ${absN?'var(--red)':'var(--border)'};margin:0">
       <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px">
         <div class="card-title" style="margin:0">🗓️ ${c.name} ${timeLbl?`<span style="font-size:12px;color:var(--primary);font-weight:700">${timeLbl}</span>`:''}${c.subject?` <span style="font-size:11px;color:var(--text-muted);font-weight:400">${c.subject}</span>`:''}${absN?` <span class="badge b-red">결석 ${absN}</span>`:''}</div>
         <span style="font-size:12px;color:var(--text-muted)">👥 ${sts.length}명</span>
       </div>
-      <div style="font-size:12px;color:var(--text-sub);margin:4px 0">📘 ${a?a.title:'<span style="color:var(--text-muted)">오늘 마감 숙제 없음</span>'}</div>
-      ${pl&&pl.content?`<div style="font-size:12px;color:var(--primary);font-weight:700;margin-bottom:6px;background:var(--primary-light);border-radius:8px;padding:6px 10px">📚 오늘 진도: ${(pl.content||'').replace(/</g,'&lt;')}</div>`:''}
+      <div style="background:var(--bg);border-radius:10px;padding:7px 10px;margin:6px 0">
+        ${line('📚','오늘 진도', el(pl&&pl.content), true)}
+        ${line('🕘','지난 진도', el(plPrev&&plPrev.content))}
+        ${line('📘','오늘 숙제', a?el(a.title):'', true)}
+        ${line('🗂','지난 숙제', prevAsgn?`${el(prevAsgn.title)} <span style="font-size:10px;color:var(--text-muted)">(${(prevAsgn.dueDate||'').slice(5)})</span>`:'')}
+      </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px;color:var(--text-muted);margin-bottom:4px">
-        <span>✏️ 오답검사 <b style="color:${sts.length&&oapN===sts.length?'var(--green)':'var(--orange)'}">${oapN}/${sts.length}</b></span>
-        <span>🖨 프린트 <b style="color:${sts.length&&prN===sts.length?'var(--green)':'var(--orange)'}">${prN}/${sts.length}</b></span>
-        <input class="form-input" value="${esc(chk.unit)}" placeholder="단원(예: 3단원)" style="width:110px;padding:3px 7px;font-size:11px" onchange="doSetUnit('${c.id}',this.value)">
-        <button class="btn btn-outline btn-sm" style="padding:2px 7px;font-size:10px" onclick="doResetCheck('${c.id}')">체크 초기화</button>
+        <input class="form-input" value="${esc(chk.unit)}" placeholder="단원(예: 1단원)" style="width:100px;padding:3px 7px;font-size:11px" onchange="doSetUnit('${c.id}',this.value)">
+        <span>✏️ 오답 <b style="color:${sts.length&&oapN===sts.length?'var(--green)':'var(--orange)'}">${oapN}/${sts.length}</b></span>
+        <span>📝 테스트 <b style="color:${sts.length&&testN===sts.length?'var(--green)':'var(--orange)'}">${testN}/${sts.length}</b></span>
+        <button class="btn btn-outline btn-sm" style="padding:2px 7px;font-size:10px" onclick="doResetCheck('${c.id}')">초기화</button>
       </div>
       <details ${dashClsCollapsed[c.id]?'':'open'} ontoggle="dashClsCollapsed['${c.id}']=!this.open">
         <summary style="cursor:pointer;font-size:11px;color:var(--text-muted);padding:3px 0">학생 명단 접기/펼치기 · 빠진 학생만 결석, 오답검사·프린트는 끝낸 학생을 눌러 체크</summary>
@@ -2290,9 +2364,9 @@ async function doSetUnit(classId, val){
   catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
 async function doResetCheck(classId){
-  if(!confirm('이 반의 오답검사·프린트 체크를 모두 초기화할까요? (새 단원 시작할 때)')) return;
-  CLASSCHECK_CACHE[classId]=Object.assign({oap:{},print:{},unit:''}, getClassCheck(classId), {id:classId, oap:{}, print:{}});
-  try{ await db.collection('classCheck').doc(classId).set({oap:{}, print:{}, ts:Date.now()},{merge:true}); showToast('체크 초기화 ✓','success'); rDashboard(); }
+  if(!confirm('이 반의 오답·테스트 체크를 모두 초기화할까요? (새 단원 시작할 때)')) return;
+  CLASSCHECK_CACHE[classId]=Object.assign({oap:{},test:{},unit:''}, getClassCheck(classId), {id:classId, oap:{}, test:{}});
+  try{ await db.collection('classCheck').doc(classId).set({oap:{}, test:{}, ts:Date.now()},{merge:true}); showToast('체크 초기화 ✓','success'); rDashboard(); }
   catch(e){ showToast('초기화 실패: '+e.message,'error'); }
 }
 // 결석 표시 토글 (오늘 날짜 기준)
