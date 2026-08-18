@@ -409,14 +409,6 @@
     </div>
 
     <!-- 출석 -->
-    <div class="section" id="sec-attendance">
-      <div class="page-header">
-        <div class="page-title">출석</div>
-        <div class="page-subtitle">이번 달 출석 현황을 확인하세요</div>
-      </div>
-      <div class="content-area" id="attendanceContent"></div>
-    </div>
-
     <!-- 성적 -->
     <div class="section" id="sec-grades">
       <div class="page-header">
@@ -452,14 +444,6 @@
     </div>
 
     <!-- 질문실 -->
-    <div class="section" id="sec-questions">
-      <div class="page-header">
-        <div class="page-title">질문실</div>
-        <div class="page-subtitle">모르는 문제를 질문하고 선생님 답변을 받아보세요</div>
-      </div>
-      <div class="content-area" id="questionsContent"></div>
-    </div>
-
     <!-- 수업 영상 -->
     <div class="section" id="sec-videos">
       <div class="page-header">
@@ -470,14 +454,6 @@
     </div>
 
     <!-- 자료실 -->
-    <div class="section" id="sec-materials">
-      <div class="page-header">
-        <div class="page-title">자료실</div>
-        <div class="page-subtitle">선생님이 올린 학습 자료를 다운로드하세요</div>
-      </div>
-      <div class="content-area" id="materialsContent"></div>
-    </div>
-
     <!-- 시간표 -->
     <div class="section" id="sec-schedule">
       <div class="page-header">
@@ -488,14 +464,6 @@
     </div>
 
     <!-- 상담 신청 -->
-    <div class="section" id="sec-consultation">
-      <div class="page-header">
-        <div class="page-title">상담 신청</div>
-        <div class="page-subtitle">선생님과의 상담을 신청해보세요</div>
-      </div>
-      <div class="content-area" id="consultationContent"></div>
-    </div>
-
     <!-- 혜빈쌤 -->
     <div class="section" id="sec-teacher">
       <div class="page-header">
@@ -537,38 +505,23 @@
     <div class="drawer-item" onclick="navigate('review');closeDrawer()">
       <div class="di-icon">🔁</div><div class="di-label">복습</div>
     </div>
-    <div class="drawer-item" onclick="navigate('curriculum');closeDrawer()">
-      <div class="di-icon">🗒️</div><div class="di-label">진도표</div>
-    </div>
     <div class="drawer-item" onclick="navigate('videos');closeDrawer()">
       <div class="di-icon">🎬</div><div class="di-label">수업영상</div>
     </div>
-    <div class="drawer-item" onclick="navigate('materials');closeDrawer()">
-      <div class="di-icon">📁</div><div class="di-label">자료실</div>
-    </div>
-  </div>
-  <div class="drawer-sec">📈 나의 기록</div>
-  <div class="drawer-grid">
     <div class="drawer-item" onclick="navigate('grades');closeDrawer()">
       <div class="di-icon">🏆</div><div class="di-label">성적</div>
-    </div>
-    <div class="drawer-item" onclick="navigate('attendance');closeDrawer()">
-      <div class="di-icon">🗓️</div><div class="di-label">출석</div>
     </div>
     <div class="drawer-item" onclick="navigate('report');closeDrawer()">
       <div class="di-icon">📊</div><div class="di-label">리포트</div>
     </div>
+  </div>
+  <div class="drawer-sec">🏫 우리 학원</div>
+  <div class="drawer-grid">
     <div class="drawer-item" onclick="navigate('schedule');closeDrawer()">
       <div class="di-icon">📅</div><div class="di-label">시간표</div>
     </div>
-  </div>
-  <div class="drawer-sec">💬 소통</div>
-  <div class="drawer-grid">
-    <div class="drawer-item" onclick="navigate('questions');closeDrawer()">
-      <div class="di-icon">💬</div><div class="di-label">질문실</div>
-    </div>
-    <div class="drawer-item" onclick="navigate('consultation');closeDrawer()">
-      <div class="di-icon">🙋</div><div class="di-label">상담신청</div>
+    <div class="drawer-item" onclick="navigate('curriculum');closeDrawer()">
+      <div class="di-icon">🗒️</div><div class="di-label">진도표</div>
     </div>
     <div class="drawer-item" onclick="navigate('teacher');closeDrawer()">
       <div class="di-icon">👩‍🏫</div><div class="di-label">혜빈쌤</div>
@@ -1004,25 +957,20 @@ const NAV_ITEMS = [
   { id:'homework',     label:'숙제' },
   { id:'wrong',        label:'오답' },
   { id:'review',       label:'복습' },
-  { id:'curriculum',   label:'진도표' },
+  { id:'videos',       label:'수업 영상' },
   { sec:'📈 나의 기록' },
   { id:'grades',       label:'성적' },
-  { id:'attendance',   label:'출석' },
   { id:'report',       label:'학습 리포트' },
-  { sec:'🏫 학교' },
-  { id:'school',       label:'우리 학교' },
+  { sec:'🏫 우리 학원' },
   { id:'schedule',     label:'시간표' },
-  { sec:'💬 소통 · 자료' },
-  { id:'questions',    label:'질문실' },
-  { id:'videos',       label:'수업 영상' },
-  { id:'materials',    label:'자료실' },
-  { id:'consultation', label:'상담 신청' },
-  { id:'teacher',      label:'혜빈쌤' }
+  { id:'curriculum',   label:'진도표' },
+  { id:'teacher',      label:'혜빈쌤' },
+  { sec:'🎒 우리 학교' },
+  { id:'school',       label:'급식 · 학사일정' }
 ];
 const PAGE_TITLES = {
-  home:'홈', homework:'숙제', wrong:'오답', review:'복습', attendance:'출석', grades:'성적', school:'우리 학교', curriculum:'진도표', report:'학습 리포트',
-  questions:'질문실', videos:'수업 영상', materials:'자료실', schedule:'시간표',
-  consultation:'상담 신청', teacher:'혜빈쌤'
+  home:'홈', homework:'숙제', wrong:'오답', review:'복습', grades:'성적', school:'우리 학교', curriculum:'진도표', report:'학습 리포트',
+  videos:'수업 영상', schedule:'시간표', teacher:'혜빈쌤'
 };
 let currentSection = 'home';
 
@@ -1047,7 +995,7 @@ function navigate(sec) {
   window.scrollTo(0,0);
 }
 function renderSection(s) {
-  const map = { home:renderHome, homework:renderHomework, wrong:renderWrong, review:renderReview, attendance:renderAttendance, grades:renderGrades, school:renderSchool, curriculum:renderCurriculum, report:renderReport, questions:renderQuestions, videos:renderVideos, materials:renderMaterials, schedule:renderSchedule, consultation:renderConsultation, teacher:renderTeacher };
+  const map = { home:renderHome, homework:renderHomework, wrong:renderWrong, review:renderReview, grades:renderGrades, school:renderSchool, curriculum:renderCurriculum, report:renderReport, videos:renderVideos, schedule:renderSchedule, teacher:renderTeacher };
   map[s]?.();
 }
 
@@ -1308,17 +1256,17 @@ function renderHome() {
         </div>`).join('')}
     </div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px">
-      <div class="stat-card" onclick="navigate('attendance')" style="cursor:pointer;padding:12px">
-        <div class="s-label" style="font-size:12px">🗓️ 출석</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-top:6px">출석률 ${att.rate==null?'100':att.rate}%${att.absent?` · 결석 ${att.absent}회`:' · 결석 없음'}</div>
-      </div>
       <div class="stat-card" onclick="navigate('grades')" style="cursor:pointer;padding:12px">
         <div class="s-label" style="font-size:12px">🏆 성적</div>
         <div style="font-size:12px;color:var(--text-muted);margin-top:6px">최근 ${recentScore} · ${changeStr}</div>
       </div>
-      <div class="stat-card" onclick="navigate('questions')" style="cursor:pointer;padding:12px">
-        <div class="s-label" style="font-size:12px">💬 질문</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-top:6px">답변 ${qs.filter(q=>q.status==='answered').length} · 대기 ${qs.filter(q=>q.status==='pending').length}</div>
+      <div class="stat-card" onclick="navigate('curriculum')" style="cursor:pointer;padding:12px">
+        <div class="s-label" style="font-size:12px">🗒️ 진도표</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:6px">우리 반 주차별 진도</div>
+      </div>
+      <div class="stat-card" onclick="navigate('schedule')" style="cursor:pointer;padding:12px">
+        <div class="s-label" style="font-size:12px">📅 시간표</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:6px">학원 수업·보강 일정</div>
       </div>
     </div>
     ${homeGradesHtml()}
