@@ -683,12 +683,13 @@ async function doDelSchoolExam(id,label){ if(!confirm(`"${label}" 내신 일정�
 let naesinTab='school';   // school / jikbo / exam
 let naesinExamTitle='';   // 학교 정보에서 보고 있는 시험(내신) 이름
 function rNaesin(){
-  const tabs=[['school','🏫 학교 정보'],['jikbo','🔶 직보 일정'],['exam','📅 시험 정보'],['bogang','🙋 보강 체크']];
+  const tabs=[['school','🏫 학교 정보'],['neis','🗓 학사일정'],['jikbo','🔶 직보 일정'],['exam','📅 시험 정보'],['bogang','🙋 보강 체크']];
   const tb=document.getElementById('naesinTabs'); if(tb) tb.innerHTML=tabs.map(([k,l])=>`<button class="btn ${naesinTab===k?'btn-primary':'btn-outline'} btn-sm" onclick="naesinTab='${k}';rNaesin()">${l}</button>`).join('');
   const el=document.getElementById('naesinContent'); if(!el) return;
   el.innerHTML = naesinTab==='exam' ? schoolExamCardHtml()
     : naesinTab==='jikbo' ? makeupBlockHtml()
     : naesinTab==='bogang' ? bogangCheckHtml()
+    : naesinTab==='neis' ? neisScheduleHtml()
     : (schoolBooksHtml() + schoolInfoHtml());
 }
 // 학생 반 이름에서 등급(T/S/A) 추출 — 여러 반이면 여러 등급
@@ -696,6 +697,101 @@ function studentTiers(s){
   const set=new Set();
   classNamesOf(s).forEach(nm=>{ const m=String(nm).match(/고\s*\d*\s*([TSA])/); if(m) set.add(m[1]); });
   return set;
+}
+// ================================================================
+// 🗓 학교 학사일정 (NEIS) — 학생들이 다니는 학교 전부 한눈에 + 시험기간 내신 자동 등록
+// ================================================================
+let NEIS_CODES={}, NEIS_SCHED={}, neisLoading=false;
+async function neisCodeOf(school){
+  if(NEIS_CODES[school]) return NEIS_CODES[school];
+  try{ const d=await db.collection('schoolCodes').doc(school).get(); if(d.exists){ NEIS_CODES[school]=d.data(); return d.data(); } }catch(e){}
+  try{
+    const r=await fetch('/api/school?type=search&name='+encodeURIComponent(school));
+    const j=await r.json(); const rows=j.rows||[];
+    if(!rows.length) return null;
+    const x=rows.find(y=>normSchool(y.SCHUL_NM)===school)||rows[0];
+    const info={atpt:x.ATPT_OFCDC_SC_CODE, code:x.SD_SCHUL_CODE, name:x.SCHUL_NM, kind:x.SCHUL_KND_SC_NM||''};
+    NEIS_CODES[school]=info;
+    try{ await db.collection('schoolCodes').doc(school).set(info,{merge:true}); }catch(e){}
+    return info;
+  }catch(e){ return null; }
+}
+function ymdT(d){ const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}`; }
+// 시험 관련 일정을 연속 구간으로 묶기 → {title, from, to}
+function examPeriodsOf(rows){
+  const ev=rows.filter(r=>/고사|시험/.test(r.EVENT_NM||'') && !/모의/.test(r.EVENT_NM||''))
+    .map(r=>({d:r.AA_YMD, n:(r.EVENT_NM||'').trim()})).sort((a,b)=>a.d.localeCompare(b.d));
+  const out=[];
+  ev.forEach(x=>{
+    const last=out[out.length-1];
+    const prevDay=last?(function(){ const d=new Date(+last.to.slice(0,4),+last.to.slice(4,6)-1,+last.to.slice(6,8)); d.setDate(d.getDate()+1); return ymdT(d); })():null;
+    if(last && last.title===x.n && (x.d===last.to || x.d===prevDay)) last.to=x.d;
+    else out.push({title:x.n, from:x.d, to:x.d});
+  });
+  return out;
+}
+async function doLoadNeisSched(){
+  if(neisLoading) return; neisLoading=true; rNaesin();
+  const schools=allSchools().filter(Boolean);
+  const t=new Date(), e=new Date(); e.setDate(e.getDate()+120);
+  for(const s of schools){
+    try{
+      const info=await neisCodeOf(s);
+      if(!info){ NEIS_SCHED[s]={err:'학교를 못 찾았어요'}; continue; }
+      const r=await fetch(`/api/school?type=schedule&atpt=${info.atpt}&code=${info.code}&from=${ymdT(t)}&to=${ymdT(e)}`);
+      const j=await r.json();
+      NEIS_SCHED[s]={rows:(j.rows||[]).filter(x=>(x.EVENT_NM||'').trim()), name:info.name};
+    }catch(err){ NEIS_SCHED[s]={err:(err&&err.message)||'불러오기 실패'}; }
+  }
+  neisLoading=false; rNaesin();
+}
+async function doAddExamFromNeis(school, title, from, to){
+  const s=(from||''), e=(to||'');
+  const fd=`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`, td=`${e.slice(0,4)}-${e.slice(4,6)}-${e.slice(6,8)}`;
+  if(getSchoolExams().some(x=>normSchool(x.school)===school && x.startDate===fd && (x.title||'')===title)){ showToast('이미 등록된 일정이에요','warning'); return; }
+  try{ await addSchoolExam({school, title, startDate:fd, endDate:td, grade:'', mathDates:[], mathDate:'', jikboStart:''});
+    showToast(`${school} "${title}" 내신 일정 등록 ✓ (수학 시험일은 시험 정보에서 채워주세요)`,'success'); rNaesin(); }
+  catch(err){ showToast('등록 실패: '+err.message,'error'); }
+}
+function neisScheduleHtml(){
+  const schools=allSchools().filter(Boolean).sort((a,b)=>a.localeCompare(b));
+  const el=s=>(s||'').replace(/</g,'&lt;');
+  const todayS=ymdT(new Date()), t0=new Date(); t0.setHours(0,0,0,0);
+  const loaded=Object.keys(NEIS_SCHED).length;
+  if(!schools.length) return `<div class="card"><div class="card-title">🗓 학교 학사일정</div><div style="font-size:13px;color:var(--text-muted)">학생 정보에 학교를 입력하면 그 학교 학사일정을 자동으로 불러와요.</div></div>`;
+  return `<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <div class="card-title" style="margin:0">🗓 학교 학사일정 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(NEIS 자동 · 앞으로 120일)</span></div>
+      <button class="btn btn-primary btn-sm" onclick="doLoadNeisSched()" ${neisLoading?'disabled':''}>${neisLoading?'불러오는 중…':(loaded?'🔄 새로고침':'📥 불러오기')}</button>
+    </div>
+    ${!loaded&&!neisLoading?`<div style="font-size:13px;color:var(--text-muted);margin-top:10px">‘📥 불러오기’를 누르면 학생들이 다니는 <strong>${schools.length}개 학교</strong>의 학사일정을 한 번에 가져와요.</div>`:''}
+    ${schools.map(s=>{ const d=NEIS_SCHED[s]; if(!d) return '';
+      if(d.err) return `<div style="border-top:1px solid var(--border);padding:10px 0"><strong>${el(s)}</strong> <span style="font-size:12px;color:var(--red)">${el(d.err)}</span></div>`;
+      const rows=d.rows||[], periods=examPeriodsOf(rows);
+      const upcoming=rows.filter(r=>r.AA_YMD>=todayS).slice(0,60);
+      const byDay={}; upcoming.forEach(r=>{ (byDay[r.AA_YMD]=byDay[r.AA_YMD]||[]).push(r.EVENT_NM); });
+      const keys=Object.keys(byDay).sort().slice(0,14);
+      return `<div style="border-top:1px solid var(--border);padding:10px 0;margin-top:6px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+          <strong style="font-size:14px">${el(s)}</strong>
+          <span style="font-size:11px;color:var(--text-muted)">${getStudents().filter(x=>isActiveStudent(x)&&(x.school||'')===s).length}명</span>
+          ${periods.length?`<span class="badge b-red" style="font-size:10px">시험기간 ${periods.length}건</span>`:''}
+        </div>
+        ${periods.length?`<div style="background:#FEF2F2;border-radius:10px;padding:8px 10px;margin-bottom:6px">
+          ${periods.map(p=>{ const dd=Math.round((new Date(+p.from.slice(0,4),+p.from.slice(4,6)-1,+p.from.slice(6,8))-t0)/86400000);
+            constalready=getSchoolExams().some(x=>normSchool(x.school)===s && x.startDate===`${p.from.slice(0,4)}-${p.from.slice(4,6)}-${p.from.slice(6,8)}`);
+            return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:3px 0">
+              <span style="font-size:12px;font-weight:800;color:var(--red)">📕 ${el(p.title)}</span>
+              <span style="font-size:11px;color:var(--text-sub)">${p.from.slice(4,6)}/${p.from.slice(6,8)}~${p.to.slice(4,6)}/${p.to.slice(6,8)}</span>
+              ${dd>=0?`<span class="badge b-orange" style="font-size:10px">D-${dd}</span>`:''}
+              ${already?'<span class="badge b-green" style="font-size:10px">✓ 등록됨</span>'
+                 :`<button class="btn btn-primary btn-sm" style="padding:1px 8px;font-size:10px;margin-left:auto" onclick="doAddExamFromNeis('${s.replace(/'/g,'')}','${(p.title||'').replace(/'/g,'')}','${p.from}','${p.to}')">＋ 내신 일정 등록</button>`}
+            </div>`; }).join('')}
+        </div>`:''}
+        ${keys.length?`<div style="font-size:12px;line-height:1.85">${keys.map(k=>`<div style="display:flex;gap:8px"><span style="color:var(--text-muted);min-width:44px">${+k.slice(4,6)}/${+k.slice(6,8)}</span><span>${[...new Set(byDay[k])].map(el).join(', ')}</span></div>`).join('')}</div>`
+          :'<div style="font-size:12px;color:var(--text-muted)">앞으로 등록된 일정이 없어요</div>'}
+      </div>`; }).join('')}
+  </div>`;
 }
 // 📚 학교별 교재·출판사 — 시험과 무관하게 학교 단위로 항상 유지 (schoolBooks 컬렉션)
 let SCHOOLBOOKS_CACHE={};
