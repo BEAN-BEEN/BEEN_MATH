@@ -1295,13 +1295,7 @@ function rDashboard(){
           ${retryPendingSubs.length>5?`<div style="font-size:12px;color:var(--text-muted);padding:8px 0">+${retryPendingSubs.length-5}명 더 — 숙제 관리에서 전체 보기</div>`:''}
         </div>`:'<div style="margin-top:12px;font-size:13px;color:var(--green);background:var(--surface);border-radius:10px;padding:12px;text-align:center">✅ 오답까지 모두 해결됐어요! 깔끔해요 👏</div>'}
     </div>
-    <div class="card" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <span style="font-size:20px">🔔</span>
-      <span style="font-size:13px"><strong>알림 켠 학생 ${pushOn}명</strong> <span style="color:var(--text-muted)">/ 전체 ${sts.length}명</span></span>
-      <span style="font-size:12px;color:var(--text-muted)">— 학생이 직접 '알림 켜기'를 눌러야 새 숙제 알림을 받아요</span>
-      ${(typeof bmCanInstallUI==='function'&&bmCanInstallUI())?`<button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="bmInstallClick()">📲 홈 화면에 추가</button>`:''}
-    </div>
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:2px">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:2px;order:-1">
       <span style="font-size:16px;font-weight:800">📅 오늘 수업 <span style="font-size:13px;color:var(--text-muted);font-weight:600">(${todayCls.length}반 · 결석 ${getAbsences().filter(a=>a.date===today.toISOString().slice(0,10)).length})</span></span>
       ${todayCls.length?`<button class="btn btn-outline btn-sm" onclick="doRemindToday()">🔔 오늘 반 알림</button>`:''}
     </div>
@@ -1310,6 +1304,14 @@ function rDashboard(){
     </div>
     <div style="display:flex;flex-direction:column;gap:14px" id="dashRight">
       ${absentMakeupHtml()}
+      <div class="card" style="margin:0;padding:12px 14px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:18px">🔔</span>
+          <span style="font-size:13px"><strong>알림 켠 학생 ${pushOn}명</strong> <span style="color:var(--text-muted)">/ ${sts.length}명</span></span>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:5px">학생이 직접 '알림 켜기'를 눌러야 새 숙제 알림을 받아요</div>
+        ${(typeof bmCanInstallUI==='function'&&bmCanInstallUI())?`<button class="btn btn-outline btn-sm" style="margin-top:8px;width:100%;justify-content:center" onclick="bmInstallClick()">📲 홈 화면에 추가</button>`:''}
+      </div>
       <div class="card" style="margin:0">
         <div class="card-title" style="font-size:15px">📬 최근 제출 숙제</div>
         ${subs.slice().sort((a,b)=>{const ac=(a.checked||a.byTeacher)?1:0,bc=(b.checked||b.byTeacher)?1:0;return ac!==bc?ac-bc:(b.ts||0)-(a.ts||0);}).slice(0,6).map(s=>{
