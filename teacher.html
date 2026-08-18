@@ -353,6 +353,13 @@ function getStudents(){return STUDENTS_CACHE;}
 // 재원 = 활성. 휴원·퇴원은 명단·출석·숙제·알림·통계에서 제외(기록은 보존)
 function studentStatus(s){ return (s&&s.status)||'재원'; }
 function isActiveStudent(s){ return studentStatus(s)==='재원'; }
+// 내신 대상 학생 = 담임 반에 속한 재원생 (부담임 반만 다니는 학생은 내신 인원에서 제외)
+function isNaesinStudent(s){
+  if(!isActiveStudent(s)) return false;
+  const ids=(s.classIds)||(s.classId?[s.classId]:[]);
+  if(!ids.length) return false;
+  return ids.some(id=>{ const c=CLASSES.find(x=>x.id===id); return c && classIsHomeroom(c); });
+}
 function getActiveStudents(){ return STUDENTS_CACHE.filter(isActiveStudent); }
 function getStudentsByClass(cid, includeInactive){
   const inClass=STUDENTS_CACHE.filter(s=>Array.isArray(s.classIds)?s.classIds.includes(cid):s.classId===cid);
@@ -814,7 +821,7 @@ function neisScheduleHtml(){
       <div style="font-size:11.5px;color:#9A3412;opacity:.85;margin-bottom:8px">학교가 NEIS에 아직 안 올렸어요. 홈페이지 확인 후 <strong>직접 입력</strong>하거나, 나중에 다시 불러오면 돼요.</div>
       ${missing.map(s=>`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:5px 0;border-top:1px solid #FED7AA">
         <strong style="font-size:13px">${(s||'').replace(/</g,'&lt;')}</strong>
-        <span style="font-size:11px;color:var(--text-muted)">${getStudents().filter(x=>isActiveStudent(x)&&(x.school||'')===s).length}명</span>
+        <span style="font-size:11px;color:var(--text-muted)">${getStudents().filter(x=>isNaesinStudent(x)&&(x.school||'')===s).length}명</span>
         <button class="btn btn-orange btn-sm" style="margin-left:auto;padding:2px 10px;font-size:11px" onclick="doManualExam('${s.replace(/'/g,'')}')">📝 직접 입력</button>
       </div>`).join('')}
     </div>`:''}
@@ -829,7 +836,7 @@ function neisScheduleHtml(){
       return `<div style="border-top:1px solid var(--border);padding:10px 0;margin-top:6px">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
           <strong style="font-size:14px">${el(s)}</strong>
-          <span style="font-size:11px;color:var(--text-muted)">${getStudents().filter(x=>isActiveStudent(x)&&(x.school||'')===s).length}명</span>
+          <span style="font-size:11px;color:var(--text-muted)">${getStudents().filter(x=>isNaesinStudent(x)&&(x.school||'')===s).length}명</span>
           ${periods.length?`<span class="badge b-red" style="font-size:10px">시험기간 ${periods.length}건</span>`
             :'<span class="badge b-gray" style="font-size:10px">시험 일정 없음</span>'}
         </div>
@@ -872,7 +879,8 @@ async function doSetSchoolBook(school, field, val){
   catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
 function schoolBooksHtml(){
-  const schools=allSchools().filter(Boolean).sort((a,b)=>a.localeCompare(b));
+  // 학생이 다니는 학교 + 이미 교재를 적어둔 학교(지금 학생이 없어도 유지)
+  const schools=[...new Set([...allSchools(), ...Object.keys(SCHOOLBOOKS_CACHE)])].filter(Boolean).sort((a,b)=>a.localeCompare(b));
   const esc=s=>(s||'').replace(/"/g,'&quot;');
   const el=s=>(s||'').replace(/</g,'&lt;');
   if(!schools.length) return `<div class="card"><div class="card-title">📚 학교별 교재·출판사</div><div style="font-size:13px;color:var(--text-muted)">학생 정보에 학교를 입력하면 여기에 학교가 자동으로 떠요.</div></div>`;
@@ -882,7 +890,7 @@ function schoolBooksHtml(){
     <div class="table-wrap"><table style="font-size:12px">
       <thead><tr><th style="min-width:90px">학교</th><th>출판사</th><th>교과서</th><th>부교재</th><th>메모</th></tr></thead>
       <tbody>${schools.map(s=>`<tr>
-        <td><strong>${el(s)}</strong> <span style="font-size:10px;color:var(--text-muted)">${getStudents().filter(x=>isActiveStudent(x)&&(x.school||'')===s).length}명</span></td>
+        <td><strong>${el(s)}</strong> <span style="font-size:10px;color:var(--text-muted)">${getStudents().filter(x=>isNaesinStudent(x)&&(x.school||'')===s).length}명</span></td>
         <td>${f(s,'publisher','예: 비상',  '110px')}</td>
         <td>${f(s,'textbook','예: 수학Ⅰ',  '130px')}</td>
         <td>${f(s,'subMaterial','예: 쎈',  '130px')}</td>
@@ -897,7 +905,7 @@ function schoolInfoHtml(){
   const list=getSchoolExams();
   if(!list.length) return `<div class="card" style="text-align:center;padding:30px;color:var(--text-muted)">아직 등록된 학교(내신 시험)가 없어요.<br><span style="font-size:12px">‘📅 시험 정보’에서 학교를 추가하면 여기에 정리돼요.</span></div>`;
   const esc=s=>(s||'').replace(/</g,'&lt;');
-  const actives=getStudents().filter(isActiveStudent);
+  const actives=getStudents().filter(isNaesinStudent);   // 내신 인원 = 담임 반 학생만
   const tiers=['T','S','A'];
   // 시험(내신) 이름별로 묶기 — 시험마다 학교·인원이 다르니 선택해서 봄
   const titles=[...new Set(list.map(e=>(e.title||'').trim()).filter(Boolean))].sort((a,b)=>examTitleRank(a)-examTitleRank(b)||a.localeCompare(b));
