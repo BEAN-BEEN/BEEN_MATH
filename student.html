@@ -187,6 +187,12 @@
     .v-title{font-size:13px;font-weight:600;line-height:1.4;margin-bottom:6px}
     .v-meta{font-size:12px;color:var(--text-muted)}
 
+    /* 사이드바 그룹 제목 */
+    .nav-sec{font-size:11px;font-weight:800;color:var(--text-muted);padding:14px 12px 5px;letter-spacing:.3px}
+    .nav-sec:first-child{padding-top:6px}
+    /* 더보기 시트 그룹 제목 */
+    .drawer-sec{font-size:12px;font-weight:800;color:var(--text-muted);padding:12px 4px 6px}
+
     /* === 🏫 우리 학교 (모바일 앱 스타일) === */
     .sch-hero{background:linear-gradient(135deg,var(--primary),#7C8CF8);border-radius:20px;padding:16px 16px 12px;color:#fff;margin-bottom:14px;box-shadow:0 8px 22px rgba(91,108,245,.28)}
     .sch-hero-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
@@ -513,8 +519,8 @@
   <div class="bn-item" onclick="navigate('wrong')" data-sec="wrong">
     <div class="bn-icon">🔶</div><div class="bn-label">오답</div>
   </div>
-  <div class="bn-item" onclick="navigate('review')" data-sec="review">
-    <div class="bn-icon">🔁</div><div class="bn-label">복습</div>
+  <div class="bn-item" onclick="navigate('school')" data-sec="school">
+    <div class="bn-icon">🏫</div><div class="bn-label">우리학교</div>
   </div>
   <div class="bn-item" id="moreBtn" onclick="openDrawer()">
     <div class="bn-icon">☰</div><div class="bn-label">더보기</div>
@@ -526,18 +532,13 @@
 <div class="more-drawer" id="moreDrawer">
   <div class="drawer-handle"></div>
   <div class="drawer-title">더보기</div>
+  <div class="drawer-sec">📚 학습</div>
   <div class="drawer-grid">
-    <div class="drawer-item" onclick="navigate('report');closeDrawer()">
-      <div class="di-icon">📊</div><div class="di-label">리포트</div>
+    <div class="drawer-item" onclick="navigate('review');closeDrawer()">
+      <div class="di-icon">🔁</div><div class="di-label">복습</div>
     </div>
-    <div class="drawer-item" onclick="navigate('questions');closeDrawer()">
-      <div class="di-icon">💬</div><div class="di-label">질문실</div>
-    </div>
-    <div class="drawer-item" onclick="navigate('attendance');closeDrawer()">
-      <div class="di-icon">🗓️</div><div class="di-label">출석</div>
-    </div>
-    <div class="drawer-item" onclick="navigate('grades');closeDrawer()">
-      <div class="di-icon">🏆</div><div class="di-label">성적</div>
+    <div class="drawer-item" onclick="navigate('curriculum');closeDrawer()">
+      <div class="di-icon">🗒️</div><div class="di-label">진도표</div>
     </div>
     <div class="drawer-item" onclick="navigate('videos');closeDrawer()">
       <div class="di-icon">🎬</div><div class="di-label">수업영상</div>
@@ -545,8 +546,26 @@
     <div class="drawer-item" onclick="navigate('materials');closeDrawer()">
       <div class="di-icon">📁</div><div class="di-label">자료실</div>
     </div>
+  </div>
+  <div class="drawer-sec">📈 나의 기록</div>
+  <div class="drawer-grid">
+    <div class="drawer-item" onclick="navigate('grades');closeDrawer()">
+      <div class="di-icon">🏆</div><div class="di-label">성적</div>
+    </div>
+    <div class="drawer-item" onclick="navigate('attendance');closeDrawer()">
+      <div class="di-icon">🗓️</div><div class="di-label">출석</div>
+    </div>
+    <div class="drawer-item" onclick="navigate('report');closeDrawer()">
+      <div class="di-icon">📊</div><div class="di-label">리포트</div>
+    </div>
     <div class="drawer-item" onclick="navigate('schedule');closeDrawer()">
       <div class="di-icon">📅</div><div class="di-label">시간표</div>
+    </div>
+  </div>
+  <div class="drawer-sec">💬 소통</div>
+  <div class="drawer-grid">
+    <div class="drawer-item" onclick="navigate('questions');closeDrawer()">
+      <div class="di-icon">💬</div><div class="di-label">질문실</div>
     </div>
     <div class="drawer-item" onclick="navigate('consultation');closeDrawer()">
       <div class="di-icon">🙋</div><div class="di-label">상담신청</div>
@@ -978,20 +997,25 @@ const ICONS={
   consultation:_svg('<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 015.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>'),
   teacher:_svg('<path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1.5 3 3 6 3s6-1.5 6-3v-5"/>')
 };
+// 사이드바 — 그룹으로 묶어서 찾기 쉽게 (sec: 그룹 제목)
 const NAV_ITEMS = [
   { id:'home',         label:'홈' },
+  { sec:'📚 학습' },
   { id:'homework',     label:'숙제' },
   { id:'wrong',        label:'오답' },
   { id:'review',       label:'복습' },
-  { id:'attendance',   label:'출석' },
-  { id:'grades',       label:'성적' },
-  { id:'school',       label:'우리 학교' },
   { id:'curriculum',   label:'진도표' },
+  { sec:'📈 나의 기록' },
+  { id:'grades',       label:'성적' },
+  { id:'attendance',   label:'출석' },
   { id:'report',       label:'학습 리포트' },
+  { sec:'🏫 학교' },
+  { id:'school',       label:'우리 학교' },
+  { id:'schedule',     label:'시간표' },
+  { sec:'💬 소통 · 자료' },
   { id:'questions',    label:'질문실' },
   { id:'videos',       label:'수업 영상' },
   { id:'materials',    label:'자료실' },
-  { id:'schedule',     label:'시간표' },
   { id:'consultation', label:'상담 신청' },
   { id:'teacher',      label:'혜빈쌤' }
 ];
@@ -1003,8 +1027,9 @@ const PAGE_TITLES = {
 let currentSection = 'home';
 
 function buildSidebar() {
-  document.getElementById('sidebarNav').innerHTML = NAV_ITEMS.map(n => `
-    <div class="nav-item ${n.id===currentSection?'active':''}" onclick="navigate('${n.id}')" data-sec="${n.id}">
+  document.getElementById('sidebarNav').innerHTML = NAV_ITEMS.map(n => n.sec
+    ? `<div class="nav-sec">${n.sec}</div>`
+    : `<div class="nav-item ${n.id===currentSection?'active':''}" onclick="navigate('${n.id}')" data-sec="${n.id}">
       <span class="nav-icon">${ICONS[n.id]||''}</span><span>${n.label}</span>
     </div>`).join('');
   renderThemeDots();
