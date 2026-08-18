@@ -586,7 +586,7 @@ let S_ABSENCES=[];   // 내 결석 기록 (선생님이 표시) — 출석률 �
 let S_SEASONS=[], selSeasonId=null;   // 제출률 집계 시즌(학원 공통) + 내가 보고 있는 시즌
 let S_SCHOOL='', S_ENROLL='', S_SCHOOLEXAM=null, S_MATHEVENTS=[], S_SCHOOL_EXAMS=[], S_MAKEUPS=[], ALL_MAKEUPS=[], ALL_SCHOOL_EXAMS=[];
 let calScope='mine'; // 'mine' = 내 일정만, 'all' = 전체 학교
-let S_MOCKEXAMS=[], S_MOCKSUBS=[], S_NAESIN=[], S_CLASSHISTORY=[], S_VIDEOVIEWS=[];
+let S_MOCKEXAMS=[], S_MOCKSUBS=[], S_NAESIN=[], S_CLASSHISTORY=[], S_VIDEOVIEWS=[], S_CLASSCHECK=null;
 function myClassIds(){ try{ return JSON.parse(localStorage.getItem('bm_classIds')||'[]'); }catch(e){ return STUDENT.classId?[STUDENT.classId]:[]; } }
 async function loadStudentData(){
   const ids = myClassIds();
@@ -677,6 +677,12 @@ async function loadStudentData(){
     try{ const ab = await pAbs; S_ABSENCES = ab.docs.map(d=>({id:d.id,...d.data()})).sort((x,y)=>(y.date||'').localeCompare(x.date||'')); }catch(e){ S_ABSENCES=[]; }
     try{ const na = await pNaesin; S_NAESIN = na.docs.map(d=>({id:d.id,...d.data()})); }catch(e){ S_NAESIN=[]; }
     try{ const vv = await pVv; S_VIDEOVIEWS = vv.docs.map(d=>({id:d.id,...d.data()})); }catch(e){ S_VIDEOVIEWS=[]; }
+    // 내 반의 단원 체크만 (내 반 문서만 읽어와서 다른 반 학생 정보는 가져오지 않음)
+    try{
+      S_CLASSCHECK={};
+      const snaps=await Promise.all(ids.map(cid=>db.collection('classCheck').doc(cid).get()));
+      snaps.forEach(s=>{ if(s.exists) S_CLASSCHECK[s.id]=s.data(); });
+    }catch(e){ S_CLASSCHECK={}; }
   } else { S_SUBMISSIONS=[]; S_REVIEWSUBS=[]; S_EXAMSUBS=[]; S_QUESTIONS=[]; S_REPORT=null; S_SCHOOLEXAM=null; S_MOCKEXAMS=[]; S_MOCKSUBS=[]; S_NAESIN=[]; S_VIDEOVIEWS=[]; }
   try{ const se = await pSeasons; S_SEASONS = se.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.startDate||'').localeCompare(a.startDate||'')); }catch(e){ S_SEASONS=[]; }
   try{ const nt = await pNotices; S_NOTICES = nt.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.ts||0)-(a.ts||0)); }
@@ -1293,6 +1299,7 @@ function renderHome() {
             <div style="height:100%;width:${v};background:${c};border-radius:4px"></div>
           </div>
         </div>`).join('')}
+      ${myUnitProgressHtml()}
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:16px">
       <div class="card" onclick="navigate('grades')" style="cursor:pointer;margin-bottom:0">
@@ -2130,6 +2137,35 @@ async function mockReopen(mockId){
 // ================================================================
 // REPORT
 // ================================================================
+// ✅ 내 단원 진행 — 선생님이 체크한 단원별 마무리 현황(내 것만, 다른 학생 건 안 보임)
+function myUnitProgressHtml(){
+  const cls=(S_CLASSES||[]);
+  if(!cls.length || !S_CLASSCHECK) return '';
+  const blocks=cls.map(c=>{
+    const chk=S_CLASSCHECK[c.id]; if(!chk) return '';
+    let units=Array.isArray(chk.units)?chk.units:[];
+    if(!units.length && chk.oap && Object.keys(chk.oap).length) units=[{id:'u1', name:chk.unit||'오답'}];
+    if(!units.length) return '';
+    const mine=u=>{ const m=(chk.marks&&chk.marks[u.id]) || (u.id==='u1'?chk.oap:null) || {}; return !!m[STUDENT.id]; };
+    const doneN=units.filter(mine).length, left=units.length-doneN;
+    const pct=Math.round(doneN/units.length*100);
+    return `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px">
+        <span style="font-size:12px;font-weight:700">✅ ${(c.name||'').replace(/</g,'&lt;')} 단원 마무리</span>
+        <span style="font-size:12px;font-weight:800;color:${left?'var(--orange)':'var(--green)'}">${left?`${left}단원 남음`:'전부 완료 🎉'}</span>
+      </div>
+      <div style="height:8px;background:var(--bg);border-radius:4px;overflow:hidden;margin-bottom:8px">
+        <div style="height:100%;width:${pct}%;background:${left?'var(--orange)':'var(--green)'};border-radius:4px"></div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${units.map(u=>{ const on=mine(u);
+          return `<span style="font-size:12px;font-weight:600;padding:5px 11px;border-radius:10px;background:${on?'var(--green-light)':'var(--bg)'};color:${on?'var(--green)':'var(--text-muted)'}">${on?'✓ ':'○ '}${(u.name||'').replace(/</g,'&lt;')}</span>`; }).join('')}
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px">${doneN}/${units.length} 완료 · 선생님이 확인하면 체크돼요</div>
+    </div>`;
+  }).filter(Boolean).join('');
+  return blocks;
+}
 // ================================================================
 // 🏫 우리 학교 — NEIS 급식·학사일정·시간표 (저장된 학교 그대로 사용)
 // ================================================================
