@@ -786,8 +786,18 @@ async function doAddExamFromNeis(school, title, from, to){
     showToast(`${school} "${title}" 내신 일정 등록 ✓ (수학 시험일은 시험 정보에서 채워주세요)`,'success'); rNaesin(); }
   catch(err){ showToast('등록 실패: '+err.message,'error'); }
 }
+// 📝 시험 일정 직접 입력 — 학교가 NEIS에 안 올렸을 때 홈페이지 보고 손으로 등록
+function doManualExam(school){
+  naesinTab='exam'; seEditId=null; rNaesin();
+  setTimeout(()=>{ const el=document.getElementById('se-school'); if(el){ el.value=school; el.scrollIntoView({behavior:'smooth',block:'center'});
+    const t=document.getElementById('se-title'); if(t) t.focus(); } }, 60);
+  showToast(`${school} 시험 일정을 직접 입력해주세요 (학교 홈페이지 참고)`, 'warning');
+}
 function neisScheduleHtml(){
-  const schools=allSchools().filter(Boolean).sort((a,b)=>a.localeCompare(b));
+  const all=allSchools().filter(Boolean);
+  // 시험 일정 없는 학교를 위로 — 챙겨야 할 게 먼저 보이게
+  const missing=all.filter(s=>{ const d=NEIS_SCHED[s]; return d && !d.err && !examPeriodsOf(d.rows||[]).length; });
+  const schools=all.slice().sort((a,b)=>{ const ma=missing.includes(a)?0:1, mb=missing.includes(b)?0:1; return ma-mb || a.localeCompare(b); });
   const el=s=>(s||'').replace(/</g,'&lt;');
   const todayS=ymdT(new Date()), t0=new Date(); t0.setHours(0,0,0,0);
   const loaded=Object.keys(NEIS_SCHED).length;
@@ -799,6 +809,16 @@ function neisScheduleHtml(){
     </div>
     ${neisLoading?`<div style="font-size:12px;color:var(--text-muted);margin-top:10px">⏳ ${schools.length}개 학교를 동시에 불러오는 중이에요… 잠시만요</div>`:''}
     ${!loaded&&!neisLoading?`<div style="font-size:13px;color:var(--text-muted);margin-top:10px">‘📥 불러오기’를 누르면 학생들이 다니는 <strong>${schools.length}개 학교</strong>의 학사일정을 한 번에 가져와요.</div>`:''}
+    ${(!neisLoading&&missing.length)?`<div style="background:#FFF7ED;border:1.5px solid var(--orange);border-radius:12px;padding:12px 14px;margin-top:12px">
+      <div style="font-size:13px;font-weight:800;color:#9A3412;margin-bottom:4px">⚠️ 시험 일정이 아직 없는 학교 ${missing.length}곳</div>
+      <div style="font-size:11.5px;color:#9A3412;opacity:.85;margin-bottom:8px">학교가 NEIS에 아직 안 올렸어요. 홈페이지 확인 후 <strong>직접 입력</strong>하거나, 나중에 다시 불러오면 돼요.</div>
+      ${missing.map(s=>`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:5px 0;border-top:1px solid #FED7AA">
+        <strong style="font-size:13px">${(s||'').replace(/</g,'&lt;')}</strong>
+        <span style="font-size:11px;color:var(--text-muted)">${getStudents().filter(x=>isActiveStudent(x)&&(x.school||'')===s).length}명</span>
+        <button class="btn btn-orange btn-sm" style="margin-left:auto;padding:2px 10px;font-size:11px" onclick="doManualExam('${s.replace(/'/g,'')}')">📝 직접 입력</button>
+      </div>`).join('')}
+    </div>`:''}
+    ${(loaded&&!neisLoading&&!missing.length)?`<div style="background:var(--green-light);border-radius:10px;padding:9px 12px;margin-top:12px;font-size:12.5px;color:#065F46;font-weight:700">✅ 모든 학교의 시험 일정이 등록돼 있어요</div>`:''}
     ${schools.map(s=>{ const d=NEIS_SCHED[s]; if(!d) return '';
       if(d.err) return `<div style="border-top:1px solid var(--border);padding:10px 0"><strong>${el(s)}</strong> <span style="font-size:12px;color:var(--red)">${el(d.err)}</span></div>`;
       const rows=d.rows||[], periods=examPeriodsOf(rows), majors=majorEventsOf(rows);
@@ -823,7 +843,10 @@ function neisScheduleHtml(){
               ${already?'<span class="badge b-green" style="font-size:10px">✓ 자동 등록됨</span>'
                  :`<button class="btn btn-primary btn-sm" style="padding:1px 8px;font-size:10px;margin-left:auto" onclick="doAddExamFromNeis('${s.replace(/'/g,'')}','${(p.title||'').replace(/'/g,'')}','${p.from}','${p.to}')">＋ 등록</button>`}
             </div>`; }).join('')}
-        </div>`:`<div style="background:var(--bg);border-radius:10px;padding:8px 10px;margin-bottom:6px;font-size:12px;color:var(--text-muted)">📭 앞으로 120일 안에 <strong>시험 일정이 없어요</strong> — 학교가 아직 안 올렸을 수 있어요</div>`}
+        </div>`:`<div style="background:#FFF7ED;border-radius:10px;padding:8px 10px;margin-bottom:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:12px;color:#9A3412">📭 <strong>시험 일정 없음</strong> — 학교가 아직 NEIS에 안 올렸어요</span>
+          <button class="btn btn-orange btn-sm" style="margin-left:auto;padding:2px 9px;font-size:10px" onclick="doManualExam('${s.replace(/'/g,'')}')">📝 직접 입력</button>
+        </div>`}
         ${majors.length?`<div style="background:var(--primary-light);border-radius:10px;padding:8px 10px;margin-bottom:6px">
           <div style="font-size:11px;font-weight:800;color:var(--primary);margin-bottom:3px">🎒 주요 일정</div>
           ${majors.map(m=>{ const dd=ddOf(m.d);
