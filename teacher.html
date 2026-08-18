@@ -2335,10 +2335,11 @@ function todayRosterHtml(todayCls, subs){
     const dueToday=clsAsgns.filter(a=>a.dueDate===todayStr);
     const a=dueToday.slice().sort((x,y)=>{const dx=x.startDate||x.createdAt||'',dy=y.startDate||y.createdAt||'';return dy>dx?1:(dy<dx?-1:0);})[0];
     const chk=getClassCheck(c.id);
-    let absN=0, oapN=0;
+    let absN=0;
+    const units=classUnits(c.id);   // 단원 열 (1단원, 2단원 …)
+    const unitDone={}; units.forEach(u=>{ unitDone[u.id]=0; });
     const rows=sts.map(st=>{
       const absent=absentSet.has(st.id); if(absent) absN++;
-      const oap=!!(chk.oap&&chk.oap[st.id]); if(oap) oapN++;
       const sub=a?subs.find(s=>s.studentId===st.id&&s.assignmentId===a.id):null;
       let hw='';
       if(a){
@@ -2347,17 +2348,22 @@ function todayRosterHtml(todayCls, subs){
         else if(sub.photos&&sub.photos.length) hw=`<button class="btn btn-outline btn-sm" style="padding:1px 7px" onclick="openSubPhotos('${sub.id}')">📷${sub.photos.length}${sub.checked?' ✓':''}</button>`;
         else hw='<span style="font-size:11px;color:var(--text-muted)">제출</span>';
       }
-      const mini=(on,kind,label)=>`<button class="btn btn-sm" style="padding:2px 7px;font-size:11px;${on?'background:var(--green);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="doToggleCheck('${c.id}','${kind}','${st.id}')">${on?'✓':''}${label}</button>`;
-      return `<div style="display:flex;align-items:center;gap:6px;padding:7px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;${absent?'background:#FEF2F2':''}">
-        <strong style="font-size:13px;min-width:58px">${st.name}</strong>
-        ${absent?'<span class="badge b-red" style="font-size:10px">결석</span>':''}
-        ${hw}
-        <div style="margin-left:auto;display:flex;gap:4px;align-items:center;flex-wrap:wrap">
-          ${mini(oap,'oap','오답 마무리')}
-          <button class="btn ${absent?'btn-red':'btn-outline'} btn-sm" style="padding:2px 7px;font-size:11px" onclick="toggleAbsent('${st.id}','${(st.name||'').replace(/'/g,'')}','${c.id}','${(c.name||'').replace(/'/g,'')}')">${absent?'결석취소':'결석'}</button>
-        </div>
-      </div>`;
+      const cells=units.map(u=>{ const on=unitMarked(c.id,u.id,st.id); if(on) unitDone[u.id]++;
+        return `<td style="text-align:center;padding:3px"><button class="btn btn-sm" style="padding:1px 8px;font-size:12px;${on?'background:var(--green);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="doToggleUnit('${c.id}','${u.id}','${st.id}')">${on?'✓':'○'}</button></td>`; }).join('');
+      return `<tr style="${absent?'background:#FEF2F2':''}">
+        <td style="padding:4px 2px"><strong style="font-size:12px">${st.name}</strong>${absent?' <span class="badge b-red" style="font-size:9px">결석</span>':''}</td>
+        <td style="padding:4px 2px">${hw}</td>
+        ${cells}
+        <td style="padding:4px 2px;text-align:right"><button class="btn ${absent?'btn-red':'btn-outline'} btn-sm" style="padding:2px 7px;font-size:11px" onclick="toggleAbsent('${st.id}','${(st.name||'').replace(/'/g,'')}','${c.id}','${(c.name||'').replace(/'/g,'')}')">${absent?'취소':'결석'}</button></td>
+      </tr>`;
     }).join('');
+    const rosterTable=`<div class="table-wrap"><table style="font-size:12px;width:100%">
+      <thead><tr>
+        <th style="text-align:left">학생</th><th style="text-align:left">숙제</th>
+        ${units.map(u=>`<th style="text-align:center;white-space:nowrap">${(u.name||'').replace(/</g,'&lt;')} <span style="font-size:9px;color:var(--text-muted);font-weight:400">${unitDone[u.id]||0}/${sts.length}</span> <span onclick="doDelUnit('${c.id}','${u.id}')" title="이 단원 삭제" style="cursor:pointer;color:var(--text-muted)">✕</span></th>`).join('')}
+        <th style="text-align:right"><button class="btn btn-outline btn-sm" style="padding:1px 7px;font-size:10px" onclick="doAddUnit('${c.id}')">＋단원</button></th>
+      </tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
     const pl=curPlan(c.id, mondayOf(''));
     const plPrev=curPlan(c.id, addDays(mondayOf(''),-7));
     // 지난 숙제 = 마감일이 오늘 이전인 것 중 가장 최근 / 오늘 출제 = 출제일이 오늘(입력했는지 확인용)
@@ -2394,40 +2400,69 @@ function todayRosterHtml(todayCls, subs){
           <span style="font-size:11px;color:var(--text-muted)">지난 수업${prevCD?`(${prevCD.slice(5)})`:''}: <b style="color:${testedPrev?'var(--green)':'var(--text-muted)'}">${prevCD?(testedPrev?'봄':'안 봄'):'-'}</b></span>
         </div>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px;color:var(--text-muted);margin-bottom:4px">
-        <input class="form-input" value="${esc(chk.unit)}" placeholder="단원(예: 1단원)" style="width:100px;padding:3px 7px;font-size:11px" onchange="doSetUnit('${c.id}',this.value)">
-        <span>✏️ 오답 마무리 <b style="color:${sts.length&&oapN===sts.length?'var(--green)':'var(--orange)'}">${oapN}/${sts.length}</b></span>
-        <button class="btn btn-outline btn-sm" style="padding:2px 7px;font-size:10px" onclick="doResetCheck('${c.id}')">초기화</button>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+        <span style="font-size:11px;color:var(--text-muted);flex-shrink:0">💬 수업 코멘트</span>
+        <input class="form-input" value="${esc((progOf(c.id,todayStr)||{}).comment)}" placeholder="오늘 수업 메모 (진도표에도 저장돼요)" style="flex:1;padding:4px 8px;font-size:12px" onchange="doSaveClassComment('${c.id}',this.value)">
       </div>
       <details ${dashClsCollapsed[c.id]?'':'open'} ontoggle="dashClsCollapsed['${c.id}']=!this.open">
-        <summary style="cursor:pointer;font-size:11px;color:var(--text-muted);padding:3px 0">학생 명단 접기/펼치기 · 빠진 학생만 결석, 오답검사·프린트는 끝낸 학생을 눌러 체크</summary>
-        ${sts.length?rows:'<div style="color:var(--text-muted);padding:8px">배정된 학생이 없어요</div>'}
+        <summary style="cursor:pointer;font-size:11px;color:var(--text-muted);padding:3px 0">학생 명단 접기/펼치기 · <strong>＋단원</strong>으로 단원을 추가하고, 끝낸 학생을 ○ 눌러 체크</summary>
+        ${sts.length?rosterTable:'<div style="color:var(--text-muted);padding:8px">배정된 학생이 없어요</div>'}
       </details>
     </div>`;
   }).join('')+`</div>`;
 }
-// 📋 반별 체크(오답검사·프린트) — classCheck 문서 {oap:{sid:true}, print:{sid:true}, unit}
+// 📋 반별 단원 체크리스트 — classCheck 문서 {units:[{id,name}], marks:{unitId:{sid:true}}, testLog:{date:true}}
 let CLASSCHECK_CACHE={};
 async function loadClassChecks(){ try{ const s=await db.collection('classCheck').get(); CLASSCHECK_CACHE={}; s.docs.forEach(d=>{ CLASSCHECK_CACHE[d.id]={id:d.id,...d.data()}; }); }catch(e){ CLASSCHECK_CACHE={}; } }
-function getClassCheck(classId){ return CLASSCHECK_CACHE[classId]||{oap:{},print:{},unit:''}; }
-async function doToggleCheck(classId, kind, studentId){
-  const cur=getClassCheck(classId), map=Object.assign({}, cur[kind]||{});
-  if(map[studentId]) delete map[studentId]; else map[studentId]=true;
-  CLASSCHECK_CACHE[classId]=Object.assign({oap:{},print:{},unit:''}, cur, {id:classId, [kind]:map});
-  try{ await db.collection('classCheck').doc(classId).set({[kind]:map, ts:Date.now()},{merge:true}); rDashboard(); }
+function getClassCheck(classId){ return CLASSCHECK_CACHE[classId]||{units:[],marks:{},testLog:{}}; }
+// 단원 목록 — 없으면 예전 방식(oap) 데이터를 첫 단원으로 살려서 보여줌
+function classUnits(classId){
+  const c=getClassCheck(classId);
+  if(Array.isArray(c.units)&&c.units.length) return c.units;
+  if(c.oap && Object.keys(c.oap).length) return [{id:'u1', name:c.unit||'오답'}];   // 이전 체크 유지
+  return [];
+}
+function unitMarked(classId, unitId, sid){
+  const c=getClassCheck(classId);
+  const m=(c.marks&&c.marks[unitId])||(unitId==='u1'?c.oap:null)||{};
+  return !!m[sid];
+}
+async function doAddUnit(classId){
+  const name=(prompt('추가할 단원 이름을 적어주세요 (예: 1단원, 삼각함수)')||'').trim();
+  if(!name) return;
+  const cur=getClassCheck(classId), units=classUnits(classId).slice();
+  units.push({id:'u'+Date.now().toString(36), name});
+  CLASSCHECK_CACHE[classId]=Object.assign({units:[],marks:{},testLog:{}}, cur, {id:classId, units});
+  try{ await db.collection('classCheck').doc(classId).set({units, ts:Date.now()},{merge:true}); rDashboard(); }
   catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
-async function doSetUnit(classId, val){
-  const cur=getClassCheck(classId), unit=(val||'').trim();
-  CLASSCHECK_CACHE[classId]=Object.assign({oap:{},print:{},unit:''}, cur, {id:classId, unit});
-  try{ await db.collection('classCheck').doc(classId).set({unit, ts:Date.now()},{merge:true}); }
+async function doDelUnit(classId, unitId){
+  const units=classUnits(classId), u=units.find(x=>x.id===unitId);
+  if(!confirm(`'${u?u.name:'이 단원'}' 열을 삭제할까요? (체크 기록도 사라져요)`)) return;
+  const cur=getClassCheck(classId), left=units.filter(x=>x.id!==unitId);
+  const marks=Object.assign({}, cur.marks||{}); delete marks[unitId];
+  CLASSCHECK_CACHE[classId]=Object.assign({units:[],marks:{},testLog:{}}, cur, {id:classId, units:left, marks});
+  try{ await db.collection('classCheck').doc(classId).set({units:left, marks, ts:Date.now()},{merge:true}); rDashboard(); }
+  catch(e){ showToast('삭제 실패: '+e.message,'error'); }
+}
+async function doToggleUnit(classId, unitId, studentId){
+  const cur=getClassCheck(classId), units=classUnits(classId);
+  const marks=Object.assign({}, cur.marks||{});
+  const m=Object.assign({}, marks[unitId] || (unitId==='u1'?cur.oap:null) || {});
+  if(m[studentId]) delete m[studentId]; else m[studentId]=true;
+  marks[unitId]=m;
+  CLASSCHECK_CACHE[classId]=Object.assign({units:[],marks:{},testLog:{}}, cur, {id:classId, units, marks});
+  try{ await db.collection('classCheck').doc(classId).set({units, marks, ts:Date.now()},{merge:true}); rDashboard(); }
   catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
-async function doResetCheck(classId){
-  if(!confirm('이 반의 오답 마무리 체크를 초기화할까요? (새 단원 시작할 때)')) return;
-  CLASSCHECK_CACHE[classId]=Object.assign({oap:{},unit:''}, getClassCheck(classId), {id:classId, oap:{}});
-  try{ await db.collection('classCheck').doc(classId).set({oap:{}, ts:Date.now()},{merge:true}); showToast('체크 초기화 ✓','success'); rDashboard(); }
-  catch(e){ showToast('초기화 실패: '+e.message,'error'); }
+// 💬 반별 수업 코멘트 — 대시보드에서 바로 입력, 진도표(progressLog)에 저장
+async function doSaveClassComment(classId, val){
+  const today=new Date().toISOString().slice(0,10), id=classId+'_'+today;
+  const cls=CLASSES.find(x=>x.id===classId), comment=(val||'').trim();
+  const ex=PROGLOG_CACHE.find(p=>p.id===id);
+  if(ex) ex.comment=comment; else PROGLOG_CACHE.push({id, classId, className:cls?.name||'', date:today, content:'', comment});
+  try{ await db.collection('progressLog').doc(id).set({classId, className:cls?.name||'', date:today, comment, ts:Date.now()},{merge:true}); showToast('수업 코멘트 저장 ✓','success'); }
+  catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
 // 📝 데일리테스트 실시 여부 (반·날짜별) — 지난 수업에 봤는지 수업 정보에 표시
 async function doToggleTest(classId, dateStr){
