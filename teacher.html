@@ -51,12 +51,13 @@
 
     /* MAIN */
     .main-content{margin-left:var(--sidebar-w);flex:1;min-height:100vh;padding-bottom:48px}
-    .page-header{padding:24px 28px 0;margin-bottom:20px}
+    /* 넓은 모니터에서 내용이 양 끝으로 벌어지지 않게 최대 너비 + 가운데 정렬 */
+    .page-header{padding:24px 28px 0;margin:0 auto 20px;max-width:1560px}
     .page-title{font-size:22px;font-weight:700;letter-spacing:-.5px}
     .page-subtitle{font-size:13px;color:var(--text-muted);margin-top:4px}
     .section{display:none}
     .section.active{display:block}
-    .content-area{padding:0 28px}
+    .content-area{padding:0 28px;max-width:1560px;margin:0 auto}
 
     /* CARDS */
     .card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:20px;margin-bottom:16px}
@@ -1654,7 +1655,7 @@ async function doSaveEdit(){
 }
 function rStudents(){
   document.getElementById('studentsContent').innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
       <input class="form-input" id="stSearchInput" style="max-width:260px" placeholder="🔍 학생 이름 검색" value="${stSearch}" oninput="stSearch=this.value;renderStudentRows()">
       <button class="btn btn-primary" onclick="showAdd=!showAdd;rStudents()">➕ 학생 추가</button>
     </div>
