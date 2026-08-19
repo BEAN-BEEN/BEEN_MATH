@@ -851,18 +851,31 @@ function compressToBlob(file, maxDim=1280, quality=0.7){
     img.onerror=reject; img.src=url;
   });
 }
-// 사진 → 압축 → Firebase Storage 업로드 후 다운로드 URL 반환
-async function uploadPhotos(files, folder){
-  const arr=Array.from(files); const urls=[]; let failN=0;
-  for(let i=0;i<arr.length;i++){
-    const f=arr[i];
-    try{
-      let blob; try{ blob=await compressToBlob(f); }catch(e){ blob=f; }
-      const ref=firebase.storage().ref(folder+'/'+Date.now()+'_'+i+'_'+Math.random().toString(36).slice(2,7)+'.jpg');
-      await ref.put(blob);
-      urls.push(await ref.getDownloadURL());
-    }catch(e){ failN++; console.error('[사진 업로드 실패]', (f&&f.name)||'', (e&&e.message)||e); }
-  }
+// 사진 → 압축 → Firebase Storage 업로드 (여러 장 동시 처리 + 실패 시 1회 재시도 + 진행률)
+//  ⚠️ 예전엔 한 장씩 순서대로 올려서 사진이 많으면 매우 느리고, 중간에 끊기면 안 올라갔어요.
+async function uploadPhotos(files, folder, onProgress){
+  const arr=Array.from(files); if(!arr.length) return Object.assign([], {failedCount:0});
+  const results=new Array(arr.length).fill(null);
+  let done=0, failN=0;
+  const CONC=3;                                   // 동시 3장 (모바일 네트워크에 무리 없는 수준)
+  const putOne=async(f,i)=>{
+    let blob; try{ blob=await compressToBlob(f); }catch(e){ blob=f; }
+    for(let tryN=0; tryN<2; tryN++){               // 실패하면 1번 더 시도
+      try{
+        const ref=firebase.storage().ref(folder+'/'+Date.now()+'_'+i+'_'+Math.random().toString(36).slice(2,7)+'.jpg');
+        await ref.put(blob);
+        results[i]=await ref.getDownloadURL();
+        return;
+      }catch(e){
+        if(tryN===1){ failN++; console.error('[사진 업로드 실패]', (f&&f.name)||'', (e&&e.message)||e); }
+        else await new Promise(r=>setTimeout(r,700));   // 잠깐 쉬고 재시도
+      }
+    }
+  };
+  let next=0;
+  const worker=async()=>{ while(next<arr.length){ const i=next++; await putOne(arr[i],i); done++; if(onProgress) onProgress(done, arr.length); } };
+  await Promise.all(Array.from({length:Math.min(CONC,arr.length)}, worker));
+  const urls=results.filter(Boolean);
   // 한 장이 실패해도 나머지는 살림. 전부 실패했을 때만 오류로 처리(호출부에서 잡음).
   if(arr.length && !urls.length) throw new Error('사진 업로드 실패 — 인터넷 연결을 확인하고 다시 시도해주세요');
   urls.failedCount=failN;   // 부분 실패 장수(배열 속성) — 숙제 제출 안내용
@@ -874,7 +887,7 @@ async function submitHomework(assignmentId) {
   const exist=S_SUBMISSIONS.find(s=>s.assignmentId===assignmentId);
   const arr=PENDING_PHOTOS[assignmentId]||[];
   let newUrls=[];
-  if(arr.length){ newUrls=await uploadPhotos(arr, 'submissions/'+assignmentId); }
+  if(arr.length){ newUrls=await uploadPhotos(arr, 'submissions/'+assignmentId, (n,t)=>setUploadProgress(n,t)); }
   // 기존 사진에 '추가'(덮어쓰기 아님) — 일부만 올렸다가 나중에 더 올려도 앞 사진 안 사라짐
   const photos=[...((exist&&Array.isArray(exist.photos))?exist.photos:[]), ...newUrls];
   const failN=newUrls.failedCount||0;   // 이번에 업로드 실패한 장수
@@ -1402,8 +1415,8 @@ function renderOapCard(a){
   if(!hasPhoto){
     photoHtml=`
       <div style="font-size:13px;font-weight:800;margin:12px 0 6px;color:var(--primary)">① 완료한 숙제 사진 올리기</div>
-      <div class="upload-area" onclick="this.querySelector('input').click()">
-        <div class="u-icon">📷</div><p>사진을 선택하세요 (최대 ${a.maxPhotos||30}장)</p>
+      <div class="upload-area" onclick="this.querySelector('input').click()" ondragover="hwDragOver(this,event)" ondragleave="hwDragLeave(this)" ondrop="hwDrop(this,event,'${a.id}')">
+        <div class="u-icon">📷</div><p>사진을 선택하세요 <span style="opacity:.8">· 끌어다 놓아도 돼요</span> (최대 ${a.maxPhotos||30}장)</p>
         <input type="file" accept="image/*" multiple id="hwfile-${a.id}" onchange="handlePreview(this,'${a.id}')">
       </div>
       <div id="prev-${a.id}" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"></div>
@@ -1418,7 +1431,7 @@ function renderOapCard(a){
       </div>
       ${subPhotosHtml(a)}
       <div id="redo-${a.id}" style="display:none;margin-bottom:10px">
-        <div class="upload-area" onclick="this.querySelector('input').click()"><div class="u-icon">📷</div><p>추가할 사진 선택 (최대 ${a.maxPhotos||30}장)</p>
+        <div class="upload-area" onclick="this.querySelector('input').click()" ondragover="hwDragOver(this,event)" ondragleave="hwDragLeave(this)" ondrop="hwDrop(this,event,'${a.id}')"><div class="u-icon">📷</div><p>추가할 사진 선택 <span style="opacity:.8">· 끌어다 놓기 가능</span> (최대 ${a.maxPhotos||30}장)</p>
           <input type="file" accept="image/*" multiple id="hwfile-${a.id}" onchange="handlePreview(this,'${a.id}')"></div>
         <div id="prev-${a.id}" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px"></div>
         <button class="btn btn-primary btn-sm" onclick="doSubmit('${a.id}')">➕ 이 사진 추가 제출</button>
@@ -1696,9 +1709,9 @@ function renderHomework() {
           ${a.rejectReason?`<div style="font-size:13px;color:#7F1D1D">사유: ${a.rejectReason}</div>`:''}
         </div>`:''}
         ${isPending ? `
-          <div class="upload-area" onclick="this.querySelector('input').click()">
+          <div class="upload-area" onclick="this.querySelector('input').click()" ondragover="hwDragOver(this,event)" ondragleave="hwDragLeave(this)" ondrop="hwDrop(this,event,'${a.id}')">
             <div class="u-icon">📷</div>
-            <p>사진을 선택하세요 (최대 ${a.maxPhotos}장)</p>
+            <p>사진을 선택하세요 <span style="opacity:.8">· 끌어다 놓아도 돼요</span> (최대 ${a.maxPhotos}장)</p>
             <input type="file" accept="image/*" multiple id="hwfile-${a.id}" onchange="handlePreview(this,'${a.id}')">
           </div>
           <div id="prev-${a.id}" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"></div>
@@ -1720,9 +1733,9 @@ function renderHomework() {
               <button class="btn btn-outline btn-sm" onclick="doCancelSubmit('${a.subId}','${a.id}')">🗑 제출 취소</button>
             </div>
             <div id="redo-${a.id}" style="display:none;margin-top:10px">
-              <div class="upload-area" onclick="this.querySelector('input').click()">
+              <div class="upload-area" onclick="this.querySelector('input').click()" ondragover="hwDragOver(this,event)" ondragleave="hwDragLeave(this)" ondrop="hwDrop(this,event,'${a.id}')">
                 <div class="u-icon">📷</div>
-                <p>추가할 사진을 선택하세요 (최대 ${a.maxPhotos}장)</p>
+                <p>추가할 사진을 선택하세요 <span style="opacity:.8">· 끌어다 놓기 가능</span> (최대 ${a.maxPhotos}장)</p>
                 <input type="file" accept="image/*" multiple id="hwfile-${a.id}" onchange="handlePreview(this,'${a.id}')">
               </div>
               <div id="prev-${a.id}" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"></div>
@@ -1762,13 +1775,27 @@ function restorePendingUI(){
 }
 
 // 사진 선택/촬영 → 이전에 찍은 것에 '누적' (카메라로 한 장씩 찍어도 안 사라짐)
-function handlePreview(input, id) {
+// 🖱 드래그해서 올리기 — 사진을 끌어다 놓으면 한꺼번에 담겨요 (여러 장 동시에)
+function hwDragOver(el, e){ e.preventDefault(); e.stopPropagation(); el.style.borderColor='var(--primary)'; el.style.background='var(--primary-light)'; }
+function hwDragLeave(el){ el.style.borderColor=''; el.style.background=''; }
+function hwDrop(el, e, id){
+  e.preventDefault(); e.stopPropagation(); hwDragLeave(el);
+  const files=[...((e.dataTransfer&&e.dataTransfer.files)||[])].filter(f=>/^image\//.test(f.type));
+  if(!files.length){ showToast('이미지 파일만 올릴 수 있어요','warning'); return; }
+  addPendingFiles(files, id);
+}
+// 파일 여러 개를 대기 목록에 담기 (선택·드래그 공통)
+function addPendingFiles(files, id){
   const a=S_ASSIGNMENTS.find(x=>x.id===id); const max=(a&&a.maxPhotos)||30;
-  PENDING_PHOTOS[id] = PENDING_PHOTOS[id] || [];
-  Array.from(input.files).forEach(f => { if(PENDING_PHOTOS[id].length<max) PENDING_PHOTOS[id].push(f); });
-  if(PENDING_PHOTOS[id].length>=max) showToast(`최대 ${max}장까지 올릴 수 있어요`,'warning');
-  input.value=''; // 같은 파일/다음 촬영을 위해 비움 → onchange 다시 동작
+  PENDING_PHOTOS[id]=PENDING_PHOTOS[id]||[];
+  let over=false;
+  Array.from(files).forEach(f=>{ if(PENDING_PHOTOS[id].length<max) PENDING_PHOTOS[id].push(f); else over=true; });
+  if(over) showToast(`최대 ${max}장까지 올릴 수 있어요`,'warning');
   renderPendingPhotos(id);
+}
+function handlePreview(input, id) {
+  addPendingFiles(input.files, id);
+  input.value=''; // 같은 파일/다음 촬영을 위해 비움 → onchange 다시 동작
 }
 function renderPendingPhotos(id){
   const prev = document.getElementById('prev-'+id);
@@ -1807,12 +1834,30 @@ async function doDeleteSubPhoto(subId, idx){
     showToast('사진을 지웠어요','warning');
   }catch(e){ showToast('삭제 실패: '+e.message,'error'); }
 }
+// 📤 업로드 진행률 오버레이 — 몇 장 중 몇 장 올라갔는지 보여줘요 (멈춘 줄 알고 나가는 것 방지)
+function setUploadProgress(n,t){
+  let el=document.getElementById('__upProg');
+  if(!el){
+    el=document.createElement('div'); el.id='__upProg';
+    el.style.cssText='position:fixed;inset:0;z-index:4000;background:rgba(15,23,42,.72);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-family:inherit';
+    el.innerHTML='<div style="font-size:40px">📤</div><div id="__upTxt" style="font-size:16px;font-weight:800;margin-top:10px"></div>'
+      +'<div style="width:220px;height:8px;background:rgba(255,255,255,.25);border-radius:4px;margin-top:12px;overflow:hidden"><div id="__upBar" style="height:100%;width:0%;background:#fff;border-radius:4px;transition:width .2s"></div></div>'
+      +'<div style="font-size:12px;opacity:.85;margin-top:10px">잠깐만요, 사진을 올리고 있어요</div>';
+    document.body.appendChild(el);
+  }
+  const pct=t?Math.round(n/t*100):0;
+  const txt=document.getElementById('__upTxt'), bar=document.getElementById('__upBar');
+  if(txt) txt.textContent=`${n} / ${t}장 올리는 중`;
+  if(bar) bar.style.width=pct+'%';
+}
+function clearUploadProgress(){ const el=document.getElementById('__upProg'); if(el) el.remove(); }
 async function doSubmit(id) {
   const arr=PENDING_PHOTOS[id]||[];
   if(!arr.length){ showToast('사진을 먼저 선택해주세요','warning'); return; }
-  showToast('📤 제출 중이에요… 잠시만요','');
+  setUploadProgress(0, arr.length);
   try{
     const failN=await submitHomework(id);
+    clearUploadProgress();
     delete PENDING_PHOTOS[id];   // 성공분은 저장됐으니 임시 사진 비움
     renderHomework();        // 카드 먼저 '제출 완료'로 갱신
     if(failN>0){
@@ -1821,7 +1866,7 @@ async function doSubmit(id) {
       launchConfetti();
       showSubmitDone();        // 또렷한 ✅ 제출 완료 확인
     }
-  }catch(e){ showToast('제출 실패: '+e.message+' — 사진/인터넷 확인 후 다시 시도해주세요','error'); }
+  }catch(e){ clearUploadProgress(); showToast('제출 실패: '+e.message+' — 사진/인터넷 확인 후 다시 시도해주세요','error'); }
 }
 // ✏️ '다시 올리기' 영역 펼치기/접기
 function toggleRedo(id){
