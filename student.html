@@ -1211,22 +1211,29 @@ function renderHome() {
         ${S_NOTICES.map(n=>`<div style="font-size:14px;color:#713F12;padding:3px 0">• ${n.text}</div>`).join('')}
       </div>`:''}
     ${schoolHomeCardHtml()}
-    ${S_SCHOOLEXAM?(function(){
-      const e=S_SCHOOLEXAM, t=new Date(); t.setHours(0,0,0,0);
-      const diff=Math.round((new Date(e.date+'T00:00:00')-t)/86400000);
-      const dday=diff>0?('D-'+diff):(diff===0?'D-DAY🔥':'');
-      const more=(S_MATHEVENTS||[]).slice(1).filter(x=>x.title===e.title);
-      return `<div style="background:linear-gradient(135deg,#EF4444 0%,#F97316 100%);border-radius:var(--radius);padding:16px 18px;margin-bottom:16px;color:#fff">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-          <div>
-            <div style="font-size:12px;opacity:.92;font-weight:600">📅 ${e.school} ${e.title||''}${e.grade?(' · '+e.grade):''}</div>
-            <div style="font-size:16px;font-weight:800;margin-top:3px">${e.period?`시험기간 시작 ${fmtDateFull(e.date)}`:`${e.label||'수학'} 시험 ${fmtDateFull(e.date)}`}</div>
-            <div style="font-size:12px;opacity:.88;margin-top:2px">시험기간 ${e.startDate||'?'} ~ ${e.endDate||'?'}${e.period?' · 수학 날짜는 확정되면 표시돼요':''}${more.length?' · '+more.map(m=>m.label+' '+(m.date||'').slice(5)).join(', '):''}</div>
-          </div>
-          <div style="font-size:30px;font-weight:900;letter-spacing:-1px">${dday}</div>
-        </div>
-      </div>`;
-    })():''}
+    ${(function(){   // 📕 내신 시험 · 📝 모의고사 — 반씩 나눠서 나란히
+      const t=new Date(); t.setHours(0,0,0,0);
+      const ddOf=ds=>Math.round((new Date(ds+'T00:00:00')-t)/86400000);
+      const cards=[];
+      if(S_SCHOOLEXAM){ const e=S_SCHOOLEXAM, d=ddOf(e.date);
+        cards.push(`<div style="flex:1;min-width:170px;background:linear-gradient(135deg,#EF4444,#F97316);border-radius:var(--radius);padding:13px 15px;color:#fff">
+          <div style="font-size:11px;opacity:.92;font-weight:700">📕 ${e.school} ${(e.title||'').replace(/</g,'&lt;')}</div>
+          <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:8px;margin-top:4px">
+            <div style="font-size:13px;font-weight:800">${e.period?fmtDateFull(e.date)+' 시작':(e.label||'수학')+' '+fmtDateFull(e.date)}</div>
+            <div style="font-size:25px;font-weight:900;letter-spacing:-1px;line-height:1">${d>0?'D-'+d:(d===0?'D-DAY🔥':'')}</div>
+          </div></div>`);
+      }
+      const mk=(SCH_HOME&&SCH_HOME.sched||[]).find(r=>/모의|학력평가/.test(r.EVENT_NM||''));
+      if(mk){ const ds=`${mk.AA_YMD.slice(0,4)}-${mk.AA_YMD.slice(4,6)}-${mk.AA_YMD.slice(6,8)}`, d=ddOf(ds);
+        cards.push(`<div style="flex:1;min-width:170px;background:linear-gradient(135deg,#5B6CF5,#7C8CF8);border-radius:var(--radius);padding:13px 15px;color:#fff">
+          <div style="font-size:11px;opacity:.92;font-weight:700">📝 모의고사</div>
+          <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:8px;margin-top:4px">
+            <div style="font-size:13px;font-weight:800">${(mk.EVENT_NM||'').replace(/</g,'&lt;').slice(0,14)}<div style="font-size:11px;opacity:.9;font-weight:600">${+mk.AA_YMD.slice(4,6)}월 ${+mk.AA_YMD.slice(6,8)}일</div></div>
+            <div style="font-size:25px;font-weight:900;letter-spacing:-1px;line-height:1">${d>0?'D-'+d:(d===0?'D-DAY🔥':'')}</div>
+          </div></div>`);
+      }
+      return cards.length?`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">${cards.join('')}</div>`:'';
+    })()}
     ${(function(){ const jb=myJikbo(); if(!jb.length) return '';
       const dow=['일','월','화','수','목','금','토'];
       return `<div class="card" style="border-left:4px solid var(--orange);margin-bottom:16px">
@@ -1240,22 +1247,32 @@ function renderHome() {
         <div style="font-size:11px;color:var(--text-muted);margin-top:8px">토·일은 오전 11시, 평일은 시험기간엔 오후 2시·그 외엔 오후 5시예요. 늦지 않게 와주세요!</div>
       </div>`;
     })()}
-    <div class="hero-banner">
-      <h2>👋 ${STUDENT.name} 학생, 제출할 숙제가 ${pending.length}개 있어요!</h2>
-      <p>완료한 과제부터 차례대로 제출하고, 어려웠던 문제는 질문으로 남겨보세요.</p>
-    </div>
-    ${localStorage.getItem('bm_push_on')!=='1' ? `
-      <div class="alert-card" style="background:var(--primary-light);border-color:var(--primary)">
-        <div class="a-icon">🔔</div>
-        <div style="flex:1"><h4 style="color:var(--primary)">알림을 켜면 새 숙제·공지를 바로 받아요</h4><p>휴대폰 알림으로 알려드려요</p></div>
-        <button class="btn btn-primary btn-sm" onclick="enablePush()">알림 켜기</button>
-      </div>` : ''}
-    ${(typeof bmCanInstallUI==='function' && bmCanInstallUI()) ? `
-      <div class="alert-card">
-        <div class="a-icon">📲</div>
-        <div style="flex:1"><h4>홈 화면에 앱으로 추가</h4><p>바탕화면/홈 화면에서 한 번에 들어올 수 있어요</p></div>
-        <button class="btn btn-outline btn-sm" onclick="bmInstallClick()">홈 화면에 추가</button>
-      </div>` : ''}
+    ${(function(){   // 📝 숙제 바 — 제출할 숙제를 바로 여기서 제출
+      if(!pending.length) return `<div class="card" style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+        <span style="font-size:22px">🎉</span>
+        <span style="font-size:14px;font-weight:700;color:var(--green)">${STUDENT.name} 학생, 제출할 숙제가 없어요!</span>
+      </div>`;
+      return `<div class="card" style="margin-bottom:14px;border-left:4px solid var(--primary)">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          <span style="font-size:15px;font-weight:800">📝 제출할 숙제 <span style="color:var(--primary)">${pending.length}개</span></span>
+          <button class="btn btn-outline btn-sm" onclick="navigate('homework')">전체 보기 →</button>
+        </div>
+        ${pending.slice(0,4).map(a=>`<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--border);flex-wrap:wrap">
+          <div style="flex:1;min-width:130px">
+            <div style="font-size:13px;font-weight:700">${(a.title||'').replace(/</g,'&lt;')}</div>
+            <div style="font-size:11px;color:var(--text-muted)">${a.className||''}${a.dueDate?' · ~'+fmtDateFull(a.dueDate):''}${a.status==='late'?' · <span style="color:var(--red);font-weight:700">늦었어요</span>':''}</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="navigate('homework');setTimeout(()=>{var el=document.getElementById('hwcard-${a.id}');if(el)el.scrollIntoView({behavior:'smooth',block:'center'});},120)">📷 제출하기</button>
+        </div>`).join('')}
+        ${pending.length>4?`<div style="font-size:12px;color:var(--text-muted);padding-top:8px">+${pending.length-4}개 더 있어요</div>`:''}
+      </div>`;
+    })()}
+    ${(function(){   // 🔔 알림 · 📲 홈 화면 — 작은 아이콘 버튼으로
+      const btns=[];
+      if(localStorage.getItem('bm_push_on')!=='1') btns.push(`<button class="btn btn-outline btn-sm" onclick="enablePush()" style="gap:5px">🔔 알림 켜기</button>`);
+      if(typeof bmCanInstallUI==='function' && bmCanInstallUI()) btns.push(`<button class="btn btn-outline btn-sm" onclick="bmInstallClick()" style="gap:5px">📲 홈 화면에 추가</button>`);
+      return btns.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">${btns.join('')}</div>`:'';
+    })()}
     ${MAKEUP_SCHEDULES.map(m=>`
       <div class="alert-card">
         <div class="a-icon">🔔</div>
