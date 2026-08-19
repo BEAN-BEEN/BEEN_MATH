@@ -387,6 +387,31 @@ function hwStudents(a){
 
 // 학생 추가/삭제 → Firebase에 저장 (회원가입 없이 선생님이 직접 등록)
 async function addStudentFS(data){ await db.collection('students').add(data); await loadStudents(); }
+// 🔜 예약 반 변경 — 예약일이 되면 자동으로 반을 바꿔주고 이력(classHistory)까지 남김
+async function applyPendingMoves(){
+  const today=new Date().toISOString().slice(0,10);
+  const due=STUDENTS_CACHE.filter(s=>s.pendingMove && s.pendingMove.date && s.pendingMove.date<=today);
+  if(!due.length) return 0;
+  for(const s of due){
+    const pm=s.pendingMove, moveDate=pm.date;
+    const oldIds=s.classIds||(s.classId?[s.classId]:[]), newIds=pm.classIds||[];
+    const removed=oldIds.filter(id=>!newIds.includes(id)), added=newIds.filter(id=>!oldIds.includes(id));
+    const hist=Array.isArray(s.classHistory)?s.classHistory.map(h=>({...h})):[];
+    removed.forEach(cid=>{ const open=hist.find(h=>h.classId===cid&&!h.to); if(open) open.to=moveDate; else hist.push({classId:cid,from:'',to:moveDate}); });
+    added.forEach(cid=>{ if(!hist.some(h=>h.classId===cid&&!h.to)) hist.push({classId:cid,from:moveDate,to:''}); });
+    try{
+      await db.collection('students').doc(s.id).update({ classIds:newIds, classNames:pm.classNames||[], classHistory:hist, pendingMove:null });
+      Object.assign(s,{classIds:newIds, classNames:pm.classNames||[], classHistory:hist, pendingMove:null});
+    }catch(e){ console.warn('예약 반이동 적용 실패', s.name, e); }
+  }
+  return due.length;
+}
+async function doCancelPendingMove(sid){
+  const s=STUDENTS_CACHE.find(x=>x.id===sid); if(!s||!s.pendingMove) return;
+  if(!confirm(`${s.name} 학생의 ${s.pendingMove.date} 반 이동 예약을 취소할까요?`)) return;
+  try{ await db.collection('students').doc(sid).update({pendingMove:null}); s.pendingMove=null; showToast('반 이동 예약을 취소했어요','warning'); rStudents(); }
+  catch(e){ showToast('취소 실패: '+e.message,'error'); }
+}
 async function deleteStudentFS(id){ await db.collection('students').doc(id).delete(); await loadStudents(); }
 
 // ===== 숙제(과제)·제출 = Firebase 공유 (선생님이 올리면 학생이 봄) =====
@@ -1601,14 +1626,24 @@ async function doSaveEdit(){
   const addedCls=classIds.filter(id=>!oldClassIds.includes(id));
   let moveNote='';
   if(removedCls.length||addedCls.length){
-    let moveDate=new Date().toISOString().slice(0,10);
-    const inp=prompt('반 이동일을 입력하세요 (YYYY-MM-DD).\n이 날짜 이전 숙제는 이전 반, 이 날짜부터는 새 반 숙제가 학생에게 보입니다.\n(취소하면 오늘 날짜로 기록)', moveDate);
+    const todayStr=new Date().toISOString().slice(0,10);
+    let moveDate=todayStr;
+    const inp=prompt('반 이동일을 입력하세요 (YYYY-MM-DD).\n· 오늘 이전/오늘 → 바로 이동\n· 미래 날짜 → 그날부터 자동 이동(예약)\n(취소하면 오늘 날짜)', moveDate);
     if(inp && /^\d{4}-\d{2}-\d{2}$/.test(inp.trim())) moveDate=inp.trim();
-    const hist=Array.isArray(s.classHistory)?s.classHistory.map(h=>({...h})):[];
-    removedCls.forEach(cid=>{ const open=hist.find(h=>h.classId===cid&&!h.to); if(open) open.to=moveDate; else hist.push({classId:cid,from:'',to:moveDate}); });
-    addedCls.forEach(cid=>{ if(!hist.some(h=>h.classId===cid&&!h.to)) hist.push({classId:cid,from:moveDate,to:''}); });
-    patch.classHistory=hist;
-    moveNote=' · 반이동 기록됨('+moveDate+')';
+    if(moveDate>todayStr){
+      // 🔜 예약 반 변경 — 지금은 반을 그대로 두고, 그날이 되면 자동 적용
+      patch.classIds=oldClassIds;
+      patch.classNames=oldClassIds.map(id=>CLASSES.find(c=>c.id===id)?.name).filter(Boolean);
+      patch.pendingMove={ date:moveDate, classIds, classNames, createdAt:todayStr };
+      moveNote=` · 🔜 ${moveDate}부터 이동 예약됨`;
+    } else {
+      const hist=Array.isArray(s.classHistory)?s.classHistory.map(h=>({...h})):[];
+      removedCls.forEach(cid=>{ const open=hist.find(h=>h.classId===cid&&!h.to); if(open) open.to=moveDate; else hist.push({classId:cid,from:'',to:moveDate}); });
+      addedCls.forEach(cid=>{ if(!hist.some(h=>h.classId===cid&&!h.to)) hist.push({classId:cid,from:moveDate,to:''}); });
+      patch.classHistory=hist;
+      patch.pendingMove=null;
+      moveNote=' · 반이동 기록됨('+moveDate+')';
+    }
   }
   // 휴원/퇴원으로 바뀌면 처리일 자동 기록, 재원 복귀 시 처리일 제거
   const wasStatus=studentStatus(s);
@@ -1671,7 +1706,9 @@ function renderStudentRows(){
             <td><strong>${s.name}</strong>${s.memo?' <span title="메모 있음">📝</span>':''}</td>
             <td>${pushOn(s)?'<span class="badge b-green">🔔 켬</span>':'<span class="badge b-gray" title="학생이 앱에서 알림 켜기를 눌러야 해요">🔕 꺼짐</span>'}</td>
             <td>${statusBadge(st)}${st!=='재원'&&s.statusMemo?`<div style="font-size:11px;color:var(--text-muted);margin-top:2px">${s.statusMemo}</div>`:''}</td>
-            <td>${classNamesOf(s).map(n=>`<span class="chip" style="margin:1px 2px">${n}</span>`).join('')||'-'}</td>
+            <td>${classNamesOf(s).map(n=>`<span class="chip" style="margin:1px 2px">${n}</span>`).join('')||'-'}
+              ${s.pendingMove?`<div style="font-size:10px;color:var(--orange);font-weight:700;margin-top:3px">🔜 ${s.pendingMove.date}부터 ${(s.pendingMove.classNames||[]).join(', ')||'반 변경'}
+                <span onclick="doCancelPendingMove('${s.id}')" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);font-weight:400">취소</span></div>`:''}</td>
             <td>${s.phone||'-'}</td>
             <td>${s.parentPhone||'-'}</td>
             <td><span class="badge b-primary">${s.phoneLast4||'-'}</span></td>
@@ -4307,6 +4344,7 @@ async function init(){
     loadSchoolBooks(),   // 학교별 교재·출판사
     loadVideoViews()     // 영상 시청 기록
   ].map(p=>Promise.resolve(p).catch(e=>console.warn('일부 데이터 로드 실패(무시):',e))));
+  try{ const n=await applyPendingMoves(); if(n) showToast(`예약된 반 이동 ${n}건이 오늘 적용됐어요 🔜`,'success'); }catch(e){}
   rDashboard();
   pruneOldFirebase();            // 3개월 지난 사진·기록 자동 정리 (백그라운드)
   // 홈 화면 '숙제 입력' 바로가기로 들어오면 빠른 입력창 자동 열기
