@@ -1317,10 +1317,10 @@ function rDashboard(){
   // 삭제된 숙제의 옛 제출(고아 데이터)은 제외하고 집계
   const asgnIds=new Set(getAssignments().map(a=>a.id));
   const subs=getSubmissions().filter(s=>asgnIds.has(s.assignmentId));
-  const today=new Date();
+  const today=dashDateObj();   // 보고 있는 날짜(기본=오늘) — 어제/지난 수업도 볼 수 있어요
   document.getElementById('todayDate').textContent=today.toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
   const dayKey=['sun','mon','tue','wed','thu','fri','sat'][today.getDay()];
-  const todayCls=CLASSES.filter(c=>clsHasDay(c,dayKey) && isClassActive(c));
+  const todayCls=CLASSES.filter(c=>clsHasDay(c,dayKey) && isClassActive(c, dashDay()));
   const unchecked=subs.filter(s=>!s.checked && !s.rejected).length;
   const pending=qs.filter(q=>q.status==='pending').length;
   const pushOn=sts.filter(s=>Array.isArray(s.fcmTokens)&&s.fcmTokens.length).length;
@@ -1384,8 +1384,14 @@ function rDashboard(){
         </div>`:'<div style="margin-top:12px;font-size:13px;color:var(--green);background:var(--surface);border-radius:10px;padding:12px;text-align:center">✅ 오답까지 모두 해결됐어요! 깔끔해요 👏</div>'}
     </div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:2px;order:-1">
-      <span style="font-size:16px;font-weight:800">📅 오늘 수업 <span style="font-size:13px;color:var(--text-muted);font-weight:600">(${todayCls.length}반 · 결석 ${getAbsences().filter(a=>a.date===today.toISOString().slice(0,10)).length})</span></span>
-      ${todayCls.length?`<button class="btn btn-outline btn-sm" onclick="doRemindToday()">🔔 오늘 반 알림</button>`:''}
+      <span style="font-size:16px;font-weight:800">📅 ${dashIsToday()?'오늘 수업':'수업'} <span style="font-size:13px;color:var(--text-muted);font-weight:600">(${todayCls.length}반 · 결석 ${getAbsences().filter(a=>a.date===dashDay()).length})</span></span>
+      <div style="display:flex;align-items:center;gap:4px">
+        <button class="btn btn-outline btn-sm" style="padding:3px 9px" onclick="dashShift(-1)" title="하루 전">‹</button>
+        <input class="form-input" type="date" value="${dashDay()}" onchange="dashPickDate(this.value)" style="width:146px;padding:3px 7px;font-size:12px">
+        <button class="btn btn-outline btn-sm" style="padding:3px 9px" onclick="dashShift(1)" title="하루 뒤">›</button>
+        ${dashIsToday()?'':'<button class="btn btn-primary btn-sm" style="padding:3px 10px;font-size:11px" onclick="dashGoToday()">오늘로</button>'}
+      </div>
+      ${(todayCls.length&&dashIsToday())?`<button class="btn btn-outline btn-sm" onclick="doRemindToday()">🔔 오늘 반 알림</button>`:''}
     </div>
     ${todayRosterHtml(todayCls, subs)}
     ${classCheckBoardHtml()}
@@ -2509,11 +2515,18 @@ async function dashCheck(sid){
   try{ await updateSub(sid,{checked:nv, ...(nv?{rejected:false}:{})}); showToast(nv?'확인=출석 처리 ✅':'출석(확인)을 취소했어요','success'); rDashboard(); }
   catch(e){ showToast('처리 실패: '+e.message,'error'); }
 }
-// 🗓️ 오늘 수업 반 통합 보드 — 반 시간·오늘 숙제·진도 + 학생(접기) + 결석/오답검사/프린트 체크
-let dashClsCollapsed={};
+// 🗓️ 오늘 수업 반 통합 보드 — 반 시간·숙제·진도 + 학생(접기) + 결석/단원 체크
+//   dashDay: 보고 있는 날짜(YYYY-MM-DD). 어제·지난 수업도 그대로 볼 수 있어요.
+let dashClsCollapsed={}, dashDateStr=null;
+function dashDay(){ return dashDateStr || new Date().toISOString().slice(0,10); }
+function dashDateObj(){ const s=dashDay(); return new Date(+s.slice(0,4), +s.slice(5,7)-1, +s.slice(8,10)); }
+function dashIsToday(){ return dashDay()===new Date().toISOString().slice(0,10); }
+function dashShift(n){ const d=dashDateObj(); d.setDate(d.getDate()+n); dashDateStr=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; rDashboard(); }
+function dashGoToday(){ dashDateStr=null; rDashboard(); }
+function dashPickDate(v){ if(v) dashDateStr=v; rDashboard(); }
 function todayRosterHtml(todayCls, subs){
-  if(!todayCls.length) return '<div class="card" style="margin-top:16px;text-align:center;padding:24px;color:var(--text-muted)">오늘은 수업이 없어요 ☕</div>';
-  const todayStr=new Date().toISOString().slice(0,10);
+  if(!todayCls.length) return `<div class="card" style="margin-top:16px;text-align:center;padding:24px;color:var(--text-muted)">${dashIsToday()?'오늘은 수업이 없어요 ☕':'이 날은 수업이 없어요 ☕'}</div>`;
+  const todayStr=dashDay();
   const absentSet=new Set(getAbsences().filter(a=>a.date===todayStr).map(a=>a.studentId));
   return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px;margin-top:14px">`+ todayCls.map(c=>{
     const sts=getStudentsByClass(c.id);
@@ -2540,8 +2553,8 @@ function todayRosterHtml(todayCls, subs){
         <button class="btn ${absent?'btn-red':'btn-outline'} btn-sm" style="margin-left:auto;padding:2px 7px;font-size:11px" onclick="toggleAbsent('${st.id}','${(st.name||'').replace(/'/g,'')}','${c.id}','${(c.name||'').replace(/'/g,'')}')">${absent?'결석취소':'결석'}</button>
       </div>`;
     }).join('');
-    const pl=curPlan(c.id, mondayOf(''));
-    const plPrev=curPlan(c.id, addDays(mondayOf(''),-7));
+    const pl=curPlan(c.id, mondayOf(todayStr));
+    const plPrev=curPlan(c.id, addDays(mondayOf(todayStr),-7));
     // 지난 숙제 = 마감일이 오늘 이전인 것 중 가장 최근 / 오늘 출제 = 출제일이 오늘(입력했는지 확인용)
     const prevAsgn=clsAsgns.filter(x=>x.dueDate && x.dueDate<todayStr).sort((x,y)=>(y.dueDate||'').localeCompare(x.dueDate||''))[0];
     const newToday=clsAsgns.filter(x=>(x.startDate||x.createdAt||'')===todayStr).sort((x,y)=>(y.ts||0)-(x.ts||0))[0];
@@ -2673,7 +2686,7 @@ async function doToggleUnit(classId, unitId, studentId){
 }
 // 💬 반별 수업 코멘트 — 대시보드에서 바로 입력, 진도표(progressLog)에 저장
 async function doSaveClassComment(classId, val){
-  const today=new Date().toISOString().slice(0,10), id=classId+'_'+today;
+  const today=dashDay(), id=classId+'_'+today;   // 보고 있는 날짜에 저장 (지난 수업 코멘트도 가능)
   const cls=CLASSES.find(x=>x.id===classId), comment=(val||'').trim();
   const ex=PROGLOG_CACHE.find(p=>p.id===id);
   if(ex) ex.comment=comment; else PROGLOG_CACHE.push({id, classId, className:cls?.name||'', date:today, content:'', comment});
@@ -2692,15 +2705,15 @@ async function doToggleTest(classId, dateStr){
 function prevClassDate(c){
   const wd=['sun','mon','tue','wed','thu','fri','sat'];
   for(let i=1;i<=14;i++){
-    const d=new Date(); d.setDate(d.getDate()-i);
+    const d=dashDateObj(); d.setDate(d.getDate()-i);
     const ds=d.toISOString().slice(0,10);
     if(clsHasDay(c, wd[d.getDay()]) && isClassActive(c, ds)) return ds;
   }
   return '';
 }
-// 결석 표시 토글 (오늘 날짜 기준)
+// 결석 표시 토글 (대시보드에서 보고 있는 날짜 기준 — 지난 수업도 보정 가능)
 async function toggleAbsent(sid, name, cid, cname){
-  const today=new Date().toISOString().slice(0,10);
+  const today=dashDay();
   const ex=getAbsences().find(a=>a.date===today && a.studentId===sid);
   try{
     if(ex){ await db.collection('absences').doc(ex.id).delete(); showToast(name+' 결석 취소','warning'); }
