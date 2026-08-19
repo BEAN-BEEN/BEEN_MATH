@@ -3519,7 +3519,17 @@ function rVideos(){
           ${justClick.length?`<span class="badge b-red">😑 재생만 ${justClick.length}</span>`:''}
           ${v.url?`<a class="btn btn-outline btn-sm" href="${v.url}" target="_blank" rel="noopener">열기</a>`:''}
           <button class="btn btn-outline btn-sm" onclick="toggleVidSeen('${v.id}')">시청 현황</button>
+          <button class="btn ${(v.sharedWith||[]).length?'btn-green':'btn-outline'} btn-sm" onclick="toggleVidShare('${v.id}')">🔓 추가 공개${(v.sharedWith||[]).length?' '+(v.sharedWith||[]).length:''}</button>
           <button class="btn btn-red btn-sm" onclick="doDelVid('${v.id}')">삭제</button>
+        </div>
+        <div id="vidshare-${v.id}" style="display:none;margin-top:10px;border-top:1px dashed var(--border);padding-top:8px">
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">이 반이 아닌 학생에게도 이 영상을 보여줄 수 있어요 (결석 보충·대체 영상). 이름을 눌러 켜고 끄세요.</div>
+          <div style="display:flex;flex-wrap:wrap;gap:5px">
+            ${getActiveStudents().filter(st=>!roster.some(r=>r.id===st.id)).sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(st=>{
+              const on=(v.sharedWith||[]).includes(st.id);
+              return `<button class="btn btn-sm" style="padding:3px 9px;font-size:11px;${on?'background:var(--green);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="doToggleVidShare('${v.id}','${st.id}')">${on?'✓ ':''}${st.name}<span style="opacity:.7;font-size:9px"> ${classNamesOf(st)[0]||''}</span></button>`;
+            }).join('')||'<span style="font-size:12px;color:var(--text-muted)">다른 반 학생이 없어요</span>'}
+          </div>
         </div>
         <div id="vidseen-${v.id}" style="display:none;margin-top:10px;border-top:1px dashed var(--border);padding-top:8px">
           <div class="table-wrap"><table style="font-size:12px">
@@ -3540,6 +3550,20 @@ function rVideos(){
       </div>`;}).join('')}`;
 }
 function toggleVidSeen(id){ const el=document.getElementById('vidseen-'+id); if(el) el.style.display=el.style.display==='none'?'block':'none'; }
+function toggleVidShare(id){ const el=document.getElementById('vidshare-'+id); if(el) el.style.display=el.style.display==='none'?'block':'none'; }
+// 🔓 다른 반 학생에게 이 영상 추가 공개 (대체 영상·결석 보충용)
+async function doToggleVidShare(vid, sid){
+  const v=getVideos().find(x=>x.id===vid); if(!v) return;
+  const cur=Array.isArray(v.sharedWith)?v.sharedWith.slice():[];
+  const i=cur.indexOf(sid); const on=i<0;
+  if(on) cur.push(sid); else cur.splice(i,1);
+  v.sharedWith=cur;   // 즉시 반영
+  try{ await db.collection('videos').doc(vid).update({sharedWith:cur});
+    const st=getStudents().find(x=>x.id===sid);
+    showToast(`${st?st.name:'학생'} ${on?'에게 이 영상을 공개했어요 🔓':'공개를 해제했어요'}`, on?'success':'warning');
+    rVideos(); const el=document.getElementById('vidshare-'+vid); if(el) el.style.display='block';
+  }catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
 async function doAddVid(){
   const classId=document.getElementById('vi-cls').value, url=document.getElementById('vi-url').value.trim();
   if(!classId||!url){showToast('반과 영상 링크를 입력해주세요','error');return;}

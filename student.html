@@ -633,7 +633,10 @@ async function loadStudentData(){
   S_EXAMS = ex.docs.map(d=>({id:d.id,...d.data()})).filter(e=>ids.includes(e.classId))
     .sort((x,y)=>(y.date||'').localeCompare(x.date||''));
   const vids = await pVids;
-  VIDEOS = vids.docs.map(d=>({id:d.id,...d.data()})).filter(v=>ids.includes(v.classId)||v.classId==='all').sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  // 내 반 영상 + 전체 공개 + 선생님이 나에게 따로 공개한 영상(대체·보충용)
+  VIDEOS = vids.docs.map(d=>({id:d.id,...d.data()}))
+    .filter(v=>ids.includes(v.classId)||v.classId==='all'||(Array.isArray(v.sharedWith)&&v.sharedWith.includes(STUDENT.id)))
+    .sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const mats = await pMats;
   MATERIALS = mats.docs.map(d=>({id:d.id,...d.data()})).filter(m=>ids.includes(m.classId)||m.classId==='all').sort((a,b)=>(b.uploadDate||'').localeCompare(a.uploadDate||''));
   // 출석은 이제 숙제 확인에서 자동 집계 (getAttendance) — 별도 attendance 컬렉션 미사용
@@ -2530,7 +2533,7 @@ function renderVideos() {
           <div class="v-thumb" style="background:${v.color||'#6366F1'}"><span>▶️</span>${pct?`<span class="v-dur">${pct}%</span>`:''}</div>
           <div class="v-info">
             <div class="v-title">${v.title}</div>
-            <div class="v-meta">${v.className} · ${v.date}${seen?' · <span style="color:var(--green);font-weight:700">✅ 봤어요</span>':''}</div>
+            <div class="v-meta">${v.className} · ${v.date}${(Array.isArray(v.sharedWith)&&v.sharedWith.includes(STUDENT.id))?' · <span style="color:var(--primary);font-weight:700">🔓 선생님이 보내준 영상</span>':''}${seen?' · <span style="color:var(--green);font-weight:700">✅ 봤어요</span>':''}</div>
             ${vv?`<div style="margin-top:6px">
               <div style="height:5px;background:var(--bg);border-radius:3px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${pct>=90?'var(--green)':'var(--primary)'};border-radius:3px"></div></div>
               <div style="font-size:11px;color:var(--text-muted);margin-top:3px">👀 ${mm(vv.watchedSec)} 시청 · ${pct}% 진행${pct>=90?' · 완주 🎉':''}</div>
