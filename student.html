@@ -2273,7 +2273,7 @@ async function loadSchoolHome(){
   const info=await schResolveCode(); if(!info) return;
   const t=new Date(), p=n=>String(n).padStart(2,'0');
   const td=`${t.getFullYear()}${p(t.getMonth()+1)}${p(t.getDate())}`;
-  const e=new Date(); e.setDate(e.getDate()+21);
+  const e=new Date(); e.setDate(e.getDate()+120);   // 모의고사는 멀리 있어도 보이게 넉넉히
   const ed=`${e.getFullYear()}${p(e.getMonth()+1)}${p(e.getDate())}`;
   const [meals, sched]=await Promise.all([
     schApi({type:'meal', atpt:info.atpt, code:info.code, from:td, to:td}),
@@ -2301,6 +2301,16 @@ function schoolHomeCardHtml(){
       <strong>${(up.EVENT_NM||'').replace(/</g,'&lt;')}</strong>
       ${dday!=null?`<span class="sch-dday ${dday===0?'now':''}" style="margin-left:auto">${dday===0?'오늘':'D-'+dday}</span>`:''}
     </div>`:''}
+    ${(function(){   // 📝 가장 가까운 모의고사 — 항상 보이게
+      const mk=(SCH_HOME.sched||[]).find(r=>/모의|학력평가/.test(r.EVENT_NM||''));
+      if(!mk) return '';
+      const d=Math.round((new Date(+mk.AA_YMD.slice(0,4),+mk.AA_YMD.slice(4,6)-1,+mk.AA_YMD.slice(6,8))-t0)/86400000);
+      return `<div style="margin-top:6px;padding:7px 10px;background:var(--primary-light);border-radius:10px;font-size:12px;display:flex;align-items:center;gap:6px">
+        <span style="color:var(--primary);font-weight:700">📝 모의고사</span>
+        <span style="color:var(--text-sub)">${(mk.EVENT_NM||'').replace(/</g,'&lt;')} · ${+mk.AA_YMD.slice(4,6)}/${+mk.AA_YMD.slice(6,8)}</span>
+        <span class="sch-dday ${d===0?'now':''}" style="margin-left:auto">${d===0?'오늘':'D-'+d}</span>
+      </div>`;
+    })()}
   </div>`;
 }
 // 📚 진도표 (우리 반 주차별 계획, 읽기전용) — 처음 열 때 lazy load
