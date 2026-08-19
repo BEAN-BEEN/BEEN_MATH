@@ -725,9 +725,21 @@ async function neisCodeOf(school){
 }
 function ymdT(d){ const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}`; }
 // 시험 관련 일정을 연속 구간으로 묶기 → {title, from, to}
+// 내신 시험만 — 수능·모의고사·예비소집·시험장 설치 등은 내신이 아니라서 제외
+const NEIS_NOT_EXAM=/수능|대학수학능력|모의|예비소집|시험장|졸업/;
+// 학교마다 제각각인 시험 이름을 '{N}학기 중간/기말고사'로 통일 (1차 정기시험·지필평가 등)
+function normExamTitle(name, ymd){
+  const m=+(ymd||'').slice(4,6);                       // 3~7월=1학기 / 8~2월=2학기
+  const term=(m>=3&&m<=7)?1:2;
+  const t=(name||'').replace(/\s+/g,'');
+  if(/중간|1차|一次|1회/.test(t)) return `${term}학기 중간고사`;
+  if(/기말|2차|3차|2회/.test(t)) return `${term}학기 기말고사`;
+  if(/정기시험|지필/.test(t))    return `${term}학기 ${m>=11||m<=2?'기말':'중간'}고사`;
+  return name;
+}
 function examPeriodsOf(rows){
-  const ev=rows.filter(r=>/고사|시험/.test(r.EVENT_NM||'') && !/모의/.test(r.EVENT_NM||''))
-    .map(r=>({d:r.AA_YMD, n:(r.EVENT_NM||'').trim()})).sort((a,b)=>a.d.localeCompare(b.d));
+  const ev=rows.filter(r=>/고사|시험/.test(r.EVENT_NM||'') && !NEIS_NOT_EXAM.test(r.EVENT_NM||''))
+    .map(r=>({d:r.AA_YMD, n:normExamTitle((r.EVENT_NM||'').trim(), r.AA_YMD)})).sort((a,b)=>a.d.localeCompare(b.d));
   const out=[];
   ev.forEach(x=>{
     const last=out[out.length-1];
@@ -738,14 +750,14 @@ function examPeriodsOf(rows){
   return out;
 }
 // 🎒 굵직한 일정 (개학·방학·입학·졸업 등) — 시험 외 주요 일정
-const NEIS_MAJOR_RE=/개학|방학|입학|졸업|체육대회|축제|수학여행|수련회|휴업|소풍|현장학습|재량/;
+const NEIS_MAJOR_RE=/개학|방학|입학|졸업|체육대회|축제|수학여행|수련회|휴업|소풍|현장학습|재량|모의|학력평가|수능|대학수학능력/;
 function majorEventsOf(rows){
   const t=ymdT(new Date());
   const seen={}, out=[];
   rows.filter(r=>NEIS_MAJOR_RE.test(r.EVENT_NM||'') && r.AA_YMD>=t)
     .sort((a,b)=>(a.AA_YMD||'').localeCompare(b.AA_YMD||''))
     .forEach(r=>{ const n=(r.EVENT_NM||'').trim(); if(seen[n]) return; seen[n]=1; out.push({d:r.AA_YMD, n}); });
-  return out.slice(0,6);
+  return out.slice(0,8);
 }
 let neisProgress='';
 async function doLoadNeisSched(){
