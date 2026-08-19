@@ -963,9 +963,16 @@ function schoolInfoHtml(){
         <div><strong style="font-size:15px">${esc(e.school)||'-'}</strong> <span class="badge b-gray" style="font-size:10px">${totalN}명</span></div>
         <button class="btn btn-outline btn-sm" style="padding:1px 7px;font-size:10px" onclick="seEditId='${e.id}';naesinTab='exam';rNaesin();window.scrollTo({top:0,behavior:'smooth'})">수정</button>
       </div>
+      ${(function(){   // 📚 학교별 교재·출판사 (학교 정보 표에 적어둔 값)
+        const b=getSchoolBook(normSchool(e.school));
+        const parts=[b.publisher?`<b style="color:var(--primary)">${esc(b.publisher)}</b>`:'', b.textbook?esc(b.textbook):'', b.subMaterial?esc(b.subMaterial):''].filter(Boolean);
+        if(!parts.length && !b.note) return '';
+        return `<div style="background:var(--primary-light);border-radius:8px;padding:5px 9px;margin-bottom:6px;font-size:12px">
+          📚 ${parts.join(' · ')||'-'}${b.note?` <span style="color:var(--text-muted)">(${esc(b.note)})</span>`:''}</div>`;
+      })()}
       <div style="font-size:12px;line-height:1.9;color:var(--text)">
-        <div>${info('교과서',e.textbook)}${info('부교재',e.subMaterial)}</div>
-        <div>${info('교재/교사용',e.teacherMaterial)}${info('문항',e.qCount)}</div>
+        ${(e.textbook||e.subMaterial)?`<div>${info('교과서',e.textbook)}${info('부교재',e.subMaterial)}</div>`:''}
+        ${(e.teacherMaterial||e.qCount)?`<div>${info('교재/교사용',e.teacherMaterial)}${info('문항',e.qCount)}</div>`:''}
         ${e.scope?`<div>${info('범위',e.scope)}</div>`:''}
         <div>${info('시험일',mathHtml(e))}${info('직보',e.jikboStart)}</div>
       </div>
