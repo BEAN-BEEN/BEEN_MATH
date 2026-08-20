@@ -722,7 +722,7 @@ function rNaesin(){
   el.innerHTML = naesinTab==='exam' ? schoolExamCardHtml()
     : naesinTab==='jikbo' ? makeupBlockHtml()
     : naesinTab==='bogang' ? bogangCheckHtml()
-    : naesinTab==='neis' ? neisScheduleHtml()
+    : naesinTab==='neis' ? (examTimelineHtml() + neisScheduleHtml())
     : (schoolBooksHtml() + schoolInfoHtml());
 }
 // 학생 반 이름에서 등급(T/S/A) 추출 — 여러 반이면 여러 등급
@@ -837,6 +837,83 @@ function doManualExam(school){
   setTimeout(()=>{ const el=document.getElementById('se-school'); if(el){ el.value=school; el.scrollIntoView({behavior:'smooth',block:'center'});
     const t=document.getElementById('se-title'); if(t) t.focus(); } }, 60);
   showToast(`${school} 시험 일정을 직접 입력해주세요 (학교 홈페이지 참고)`, 'warning');
+}
+// 🇰🇷 공휴일 — 날짜 고정(매년) + 해마다 바뀌는 것(음력·대체공휴일)은 연도별로
+const HOLIDAY_FIXED={'01-01':'신정','03-01':'삼일절','05-05':'어린이날','06-06':'현충일','08-15':'광복절','10-03':'개천절','10-09':'한글날','12-25':'성탄절'};
+const HOLIDAY_YEAR={
+  '2026':{'02-16':'설날','02-17':'설날','02-18':'설날','03-02':'대체공휴일','05-24':'부처님오신날','05-25':'대체공휴일',
+          '06-03':'지방선거','08-17':'대체공휴일','09-24':'추석','09-25':'추석','09-26':'추석','10-05':'대체공휴일'}
+};
+function holidayName(ds){ const y=(ds||'').slice(0,4), md=(ds||'').slice(5); return (HOLIDAY_YEAR[y]&&HOLIDAY_YEAR[y][md]) || HOLIDAY_FIXED[md] || ''; }
+// 📕 시험 일정 한눈에 — 달력(어느 학교 시험인지) + 학교별 바(기간) + 시험 범위 수시 입력
+let examCalY=null, examCalM=null;
+function examCalShift(n){ const d=new Date(examCalY, examCalM+n, 1); examCalY=d.getFullYear(); examCalM=d.getMonth(); rNaesin(); }
+function shortSchool(s){ return (s||'').replace(/고등학교$/,'').replace(/중학교$/,'').replace(/고$/,'').replace(/중$/,''); }
+async function doSaveExamScope(id, val){
+  try{ await updateSchoolExam(id,{scope:(val||'').trim()}); showToast('시험 범위 저장 ✓','success'); }
+  catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+function examTimelineHtml(){
+  const exams=getSchoolExams().filter(e=>e.startDate);
+  const now=new Date(), pad=n=>String(n).padStart(2,'0');
+  if(examCalY==null){ examCalY=now.getFullYear(); examCalM=now.getMonth(); }
+  const todayStr=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  const el=s=>(s||'').replace(/</g,'&lt;'), esc=s=>(s||'').replace(/"/g,'&quot;');
+  // ── 달력: 그날 시험인 학교 이름 표시
+  const firstDow=new Date(examCalY,examCalM,1).getDay(), dim=new Date(examCalY,examCalM+1,0).getDate();
+  const cells=[]; for(let i=0;i<firstDow;i++) cells.push(null); for(let d=1;d<=dim;d++) cells.push(d); while(cells.length%7) cells.push(null);
+  const dowL=['일','월','화','수','목','금','토'];
+  const cal=cells.map(d=>{
+    if(!d) return '<div></div>';
+    const ds=`${examCalY}-${pad(examCalM+1)}-${pad(d)}`, dow=new Date(examCalY,examCalM,d).getDay();
+    const on=exams.filter(e=>e.endDate&&ds>=e.startDate&&ds<=e.endDate);
+    const math=[]; exams.forEach(e=>examMathDates(e).forEach(m=>{ if(m.date===ds) math.push(shortSchool(e.school)); }));
+    const isToday=ds===todayStr, hol=holidayName(ds);
+    return `<div style="min-height:74px;border:1px solid var(--border);border-radius:8px;padding:4px 5px;background:${on.length?'#FEF2F2':(hol?'#FFF7ED':(isToday?'var(--primary-light)':'var(--surface)'))};${isToday?'box-shadow:inset 0 0 0 2px var(--primary)':''}">
+      <div style="font-size:13px;font-weight:800;color:${(hol||dow===0)?'#EF4444':(dow===6?'#2563EB':'var(--text-sub)')}">${d}</div>
+      ${hol?`<div style="font-size:10px;font-weight:800;color:#EA580C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🇰🇷 ${hol}</div>`:''}
+      ${on.slice(0,3).map(e=>`<div title="${esc(e.school+' '+(e.title||''))}" style="font-size:10.5px;font-weight:700;color:#B91C1C;background:#FEE2E2;border-radius:3px;padding:1px 3px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${el(shortSchool(e.school))}</div>`).join('')}
+      ${on.length>3?`<div style="font-size:9px;color:var(--text-muted)">+${on.length-3}</div>`:''}
+      ${math.map(s=>`<div style="font-size:10px;color:#DC2626;font-weight:800;margin-top:1px">📐 ${el(s)}</div>`).join('')}
+    </div>`;
+  }).join('');
+  // ── 바: 학교별 시험기간 (이번 달 기준 가로 막대) + 범위 입력
+  const mStart=`${examCalY}-${pad(examCalM+1)}-01`, mEnd=`${examCalY}-${pad(examCalM+1)}-${pad(dim)}`;
+  const inMonth=exams.filter(e=>e.endDate&&!(e.endDate<mStart||e.startDate>mEnd))
+    .sort((a,b)=>(a.startDate||'').localeCompare(b.startDate||'')||(a.school||'').localeCompare(b.school||''));
+  const dayOf=ds=>Math.min(dim, Math.max(1, +ds.slice(8,10) + (ds<mStart?-99:0) + (ds>mEnd?99:0)));
+  const bars=inMonth.map(e=>{
+    const s=e.startDate<mStart?1:dayOf(e.startDate), en=e.endDate>mEnd?dim:dayOf(e.endDate);
+    const left=(s-1)/dim*100, width=Math.max(2,(en-s+1)/dim*100);
+    const n=getStudents().filter(x=>isNaesinStudent(x)&&(x.school||'')===normSchool(e.school)).length;
+    return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-top:1px solid var(--border);flex-wrap:wrap">
+      <div style="min-width:86px;font-size:12px;font-weight:700">${el(shortSchool(e.school))}<span style="font-size:10px;color:var(--text-muted);font-weight:400"> ${n}명</span></div>
+      <div style="flex:1;min-width:150px;position:relative;height:20px;background:var(--bg);border-radius:5px">
+        <div title="${esc(e.title||'')} ${e.startDate}~${e.endDate}" style="position:absolute;left:${left}%;width:${width}%;top:0;bottom:0;background:linear-gradient(90deg,#EF4444,#F97316);border-radius:5px;color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;overflow:hidden;white-space:nowrap">${+e.startDate.slice(5,7)}/${+e.startDate.slice(8,10)}~${+e.endDate.slice(5,7)}/${+e.endDate.slice(8,10)}</div>
+      </div>
+      <input class="form-input" value="${esc(e.scope)}" placeholder="시험 범위 (예: 수학Ⅰ 1~3단원)" style="width:210px;padding:3px 8px;font-size:11.5px" onchange="doSaveExamScope('${e.id}',this.value)">
+    </div>`;
+  }).join('');
+  return `<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+      <div class="card-title" style="margin:0">📕 시험 일정 한눈에 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(어느 학교가 시험인지 · 범위는 바로 적을 수 있어요)</span></div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <button class="btn btn-outline btn-sm" onclick="examCalShift(-1)">◀</button>
+        <strong style="font-size:14px;min-width:88px;text-align:center">${examCalY}년 ${examCalM+1}월</strong>
+        <button class="btn btn-outline btn-sm" onclick="examCalShift(1)">▶</button>
+        <button class="btn btn-outline btn-sm" onclick="examCalY=null;rNaesin()">이번 달</button>
+      </div>
+    </div>
+    <div style="overflow-x:auto"><div style="display:grid;grid-template-columns:repeat(7,minmax(62px,1fr));gap:3px;min-width:460px">
+      ${dowL.map((l,i)=>`<div style="text-align:center;font-size:11px;font-weight:800;color:${i===0?'#EF4444':(i===6?'#2563EB':'var(--text-muted)')}">${l}</div>`).join('')}
+      ${cal}
+    </div></div>
+    <div style="font-size:11px;color:var(--text-muted);margin-top:8px">📕 빨강=시험기간 · 📐=수학 시험일</div>
+    <div style="margin-top:12px">
+      <div style="font-size:13px;font-weight:800;margin-bottom:4px">📊 ${examCalM+1}월 학교별 시험기간</div>
+      ${inMonth.length?bars:'<div style="font-size:12px;color:var(--text-muted);padding:8px 0">이 달에 시험이 있는 학교가 없어요</div>'}
+    </div>
+  </div>`;
 }
 function neisScheduleHtml(){
   const all=allSchools().filter(Boolean);
@@ -1534,9 +1611,9 @@ function dashCalendarHtml(){
     const hasMk=makeups.some(m=>m.date===ds);
     const inExam=exams.some(e=>e.startDate&&e.endDate&&ds>=e.startDate&&ds<=e.endDate);
     const isMath=exams.some(e=>examMathDates(e).some(m=>m.date===ds));
-    const isToday=ds===todayStr;
-    const col=dow===0?'#EF4444':(dow===6?'#2563EB':'var(--text-sub)');
-    return `<div title="${ds}" style="min-height:30px;border-radius:6px;padding:2px 0;text-align:center;background:${isToday?'var(--primary)':(inExam?'#FEF2F2':'transparent')}">
+    const isToday=ds===todayStr, hol=holidayName(ds);
+    const col=(hol||dow===0)?'#EF4444':(dow===6?'#2563EB':'var(--text-sub)');
+    return `<div title="${ds}${hol?' · '+hol:''}" style="min-height:30px;border-radius:6px;padding:2px 0;text-align:center;background:${isToday?'var(--primary)':(inExam?'#FEF2F2':(hol?'#FFF7ED':'transparent'))}">
       <div style="font-size:11px;font-weight:${isToday?'800':'600'};color:${isToday?'#fff':col}">${d}</div>
       <div style="display:flex;justify-content:center;gap:2px;height:5px;align-items:center">
         ${hasCls?`<span style="width:4px;height:4px;border-radius:50%;background:${isToday?'#fff':'var(--primary)'}"></span>`:''}
@@ -4169,9 +4246,14 @@ function rCurriculum(){
   const classes=allClasses.filter(c=>showIds.includes(c.id));
   let body='';
   for(let i=0;i<weeks;i++){ const ws=addDays(start,i*7), we=addDays(ws,6), cur=ws===thisMon;
-    body+=`<tr>
-      <td style="text-align:center;font-weight:800;position:sticky;left:0;background:${cur?'#E7EAFE':'var(--bg)'};z-index:1">${i+1}${cur?'<div style="font-size:9px;color:var(--primary)">이번주</div>':''}</td>
-      <td style="white-space:nowrap;font-size:11px;color:var(--text-muted);background:${cur?'#E7EAFE':'var(--bg)'}">${mdLabel(ws)}~${mdLabel(we)}</td>
+    // 📕 이 주에 시험기간이 걸치는 학교들 (진도 계획 세울 때 바로 보이게)
+    const exW=[...new Set(getSchoolExams().filter(e=>e.startDate&&e.endDate&&!(e.endDate<ws||e.startDate>we)).map(e=>shortSchool(e.school)).filter(Boolean))];
+    const holW=[0,1,2,3,4,5,6].map(k=>({d:addDays(ws,k), n:holidayName(addDays(ws,k))})).filter(x=>x.n);
+    body+=`<tr style="${exW.length?'background:#FEF2F2':''}">
+      <td style="text-align:center;font-weight:800;position:sticky;left:0;background:${cur?'#E7EAFE':(exW.length?'#FEE2E2':'var(--bg)')};z-index:1">${i+1}${cur?'<div style="font-size:9px;color:var(--primary)">이번주</div>':''}</td>
+      <td style="white-space:nowrap;font-size:11px;color:var(--text-muted);background:${cur?'#E7EAFE':(exW.length?'#FEE2E2':'var(--bg)')}">${mdLabel(ws)}~${mdLabel(we)}
+        ${exW.length?`<div title="${exW.join(', ')} 시험기간" style="font-size:10px;font-weight:800;color:#B91C1C;margin-top:2px">📕 시험 ${exW.slice(0,3).join('·')}${exW.length>3?` +${exW.length-3}`:''}</div>`:''}
+        ${holW.length?`<div style="font-size:10px;font-weight:700;color:#EA580C;margin-top:1px">🇰🇷 ${holW.map(x=>mdLabel(x.d)+' '+x.n).join(', ')}</div>`:''}</td>
       ${classes.map(c=>{ const p=curPlan(c.id,ws); return `<td style="padding:1px;${cur?'background:#F3F5FF':''}"><input value="${esc(p?.content||'')}" onchange="doSaveCurrCell('${c.id}','${ws}',this.value)" placeholder="-" style="width:100%;min-width:150px;border:1px solid transparent;border-radius:6px;padding:6px 7px;font-size:12px;background:transparent" onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='transparent'"></td>`; }).join('')}
     </tr>`;
   }
