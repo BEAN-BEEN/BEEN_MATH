@@ -455,6 +455,14 @@
       <div class="content-area" id="videosContent"></div>
     </div>
 
+    <div class="section" id="sec-materials">
+      <div class="page-header">
+        <div class="page-title">자료실</div>
+        <div class="page-subtitle">선생님이 올린 학습 자료를 다운로드하세요</div>
+      </div>
+      <div class="content-area" id="materialsContent"></div>
+    </div>
+
     <!-- 자료실 -->
     <!-- 시간표 -->
     <div class="section" id="sec-schedule">
@@ -509,6 +517,9 @@
     </div>
     <div class="drawer-item" onclick="navigate('videos');closeDrawer()">
       <div class="di-icon">🎬</div><div class="di-label">수업영상</div>
+    </div>
+    <div class="drawer-item" onclick="navigate('materials');closeDrawer()">
+      <div class="di-icon">📁</div><div class="di-label">자료실</div>
     </div>
     <div class="drawer-item" onclick="navigate('grades');closeDrawer()">
       <div class="di-icon">🏆</div><div class="di-label">성적</div>
@@ -982,6 +993,7 @@ const NAV_ITEMS = [
   { id:'wrong',        label:'오답' },
   { id:'review',       label:'복습' },
   { id:'videos',       label:'수업 영상' },
+  { id:'materials',    label:'자료실' },
   { sec:'📈 나의 기록' },
   { id:'grades',       label:'성적' },
   { id:'report',       label:'학습 리포트' },
@@ -994,7 +1006,7 @@ const NAV_ITEMS = [
 ];
 const PAGE_TITLES = {
   home:'홈', homework:'숙제', wrong:'오답', review:'복습', grades:'성적', school:'우리 학교', curriculum:'진도표', report:'학습 리포트',
-  videos:'수업 영상', schedule:'시간표', teacher:'혜빈쌤'
+  videos:'수업 영상', materials:'자료실', schedule:'시간표', teacher:'혜빈쌤'
 };
 let currentSection = 'home';
 
@@ -1019,7 +1031,7 @@ function navigate(sec) {
   window.scrollTo(0,0);
 }
 function renderSection(s) {
-  const map = { home:renderHome, homework:renderHomework, wrong:renderWrong, review:renderReview, grades:renderGrades, school:renderSchool, curriculum:renderCurriculum, report:renderReport, videos:renderVideos, schedule:renderSchedule, teacher:renderTeacher };
+  const map = { home:renderHome, homework:renderHomework, wrong:renderWrong, review:renderReview, grades:renderGrades, school:renderSchool, curriculum:renderCurriculum, report:renderReport, videos:renderVideos, materials:renderMaterials, schedule:renderSchedule, teacher:renderTeacher };
   map[s]?.();
 }
 

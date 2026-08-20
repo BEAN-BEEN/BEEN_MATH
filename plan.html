@@ -422,7 +422,8 @@ function rCal(){
     cell+=`<div style="font-size:15px;font-weight:800;color:${(_hol||dow===0)?'#EF4444':(dow===6?'#2563EB':'var(--text-sub)')}">${d}${shade?' <span style="font-size:12px;color:#DC2626">📕</span>':''}</div>`;
     if(_hol) cell+=`<div style="font-size:11px;font-weight:800;color:#EA580C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🇰🇷 ${_hol}</div>`;
     const _exS=examSchoolsOn(dateStr);
-    if(_exS.length) cell+=`<div title="${_exS.join(', ')} 시험기간" style="font-size:11px;font-weight:800;color:#B91C1C;background:#FEE2E2;border-radius:4px;padding:1px 4px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📕 ${_exS.join('·')}</div>`;
+    // 학교마다 한 줄씩 (겹쳐도 다 보이게)
+    _exS.forEach(s=>{ cell+=`<div title="${s} 시험기간" style="font-size:11px;font-weight:800;color:#B91C1C;background:#FEE2E2;border-radius:4px;padding:1px 4px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📕 ${s}</div>`; });
     items.slice(0,5).forEach(it=>{ cell+=`<div style="font-size:12px;font-weight:600;border-radius:4px;padding:2px 4px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${ITEM_STYLE[it.type]}">${it.text}</div>`; });
     if(items.length>5) cell+=`<div style="font-size:11px;color:var(--text-muted);margin-top:2px">+${items.length-5}개 더</div>`;
     cell+='</div>'; return cell;
