@@ -722,7 +722,7 @@ function rNaesin(){
   el.innerHTML = naesinTab==='exam' ? schoolExamCardHtml()
     : naesinTab==='jikbo' ? makeupBlockHtml()
     : naesinTab==='bogang' ? bogangCheckHtml()
-    : naesinTab==='neis' ? (examTimelineHtml() + neisScheduleHtml())
+    : naesinTab==='neis' ? (examTimelineHtml() + schoolLookupHtml() + neisScheduleHtml())
     : (schoolBooksHtml() + schoolInfoHtml());
 }
 // 학생 반 이름에서 등급(T/S/A) 추출 — 여러 반이면 여러 등급
@@ -913,6 +913,70 @@ function examTimelineHtml(){
       <div style="font-size:13px;font-weight:800;margin-bottom:4px">📊 ${examCalM+1}월 학교별 시험기간</div>
       ${inMonth.length?bars:'<div style="font-size:12px;color:var(--text-muted);padding:8px 0">이 달에 시험이 있는 학교가 없어요</div>'}
     </div>
+  </div>`;
+}
+// 🔎 학교 조회 — 학생 학교의 급식·시간표를 선생님도 바로 확인
+let SL={school:'', tab:'meal', date:null, grade:'1', cls:'1', data:null, loading:false};
+function slDay(){ return SL.date || new Date().toISOString().slice(0,10); }
+function slShift(n){ const d=new Date(slDay()); d.setDate(d.getDate()+n); SL.date=d.toISOString().slice(0,10); SL.data=null; rNaesin(); doSchoolLookup(); }
+function slSet(k,v){ SL[k]=v; SL.data=null; rNaesin(); doSchoolLookup(); }
+async function doSchoolLookup(){
+  if(!SL.school){ return; }
+  SL.loading=true;
+  try{
+    const info=await neisCodeOf(SL.school);
+    if(!info){ SL.data={err:'학교를 못 찾았어요'}; }
+    else{
+      const ymd=slDay().replace(/-/g,'');
+      const kind=(info.kind||'').includes('초')?'els':((info.kind||'').includes('중')?'mis':((info.kind||'').includes('특수')?'sps':'his'));
+      const q=SL.tab==='meal'
+        ? `type=meal&atpt=${info.atpt}&code=${info.code}&from=${ymd}&to=${ymd}`
+        : `type=timetable&atpt=${info.atpt}&code=${info.code}&kind=${kind}&grade=${SL.grade}&cls=${SL.cls}&from=${ymd}&to=${ymd}`;
+      const r=await fetch('/api/school?'+q); const j=await r.json();
+      SL.data={rows:j.rows||[], name:info.name};
+    }
+  }catch(e){ SL.data={err:(e&&e.message)||'조회 실패'}; }
+  SL.loading=false; rNaesin();
+}
+function schoolLookupHtml(){
+  const schools=allSchools().filter(Boolean).sort((a,b)=>a.localeCompare(b));
+  if(!schools.length) return '';
+  const el=s=>(s||'').replace(/</g,'&lt;');
+  const d=slDay(), WD=['일','월','화','수','목','금','토'][new Date(d+'T00:00:00').getDay()];
+  let body='';
+  if(!SL.school) body='<div style="font-size:12px;color:var(--text-muted);padding:10px 0">학교를 고르면 그날 급식·시간표를 바로 볼 수 있어요</div>';
+  else if(SL.loading) body='<div style="font-size:12px;color:var(--text-muted);padding:10px 0">⏳ 불러오는 중…</div>';
+  else if(!SL.data) body='<div style="font-size:12px;color:var(--text-muted);padding:10px 0">조회 버튼을 눌러주세요</div>';
+  else if(SL.data.err) body=`<div style="font-size:12px;color:var(--red);padding:10px 0">${el(SL.data.err)}</div>`;
+  else if(SL.tab==='meal'){
+    const rows=SL.data.rows;
+    body=rows.length?rows.map(m=>`<div style="padding:7px 0;border-top:1px solid var(--border)">
+        <div style="font-size:12px;font-weight:800">${el(m.MMEAL_SC_NM||'급식')} <span style="font-size:11px;color:var(--text-muted);font-weight:400">${el((m.CAL_INFO||''))}</span></div>
+        <div style="font-size:12px;color:var(--text-sub);margin-top:3px">${el((m.DDISH_NM||'').split(/<br\s*\/?>/).map(x=>x.replace(/\([0-9.]+\)/g,'').trim()).filter(Boolean).join(' · '))}</div>
+      </div>`).join(''):'<div style="font-size:12px;color:var(--text-muted);padding:10px 0">이 날은 급식이 없어요 (주말·방학)</div>';
+  } else {
+    const rows=(SL.data.rows||[]).slice().sort((a,b)=>(+a.PERIO)-(+b.PERIO));
+    body=rows.length?`<div style="display:flex;flex-wrap:wrap;gap:5px;padding-top:8px">${rows.map(r=>`<span style="font-size:12px;background:var(--bg);border-radius:8px;padding:5px 10px"><b style="color:var(--primary)">${r.PERIO}교시</b> ${el(r.ITRT_CNTNT||'')}</span>`).join('')}</div>`
+      :'<div style="font-size:12px;color:var(--text-muted);padding:10px 0">이 날은 시간표가 없어요</div>';
+  }
+  return `<div class="card">
+    <div class="card-title">🔎 학교 조회 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(학생 학교의 급식·시간표를 바로 확인)</span></div>
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+      <select class="form-select" style="max-width:170px;padding:5px 8px;font-size:12px" onchange="SL.school=this.value;SL.data=null;doSchoolLookup()">
+        <option value="">학교 선택</option>
+        ${schools.map(s=>`<option value="${s}" ${SL.school===s?'selected':''}>${el(s)}</option>`).join('')}
+      </select>
+      <button class="btn btn-sm" style="${SL.tab==='meal'?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="slSet('tab','meal')">🍚 급식</button>
+      <button class="btn btn-sm" style="${SL.tab==='tt'?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="slSet('tab','tt')">⏰ 시간표</button>
+      ${SL.tab==='tt'?`<select class="form-select" style="width:74px;padding:5px 6px;font-size:12px" onchange="slSet('grade',this.value)">${[1,2,3].map(g=>`<option value="${g}" ${SL.grade==String(g)?'selected':''}>${g}학년</option>`).join('')}</select>
+        <select class="form-select" style="width:70px;padding:5px 6px;font-size:12px" onchange="slSet('cls',this.value)">${Array.from({length:12},(_,i)=>i+1).map(n=>`<option value="${n}" ${SL.cls==String(n)?'selected':''}>${n}반</option>`).join('')}</select>`:''}
+      <span style="width:1px;height:16px;background:var(--border)"></span>
+      <button class="btn btn-outline btn-sm" style="padding:3px 8px" onclick="slShift(-1)">‹</button>
+      <strong style="font-size:12px">${+d.slice(5,7)}/${+d.slice(8,10)} (${WD})</strong>
+      <button class="btn btn-outline btn-sm" style="padding:3px 8px" onclick="slShift(1)">›</button>
+      ${SL.date?`<button class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px" onclick="SL.date=null;SL.data=null;doSchoolLookup()">오늘</button>`:''}
+    </div>
+    ${body}
   </div>`;
 }
 function neisScheduleHtml(){
