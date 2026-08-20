@@ -955,8 +955,10 @@ function schoolLookupHtml(){
         <div style="font-size:12px;color:var(--text-sub);margin-top:3px">${el((m.DDISH_NM||'').split(/<br\s*\/?>/).map(x=>x.replace(/\([0-9.]+\)/g,'').trim()).filter(Boolean).join(' · '))}</div>
       </div>`).join(''):'<div style="font-size:12px;color:var(--text-muted);padding:10px 0">이 날은 급식이 없어요 (주말·방학)</div>';
   } else {
-    const rows=(SL.data.rows||[]).slice().sort((a,b)=>(+a.PERIO)-(+b.PERIO));
-    body=rows.length?`<div style="display:flex;flex-wrap:wrap;gap:5px;padding-top:8px">${rows.map(r=>`<span style="font-size:12px;background:var(--bg);border-radius:8px;padding:5px 10px"><b style="color:var(--primary)">${r.PERIO}교시</b> ${el(r.ITRT_CNTNT||'')}</span>`).join('')}</div>`
+    // 같은 교시 여러 줄(선택과목·중복)은 묶어서 한 번만
+    const byP={}; (SL.data.rows||[]).forEach(r=>{ const p=+r.PERIO||0, s=(r.ITRT_CNTNT||'').trim(); if(!s) return; (byP[p]=byP[p]||[]); if(!byP[p].includes(s)) byP[p].push(s); });
+    const ps=Object.keys(byP).map(Number).sort((a,b)=>a-b);
+    body=ps.length?`<div style="display:flex;flex-wrap:wrap;gap:5px;padding-top:8px">${ps.map(p=>`<span style="font-size:12px;background:var(--bg);border-radius:8px;padding:5px 10px"><b style="color:var(--primary)">${p}교시</b> ${el(byP[p].join(' / '))}</span>`).join('')}</div>`
       :'<div style="font-size:12px;color:var(--text-muted);padding:10px 0">이 날은 시간표가 없어요</div>';
   }
   return `<div class="card">
