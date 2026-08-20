@@ -4302,6 +4302,25 @@ async function doSaveProg(date){
     await loadProgLog(); showToast(mdLabel(date)+' 진도 저장 ✓','success'); rCurriculum();
   }catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
+// ⌨️ 진도표 방향키 이동 — 엑셀처럼 ↑↓←→ / Enter(아래) 로 칸 이동
+function currCellKey(e, el){
+  const k=e.key;
+  if(!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter'].includes(k)) return;
+  // ←→ 는 글자 중간에서 커서 이동이 우선 (끝에 닿았을 때만 옆 칸으로)
+  if(k==='ArrowLeft' && el.selectionStart>0) return;
+  if(k==='ArrowRight' && el.selectionEnd<(el.value||'').length) return;
+  const r=+el.dataset.r, c=+el.dataset.c;
+  let nr=r, nc=c;
+  if(k==='ArrowUp') nr=r-1;
+  else if(k==='ArrowDown'||k==='Enter') nr=r+1;
+  else if(k==='ArrowLeft') nc=c-1;
+  else if(k==='ArrowRight') nc=c+1;
+  const next=document.querySelector(`#curriculumContent input[data-r="${nr}"][data-c="${nc}"]`);
+  if(!next) return;
+  e.preventDefault();
+  if(document.activeElement===el && el.value!==el.defaultValue) el.dispatchEvent(new Event('change'));   // 이동 전 저장
+  next.focus(); next.select();
+}
 function rCurriculum(){
   if(!CLASSES.length){ document.getElementById('curriculumContent').innerHTML='<div class="card" style="text-align:center;padding:30px;color:var(--text-muted)">먼저 반을 만들어주세요 (관리 → 반별 관리)</div>'; return; }
   if(!CURR_TERM.startDate) CURR_TERM.startDate=mondayOf('');
@@ -4321,7 +4340,7 @@ function rCurriculum(){
       <td style="white-space:nowrap;font-size:11px;color:var(--text-muted);background:${cur?'#E7EAFE':(exW.length?'#FEE2E2':'var(--bg)')}">${mdLabel(ws)}~${mdLabel(we)}
         ${exW.length?`<div title="${exW.join(', ')} 시험기간" style="font-size:10px;font-weight:800;color:#B91C1C;margin-top:2px">📕 시험 ${exW.slice(0,3).join('·')}${exW.length>3?` +${exW.length-3}`:''}</div>`:''}
         ${holW.length?`<div style="font-size:10px;font-weight:700;color:#EA580C;margin-top:1px">🇰🇷 ${holW.map(x=>mdLabel(x.d)+' '+x.n).join(', ')}</div>`:''}</td>
-      ${classes.map(c=>{ const p=curPlan(c.id,ws); return `<td style="padding:1px;${cur?'background:#F3F5FF':''}"><input value="${esc(p?.content||'')}" onchange="doSaveCurrCell('${c.id}','${ws}',this.value)" placeholder="-" style="width:100%;min-width:150px;border:1px solid transparent;border-radius:6px;padding:6px 7px;font-size:12px;background:transparent" onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='transparent'"></td>`; }).join('')}
+      ${classes.map((c,ci)=>{ const p=curPlan(c.id,ws); return `<td style="padding:1px;${cur?'background:#F3F5FF':''}"><input value="${esc(p?.content||'')}" data-r="${i}" data-c="${ci}" onchange="doSaveCurrCell('${c.id}','${ws}',this.value)" onkeydown="currCellKey(event,this)" placeholder="-" style="width:100%;min-width:150px;border:1px solid transparent;border-radius:6px;padding:6px 7px;font-size:12px;background:transparent" onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='transparent'"></td>`; }).join('')}
     </tr>`;
   }
   document.getElementById('curriculumContent').innerHTML=`
