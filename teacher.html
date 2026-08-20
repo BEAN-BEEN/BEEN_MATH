@@ -872,8 +872,7 @@ function examTimelineHtml(){
     return `<div style="min-height:74px;border:1px solid var(--border);border-radius:8px;padding:4px 5px;background:${on.length?'#FEF2F2':(hol?'#FFF7ED':(isToday?'var(--primary-light)':'var(--surface)'))};${isToday?'box-shadow:inset 0 0 0 2px var(--primary)':''}">
       <div style="font-size:13px;font-weight:800;color:${(hol||dow===0)?'#EF4444':(dow===6?'#2563EB':'var(--text-sub)')}">${d}</div>
       ${hol?`<div style="font-size:10px;font-weight:800;color:#EA580C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🇰🇷 ${hol}</div>`:''}
-      ${on.slice(0,3).map(e=>`<div title="${esc(e.school+' '+(e.title||''))}" style="font-size:10.5px;font-weight:700;color:#B91C1C;background:#FEE2E2;border-radius:3px;padding:1px 3px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${el(shortSchool(e.school))}</div>`).join('')}
-      ${on.length>3?`<div style="font-size:9px;color:var(--text-muted)">+${on.length-3}</div>`:''}
+      ${on.map(e=>`<div title="${esc(e.school+' '+(e.title||''))}" style="font-size:10.5px;font-weight:700;color:#B91C1C;background:#FEE2E2;border-radius:3px;padding:1px 3px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${el(shortSchool(e.school))}</div>`).join('')}
       ${math.map(s=>`<div style="font-size:10px;color:#DC2626;font-weight:800;margin-top:1px">📐 ${el(s)}</div>`).join('')}
     </div>`;
   }).join('');
@@ -889,7 +888,9 @@ function examTimelineHtml(){
     return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-top:1px solid var(--border);flex-wrap:wrap">
       <div style="min-width:86px;font-size:12px;font-weight:700">${el(shortSchool(e.school))}<span style="font-size:10px;color:var(--text-muted);font-weight:400"> ${n}명</span></div>
       <div style="flex:1;min-width:150px;position:relative;height:20px;background:var(--bg);border-radius:5px">
-        <div title="${esc(e.title||'')} ${e.startDate}~${e.endDate}" style="position:absolute;left:${left}%;width:${width}%;top:0;bottom:0;background:linear-gradient(90deg,#EF4444,#F97316);border-radius:5px;color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;overflow:hidden;white-space:nowrap">${+e.startDate.slice(5,7)}/${+e.startDate.slice(8,10)}~${+e.endDate.slice(5,7)}/${+e.endDate.slice(8,10)}</div>
+        <div title="${esc(e.school+' '+(e.title||''))} ${e.startDate}~${e.endDate}" style="position:absolute;left:${left}%;width:${width}%;top:0;bottom:0;background:linear-gradient(90deg,#EF4444,#F97316);border-radius:5px;color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;overflow:visible;white-space:nowrap">
+          <span style="padding:0 3px">${el(shortSchool(e.school))} ${+e.startDate.slice(5,7)}/${+e.startDate.slice(8,10)}~${+e.endDate.slice(5,7)}/${+e.endDate.slice(8,10)}</span>
+        </div>
       </div>
       <input class="form-input" value="${esc(e.scope)}" placeholder="시험 범위 (예: 수학Ⅰ 1~3단원)" style="width:210px;padding:3px 8px;font-size:11.5px" onchange="doSaveExamScope('${e.id}',this.value)">
     </div>`;
