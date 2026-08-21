@@ -360,7 +360,9 @@ function rLayerBtns(){
 }
 
 // ----- 캘린더 -----
-let pY=null, pM=null, selDate=todayStr();
+// 대시보드 달력에서 ?date=YYYY-MM-DD 로 들어오면 그 날짜를 바로 열어요
+const _qd=(location.search.match(/[?&]date=(\d{4}-\d{2}-\d{2})/)||[])[1];
+let pY=_qd?+_qd.slice(0,4):null, pM=_qd?(+_qd.slice(5,7)-1):null, selDate=_qd||todayStr();
 function pShift(d){ const x=new Date(pY,pM+d,1); pY=x.getFullYear(); pM=x.getMonth(); rCal(); }
 function dayItems(dateStr){
   const wd=['sun','mon','tue','wed','thu','fri','sat'][new Date(dateStr+'T00:00:00').getDay()];

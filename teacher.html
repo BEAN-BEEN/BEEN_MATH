@@ -228,8 +228,8 @@
       <div class="content-area" id="dashboardContent"></div>
     </div>
     <div class="section" id="sec-manage">
-      <div class="page-header"><div class="page-title">관리</div></div>
-      <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap" id="mgTabs"></div>
+      <div class="page-header"><div class="page-title">학생 · 반별 관리</div></div>
+      <div class="content-area" style="padding-bottom:0"><div class="card" style="padding:10px 14px;margin-bottom:12px"><div style="display:flex;gap:6px;flex-wrap:wrap" id="mgTabs"></div></div></div>
       <div class="content-area" id="studentsContent"></div>
       <div class="content-area" id="classroomContent" style="display:none"></div>
     </div>
@@ -1321,7 +1321,7 @@ const ICONS={
 };
 const NAV=[
   {id:'dashboard',label:'대시보드'},
-  {id:'manage',label:'관리'},
+  {id:'manage',label:'학생 · 반별 관리'},
   {id:'homework',label:'숙제 관리'},
   {id:'grades',label:'성적 관리'},
   {id:'naesin',label:'내신 관리'},
@@ -1680,7 +1680,9 @@ function dashCalendarHtml(){
     const isMath=exams.some(e=>examMathDates(e).some(m=>m.date===ds));
     const isToday=ds===todayStr, hol=holidayName(ds);
     const col=(hol||dow===0)?'#EF4444':(dow===6?'#2563EB':'var(--text-sub)');
-    return `<div title="${ds}${hol?' · '+hol:''}" style="min-height:30px;border-radius:6px;padding:2px 0;text-align:center;background:${isToday?'var(--primary)':(inExam?'#FEF2F2':(hol?'#FFF7ED':'transparent'))}">
+    const exS=[...new Set(exams.filter(e=>e.startDate&&e.endDate&&ds>=e.startDate&&ds<=e.endDate).map(e=>shortSchool(e.school)).filter(Boolean))];
+    const tip=[ds, hol||'', exS.length?('📕 '+exS.join(', ')):'', hasMk?'🔶 보강':''].filter(Boolean).join(' · ');
+    return `<div title="${tip}\n클릭하면 플래너에서 이 날짜를 봐요" onclick="location.href='plan.html?date=${ds}'" style="cursor:pointer;min-height:30px;border-radius:6px;padding:2px 0;text-align:center;background:${isToday?'var(--primary)':(inExam?'#FEF2F2':(hol?'#FFF7ED':'transparent'))}">
       <div style="font-size:11px;font-weight:${isToday?'800':'600'};color:${isToday?'#fff':col}">${d}</div>
       <div style="display:flex;justify-content:center;gap:2px;height:5px;align-items:center">
         ${hasCls?`<span style="width:4px;height:4px;border-radius:50%;background:${isToday?'#fff':'var(--primary)'}"></span>`:''}
@@ -1705,7 +1707,21 @@ function dashCalendarHtml(){
       <span><span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--primary)"></span> 수업</span>
       <span><span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--orange)"></span> 보강</span>
       <span><span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:#DC2626"></span> 시험</span>
+      <span style="margin-left:auto">날짜 클릭 → 플래너</span>
     </div>
+    ${(function(){   // 이번 달 시험 학교를 아래에 목록으로 (달력이 작아서 이름이 안 들어가니까)
+      const ms=`${dashCalY}-${pad(dashCalM+1)}-01`, me=`${dashCalY}-${pad(dashCalM+1)}-${pad(dim)}`;
+      const list=exams.filter(e=>e.startDate&&e.endDate&&!(e.endDate<ms||e.startDate>me))
+        .sort((a,b)=>(a.startDate||'').localeCompare(b.startDate||''));
+      if(!list.length) return '';
+      return `<div style="margin-top:8px;border-top:1px solid var(--border);padding-top:7px">
+        <div style="font-size:10.5px;font-weight:800;color:#B91C1C;margin-bottom:3px">📕 이번 달 시험</div>
+        ${list.slice(0,6).map(e=>`<div style="display:flex;gap:6px;font-size:11px;padding:1px 0">
+          <span style="color:var(--text-muted);min-width:62px">${+e.startDate.slice(5,7)}/${+e.startDate.slice(8,10)}~${+e.endDate.slice(5,7)}/${+e.endDate.slice(8,10)}</span>
+          <strong>${(shortSchool(e.school)||'').replace(/</g,'&lt;')}</strong></div>`).join('')}
+        ${list.length>6?`<div style="font-size:10px;color:var(--text-muted)">+${list.length-6}개</div>`:''}
+      </div>`;
+    })()}
   </div>`;
 }
 
@@ -1806,14 +1822,16 @@ async function doSaveEdit(){
 }
 function rStudents(){
   document.getElementById('studentsContent').innerHTML=`
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
-      <input class="form-input" id="stSearchInput" style="max-width:260px" placeholder="🔍 학생 이름 검색" value="${stSearch}" oninput="stSearch=this.value;renderStudentRows()">
-      <button class="btn btn-primary" onclick="showAdd=!showAdd;rStudents()">➕ 학생 추가</button>
-    </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
-      ${[['재원','재원생'],['휴원','휴원'],['퇴원','퇴원'],['전체','전체']].map(([v,lbl])=>{const cnt=v==='전체'?STUDENTS_CACHE.length:STUDENTS_CACHE.filter(s=>studentStatus(s)===v).length;return `<button class="btn btn-sm" style="${stStatusFilter===v?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="stStatusFilter='${v}';rStudents()">${lbl} ${cnt}</button>`;}).join('')}
-      <span style="width:1px;height:20px;background:var(--border);margin:0 4px"></span>
-      <button class="btn btn-sm" style="${stPushOnly?'background:var(--green);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="stPushOnly=!stPushOnly;rStudents()">🔔 알림 켠 학생 ${STUDENTS_CACHE.filter(s=>studentStatus(s)==='재원'&&pushOn(s)).length}</button>
+    <div class="card" style="padding:12px 16px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <input class="form-input" id="stSearchInput" style="max-width:260px;flex:1" placeholder="🔍 학생 이름 검색" value="${stSearch}" oninput="stSearch=this.value;renderStudentRows()">
+        <button class="btn btn-primary" onclick="showAdd=!showAdd;rStudents()">➕ 학생 추가</button>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center">
+        ${[['재원','재원생'],['휴원','휴원'],['퇴원','퇴원'],['전체','전체']].map(([v,lbl])=>{const cnt=v==='전체'?STUDENTS_CACHE.length:STUDENTS_CACHE.filter(s=>studentStatus(s)===v).length;return `<button class="btn btn-sm" style="${stStatusFilter===v?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="stStatusFilter='${v}';rStudents()">${lbl} ${cnt}</button>`;}).join('')}
+        <span style="width:1px;height:20px;background:var(--border);margin:0 4px"></span>
+        <button class="btn btn-sm" style="${stPushOnly?'background:var(--green);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="stPushOnly=!stPushOnly;rStudents()">🔔 알림 켠 학생 ${STUDENTS_CACHE.filter(s=>studentStatus(s)==='재원'&&pushOn(s)).length}</button>
+      </div>
     </div>
     ${showAdd?`
       <div class="card" id="addCard">
