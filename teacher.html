@@ -429,6 +429,28 @@ function subCompletion(sub){
   if(sub.evalPct===''||sub.evalPct==null) return 100;
   return parseInt(sub.evalPct,10)||0;
 }
+// ⏰ 지각 제출 판정 — '안 낸 애'와 '늦게라도 낸 애'를 구분하려고 따로 셉니다.
+//   학생이 낼 때 late 플래그를 찍지만 예전 기록엔 없어서 제출시각(ts)으로 보완.
+//   선생님이 대신 만든 기록(byTeacher)은 입력 시각이 늦을 뿐이라 지각으로 안 칩니다.
+function subIsLate(sub, asgn){
+  if(!sub || sub.rejected) return false;
+  if(sub.late) return true;
+  if(sub.byTeacher || !asgn || !asgn.dueDate || !sub.ts) return false;
+  const d=new Date(sub.ts); if(isNaN(d.getTime())) return false;
+  const p2=x=>String(x).padStart(2,'0');
+  return `${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}` > asgn.dueDate;
+}
+// 한 학생의 숙제 성실도 — 제출률과 별개로 제때/지각/미제출을 셉니다
+function hwPunctuality(asgns, subs){
+  let onTime=0, lateN=0;
+  asgns.forEach(a=>{ const s=subs.find(x=>x.assignmentId===a.id);
+    if(!s || s.rejected) return;
+    if(subIsLate(s,a)) lateN++; else onTime++; });
+  const total=asgns.length;
+  return { total, onTime, lateCount:lateN, missing:total-onTime-lateN,
+    onTimeRate: total?Math.round(onTime/total*100):null,
+    lateRate: total?Math.round(lateN/total*100):null };
+}
 async function saveAssignment(d){ d.createdAt=new Date().toISOString().slice(0,10); await db.collection('assignments').add(d); await loadAssignments(); }
 async function updateSub(sid,u){ await db.collection('submissions').doc(sid).update(u); await loadSubmissions(); }
 
@@ -1402,12 +1424,24 @@ function classSelect(id='',all=false){
 function fileToBase64(file){ return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]);r.onerror=rej;r.readAsDataURL(file);}); }
 function compressImage(file,maxDim=1280,q=0.72){ return new Promise((resolve,reject)=>{const img=new Image(),url=URL.createObjectURL(file);img.onload=()=>{let w=img.width,h=img.height;if(w>h&&w>maxDim){h=Math.round(h*maxDim/w);w=maxDim;}else if(h>maxDim){w=Math.round(w*maxDim/h);h=maxDim;}const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);let d;try{d=c.toDataURL('image/jpeg',q);}catch(e){URL.revokeObjectURL(url);return reject(e);}URL.revokeObjectURL(url);resolve({base64:d.split(',')[1],mime:'image/jpeg'});};img.onerror=reject;img.src=url;}); }
 let lastAnalysis=null;
+// 📄 PDF 판별 — 브라우저가 type을 안 채워줄 때가 있어 확장자도 같이 봅니다
+function isPdfFile(f){ return !!f && ((f.type||'').toLowerCase()==='application/pdf' || /\.pdf$/i.test(f.name||'')); }
 async function doAnalyzeExam(){
   const fi=document.getElementById('an-photo');
-  if(!fi||!fi.files||!fi.files[0]){ showToast('시험지 사진을 선택해주세요','error'); return; }
+  if(!fi||!fi.files||!fi.files[0]){ showToast('시험지 사진 또는 PDF를 선택해주세요','error'); return; }
+  const file=fi.files[0];
   const out=document.getElementById('an-result');
-  out.innerHTML='<div style="padding:16px;color:var(--text-muted)">🤖 시험지를 분석하는 중이에요... (10~20초 걸려요)</div>';
-  let img; try{ img=await compressImage(fi.files[0]); }catch(e){ try{ img={base64:await fileToBase64(fi.files[0]),mime:fi.files[0].type}; }catch(e2){ out.innerHTML='<div style="color:var(--red)">사진 처리 실패</div>'; return; } }
+  const pdf=isPdfFile(file);
+  // PDF는 압축을 못 하니 용량을 미리 막아줍니다 (base64로 커지면 AI가 못 받아요)
+  if(pdf && file.size>14*1024*1024){ out.innerHTML='<div style="color:var(--red)">PDF가 너무 커요 ('+(file.size/1048576).toFixed(1)+'MB). 14MB 이하로 줄이거나 필요한 쪽만 잘라서 올려주세요.</div>'; return; }
+  out.innerHTML='<div style="padding:16px;color:var(--text-muted)">🤖 '+(pdf?'PDF 시험지를':'시험지를')+' 분석하는 중이에요... ('+(pdf?'20~40초':'10~20초')+' 걸려요)</div>';
+  let img;
+  if(pdf){
+    try{ img={base64:await fileToBase64(file), mime:'application/pdf'}; }
+    catch(e){ out.innerHTML='<div style="color:var(--red)">PDF 처리 실패</div>'; return; }
+  } else {
+    try{ img=await compressImage(file); }catch(e){ try{ img={base64:await fileToBase64(file),mime:file.type}; }catch(e2){ out.innerHTML='<div style="color:var(--red)">사진 처리 실패</div>'; return; } }
+  }
   try{
     const res=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({imageBase64:img.base64,imageMime:img.mime})});
     const data=await res.json();
@@ -1975,11 +2009,12 @@ function rClassroom(){
   const rows=sts.map(st=>{
     const mySubs=allSubs.filter(s=>s.studentId===st.id && asgns.some(a=>a.id===s.assignmentId));
     const hwRate=hwAsgns.length?Math.round(hwAsgns.reduce((sum,a)=>sum+subCompletion(mySubs.find(s=>s.assignmentId===a.id)),0)/hwAsgns.length):null;
+    const punct=hwPunctuality(hwAsgns, mySubs);   // ⏰ 제때/지각/미제출 — 제출률과 별개 축
     const myScores=esubs.filter(s=>s.studentId===st.id && exams.some(e=>e.id===s.examId) && s.score!=null);
     const avg=myScores.length?Math.round(myScores.reduce((a,s)=>a+s.score,0)/myScores.length):null;
     const attInfo=calcAttendance(asgns, absentDatesOf(st.id), today);
     const attRate=attInfo.total?attInfo.rate:null;
-    return {st, hwRate, avg, attRate, n:myScores.length};
+    return {st, hwRate, punct, avg, attRate, n:myScores.length};
   });
   rows.sort((a,b)=>((b.avg==null?-1:b.avg)-(a.avg==null?-1:a.avg)));
   const scored=rows.filter(r=>r.avg!=null);
@@ -2031,15 +2066,18 @@ function rClassroom(){
     <div class="card">
       <div class="card-title">🏅 학생별 성취도 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(성적 높은 순)</span></div>
       ${sts.length?`<div class="table-wrap"><table>
-        <thead><tr><th>순위</th><th>학생</th><th>평균 성적</th><th>숙제 제출률</th><th>출석률</th></tr></thead>
+        <thead><tr><th>순위</th><th>학생</th><th>평균 성적</th><th>숙제 제출률</th><th>⏰ 지각률</th><th>제때/지각/미제출</th><th>출석률</th></tr></thead>
         <tbody>${rows.map((r,i)=>`<tr>
           <td style="font-size:15px">${r.avg!=null?medal(i):'-'}</td>
           <td><strong>${r.st.name}</strong></td>
           <td>${r.avg!=null?`<strong style="color:var(--primary)">${r.avg}점</strong> <span style="font-size:11px;color:var(--text-muted)">(${r.n}회)</span>`:'<span style="color:var(--text-muted)">-</span>'}</td>
           <td>${pct(r.hwRate)}</td>
+          <td>${r.punct.lateRate==null?'<span style="color:var(--text-muted)">-</span>':`<strong style="color:${r.punct.lateRate>=30?'var(--red)':(r.punct.lateRate>0?'var(--orange)':'var(--green)')}">${r.punct.lateRate}%</strong>`}</td>
+          <td style="font-size:12px;white-space:nowrap"><span style="color:var(--green);font-weight:700">${r.punct.onTime}</span> / <span style="color:var(--orange);font-weight:700">${r.punct.lateCount}</span> / <span style="color:var(--red);font-weight:700">${r.punct.missing}</span></td>
           <td>${pct(r.attRate)}</td>
         </tr>`).join('')}</tbody>
-      </table></div>`:'<div style="color:var(--text-muted);padding:12px">이 반에 배정된 학생이 없어요</div>'}
+      </table></div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:8px">⏰ 지각률 = 냈지만 마감 뒤에 낸 비율. 제출률은 그대로 두고 따로 봅니다 — 안 낸 학생과 늦게라도 낸 학생을 구분하려고요. (선생님이 대신 검사해 준 기록은 지각으로 안 셉니다)</div>`:'<div style="color:var(--text-muted);padding:12px">이 반에 배정된 학생이 없어요</div>'}
     </div>
     <div class="card">
       <div class="card-title">📝 이 반에 낸 숙제 (${asgns.length})</div>
@@ -3388,8 +3426,8 @@ function rGrades(){
     <div class="card" style="border-left:4px solid var(--primary)">
       <div class="card-title">🤖 AI 시험지 분석 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(문제별 단원·요구능력·난이도)</span></div>
       <div class="upload-area" onclick="this.querySelector('input').click()">
-        <div class="u-icon">📄</div><p id="an-label">시험지 사진을 선택하세요</p>
-        <input type="file" accept="image/*" id="an-photo" onchange="document.getElementById('an-label').textContent=this.files[0]?('📎 '+this.files[0].name):'시험지 사진을 선택하세요'">
+        <div class="u-icon">📄</div><p id="an-label">시험지 사진 또는 PDF를 선택하세요 <span style="opacity:.8;font-size:12px">· PDF는 여러 쪽도 한 번에</span></p>
+        <input type="file" accept="image/*,application/pdf,.pdf" id="an-photo" onchange="document.getElementById('an-label').textContent=this.files[0]?('📎 '+this.files[0].name):'시험지 사진 또는 PDF를 선택하세요'">
       </div>
       <button class="btn btn-primary" onclick="doAnalyzeExam()">🤖 분석하기</button>
       <div id="an-result" style="margin-top:14px"></div>
@@ -4397,7 +4435,7 @@ function rCurriculum(){
     </div>`:`<div class="card" style="text-align:center;padding:26px;color:var(--text-muted)">표시할 반을 위에서 체크하세요 (담임반/부담임반/전체 또는 반 이름 클릭)</div>`}`;
 }
 function studentStats(st){
-  if(!st) return {hwRate:'-',retryRate:'-',attRate:'-',recent:'-'};
+  if(!st) return {hwRate:'-',retryRate:'-',attRate:'-',recent:'-',lateRate:'-',punct:{total:0,onTime:0,lateCount:0,missing:0,onTimeRate:null,lateRate:null}};
   const myClassIds=st.classIds||(st.classId?[st.classId]:[]);
   const myAsgn=getAssignments().filter(a=>myClassIds.includes(a.classId));
   const myAsgnHw=myAsgn.filter(a=>asnInSeason(a,selectedSeason()));   // 제출률은 선택 시즌 구간만
@@ -4409,7 +4447,8 @@ function studentStats(st){
   const attRate=attInfo.total?attInfo.rate+'%':'-';
   const myScores=getExamSubs().filter(s=>s.studentId===st.id&&s.score!=null).sort((a,b)=>(b.ts||0)-(a.ts||0));
   const recent=myScores.length?myScores[0].score+'점':'-';
-  return {hwRate,retryRate,attRate,recent};
+  const punct=hwPunctuality(myAsgnHw, mySubs);   // ⏰ 제때/지각/미제출
+  return {hwRate,retryRate,attRate,recent,punct,lateRate:punct.lateRate==null?'-':punct.lateRate+'%'};
 }
 // ✨ 리포트 코멘트 자동 초안 — 성적 추이 + 자주 틀린 능력 + 오답량 + 성실도로 문장 생성 (선생님이 다듬어 저장)
 function autoReportComment(stId){
@@ -4440,6 +4479,13 @@ function autoReportComment(stId){
   const hw=parseInt(stat.hwRate)||0, att=parseInt(stat.attRate)||0, good=[];
   if(hw>=80) good.push('숙제'); if(att>=90) good.push('출석');
   if(good.length) parts.push(`${good.join('·')}도 성실하게 잘 해주고 있어요.`);
+  // ⏰ 지각 — 제출률만 보면 안 보이는 축(늦게라도 내는 습관)
+  const pu=stat.punct||{};
+  if(pu.total>=4 && pu.lateRate!=null){
+    if(pu.lateRate>=40) parts.push(`다만 숙제를 ${pu.lateCount}번은 마감 뒤에 냈어요(지각률 ${pu.lateRate}%). 내용은 해오는 만큼, 이제 '제때 내기'만 잡으면 훨씬 좋아져요.`);
+    else if(pu.lateRate>=20) parts.push(`숙제는 하는데 가끔 늦어요(지각 ${pu.lateCount}회). 마감 하루 전에 미리 챙기는 습관을 같이 만들어볼게요.`);
+    else if(pu.lateCount===0 && pu.onTime>=4) parts.push(`숙제를 한 번도 늦지 않고 제때 내고 있어요 ⏱️ 정말 칭찬할 점이에요.`);
+  }
   parts.push(`${nm} 앞으로도 꼼꼼히 확인하며 챙기겠습니다. 😊`);
   return parts.join(' ');
 }
@@ -4460,12 +4506,14 @@ function rReport(){
     ${sel?`
       <div class="card">
         <div class="card-title">📈 ${sel.name} 학습 지표 (자동 계산)</div>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:6px">
           <div class="rp-stat"><div class="rp-val">${stat.hwRate}</div><div class="rp-lbl">숙제 제출률</div></div>
+          <div class="rp-stat"><div class="rp-val" style="color:${stat.punct.lateRate>=30?'var(--red)':(stat.punct.lateRate?'var(--orange)':'var(--green)')}">${stat.lateRate}</div><div class="rp-lbl">⏰ 지각률</div></div>
           <div class="rp-stat"><div class="rp-val">${stat.retryRate}</div><div class="rp-lbl">오답 완료율</div></div>
           <div class="rp-stat"><div class="rp-val">${stat.attRate}</div><div class="rp-lbl">출석률</div></div>
           <div class="rp-stat"><div class="rp-val">${stat.recent}</div><div class="rp-lbl">최근 성적</div></div>
         </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:16px">제때 ${stat.punct.onTime}회 · 지각 ${stat.punct.lateCount}회 · 미제출 ${stat.punct.missing}회 (전체 ${stat.punct.total}개)</div>
         <div style="font-size:13px;font-weight:800;margin:4px 0 8px">📈 성적 추이 <span style="font-size:11px;color:var(--text-muted);font-weight:400">(리포트에 함께 저장돼 학생·학부모에게 보여요)</span></div>
         ${mockTrendHtml(rpStId)}
         <div class="form-group" style="margin-top:14px"><label class="form-label">혜빈쌤 코멘트 ✍️</label><textarea class="form-textarea" id="rp-comment" style="min-height:130px" placeholder="학생에게 남기는 종합 피드백...">${existing?.teacherComment||''}</textarea></div>

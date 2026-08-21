@@ -102,13 +102,14 @@ ${imageBase64 ? '첨부된 문제 사진 속 실제 문제를 보고, 정확한 
 // ----------------------------------------------------------------
 async function analyzeExam(request, env) {
   const { imageBase64, imageMime } = await request.json();
-  if (!imageBase64) return json({ error: '시험지 사진이 필요해요' }, 400);
+  if (!imageBase64) return json({ error: '시험지 사진 또는 PDF가 필요해요' }, 400);
+  const isPdf = (imageMime || '') === 'application/pdf';
   const prompt =
-`너는 고등학교 수학 시험 분석 전문가야. 첨부된 시험지 사진을 보고 각 문제를 분석해줘.
+`너는 고등학교 수학 시험 분석 전문가야. 첨부된 시험지 ${isPdf ? 'PDF(여러 쪽일 수 있어)를 처음부터 끝까지 보고' : '사진을 보고'} 각 문제를 분석해줘.
 - 단원: 문제가 속한 단원명 (예: 미분법, 수열의 극한, 함수의 그래프, 확률, 통계 등)
 - 요구 능력: 다음 중 하나로만 분류 → "추론" / "계산" / "그래프활용" / "개념이해" / "문제해석"
 - 난이도: "상" / "중" / "하"
-사진에서 읽을 수 있는 문제만 분석해. 한국어로.
+${isPdf ? '모든 쪽의 문제를 빠짐없이, 번호 순서대로 분석해.' : '사진에서 읽을 수 있는 문제만 분석해.'} 한국어로.
 반드시 아래 JSON 형식으로만 답해 (설명 문장 없이 JSON만):
 {"problems":[{"no":"1","unit":"미분법","ability":"계산","difficulty":"중"}],"summary":"이 시험의 능력별 구성과 특징을 2문장으로"}`;
   const raw = await callModel(env, prompt, imageBase64, imageMime, true);
@@ -149,6 +150,8 @@ async function examFeedback(request, env) {
 async function callModel(env, prompt, imageBase64, imageMime, jsonMode) {
   const provider = (env.AI_PROVIDER || 'gemini').toLowerCase();
   if (provider === 'openai') {
+    // OpenAI의 image_url 은 PDF를 못 받습니다 (Gemini만 PDF 지원)
+    if ((imageMime || '') === 'application/pdf') throw new Error('PDF 분석은 Gemini에서만 돼요. 사진으로 올려주세요.');
     const content = [{ type: 'text', text: prompt }];
     if (imageBase64) content.push({ type: 'image_url', image_url: { url: `data:${imageMime || 'image/jpeg'};base64,${imageBase64}` } });
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
