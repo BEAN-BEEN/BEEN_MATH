@@ -681,14 +681,18 @@ function schoolExamCardHtml(){
       ${editS?`<button class="btn btn-outline" onclick="seEditId=null;rNaesin()">취소</button>`:''}
     </div>
     ${list.length?`<div class="table-wrap" style="margin-top:14px"><table>
-      <thead><tr><th>학교</th><th>시험</th><th>시험기간</th><th>수학 시험일</th><th>관리</th></tr></thead>
-      <tbody>${list.map(e=>`<tr>
-        <td><span class="chip">${e.school}</span></td>
+      <thead><tr><th>학교</th><th>시험</th><th>시험기간</th><th>수학 시험일</th><th style="min-width:210px">시험 범위</th><th>관리</th></tr></thead>
+      <tbody>${list.slice().sort((a,b)=>(a.startDate||'').localeCompare(b.startDate||'')||(a.school||'').localeCompare(b.school||'')).map(e=>{
+        const n=getStudents().filter(x=>isNaesinStudent(x)&&(x.school||'')===normSchool(e.school)).length;
+        const bk=getSchoolBook(normSchool(e.school));
+        return `<tr>
+        <td><span class="chip">${e.school}</span><div style="font-size:10px;color:var(--text-muted);margin-top:2px">${n}명${bk.publisher?' · '+esc(bk.publisher):''}</div></td>
         <td><strong>${e.title||'-'}</strong>${e.grade?` <span style="font-size:11px;color:var(--text-muted)">${e.grade}</span>`:''}</td>
-        <td style="color:var(--text-muted)">${e.startDate||'?'}~${e.endDate||'?'}</td>
-        <td>${examMathDates(e).map(m=>`<div style="margin:1px 0"><strong>${m.label||'수학'}</strong> ${m.date} ${ddayBadge(m.date)}</div>`).join('')||'<span class="badge b-yellow">📌 수학일 미정</span>'}</td>
+        <td style="color:var(--text-muted);white-space:nowrap">${e.startDate||'?'}~${e.endDate||'?'}</td>
+        <td>${examMathDates(e).map(m=>`<div style="margin:1px 0;white-space:nowrap"><strong>${m.label||'수학'}</strong> ${m.date} ${ddayBadge(m.date)}</div>`).join('')||'<span class="badge b-yellow">📌 수학일 미정</span>'}</td>
+        <td><input class="form-input" value="${esc(e.scope)}" placeholder="예: 수학Ⅰ 1~3단원" style="width:100%;min-width:190px;padding:4px 8px;font-size:12px" onchange="doSaveExamScope('${e.id}',this.value)"></td>
         <td style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="seEditId='${e.id}';rNaesin();window.scrollTo({top:0,behavior:'smooth'})">수정</button> <button class="btn btn-red btn-sm" onclick="doDelSchoolExam('${e.id}','${(e.school||'')+' '+(e.title||'')}')">삭제</button></td>
-      </tr>`).join('')}</tbody>
+      </tr>`;}).join('')}</tbody>
     </table></div>`:'<div style="margin-top:12px;font-size:13px;color:var(--text-muted)">아직 등록된 내신 일정이 없어요. 학교별로 추가하면 그 학교 학생 전원이 D-day를 봐요.</div>'}
   </div>`;
 }
@@ -1045,7 +1049,10 @@ function neisScheduleHtml(){
               ${dd>=0&&dd<=60?`<span class="badge ${dd<=7?'b-orange':'b-gray'}" style="font-size:9px;margin-left:auto">${dd===0?'오늘':'D-'+dd}</span>`:''}
             </div>`; }).join('')}
         </div>`:''}
-        ${keys.length?`<div style="font-size:12px;line-height:1.85">${keys.map(k=>`<div style="display:flex;gap:8px"><span style="color:var(--text-muted);min-width:44px">${+k.slice(4,6)}/${+k.slice(6,8)}</span><span>${[...new Set(byDay[k])].map(el).join(', ')}</span></div>`).join('')}</div>`
+        ${keys.length?`<div style="font-size:12px;line-height:1.85">${keys.map(k=>`<div style="display:flex;gap:8px"><span style="color:var(--text-muted);min-width:44px">${+k.slice(4,6)}/${+k.slice(6,8)}</span><span>${[...new Set(byDay[k])].map(nm=>{
+            const norm=(/고사|시험/.test(nm)&&!NEIS_NOT_EXAM.test(nm))?normExamTitle(nm.trim(),k):'';
+            return el(nm)+((norm&&norm!==nm.trim())?` <span style="font-size:10px;color:var(--primary);font-weight:700">= ${el(norm)}</span>`:'');
+          }).join(', ')}</span></div>`).join('')}</div>`
           :'<div style="font-size:12px;color:var(--text-muted)">앞으로 등록된 일정이 없어요</div>'}
       </div>`; }).join('')}
   </div>`;
