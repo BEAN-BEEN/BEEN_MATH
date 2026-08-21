@@ -101,21 +101,42 @@ ${imageBase64 ? '첨부된 문제 사진 속 실제 문제를 보고, 정확한 
 // 시험지 분석
 // ----------------------------------------------------------------
 async function analyzeExam(request, env) {
-  const { imageBase64, imageMime } = await request.json();
+  const { imageBase64, imageMime, examKind, title, range } = await request.json();
   if (!imageBase64) return json({ error: '시험지 사진 또는 PDF가 필요해요' }, 400);
   const isPdf = (imageMime || '') === 'application/pdf';
+  const kind = (examKind || '').trim();
+  // 시험 종류에 따라 보는 눈이 달라요 — 내신은 학교 시험 범위, 데일리 테스트는 그날 배운 것
+  const kindHint =
+      kind === '내신'   ? '이건 학교 내신 시험지야. 학교 시험 범위 안에서 단원을 잡아줘.'
+    : kind === '데일리' ? '이건 학원 데일리 테스트(그날 배운 내용 확인용 소테스트)야. 한두 단원에 몰려 있을 수 있어.'
+    : kind === '모의'   ? '이건 모의고사(학력평가)야. 여러 단원이 고루 섞여 있어.'
+    : '';
   const prompt =
 `너는 고등학교 수학 시험 분석 전문가야. 첨부된 시험지 ${isPdf ? 'PDF(여러 쪽일 수 있어)를 처음부터 끝까지 보고' : '사진을 보고'} 각 문제를 분석해줘.
-- 단원: 문제가 속한 단원명 (예: 미분법, 수열의 극한, 함수의 그래프, 확률, 통계 등)
-- 요구 능력: 다음 중 하나로만 분류 → "추론" / "계산" / "그래프활용" / "개념이해" / "문제해석"
-- 난이도: "상" / "중" / "하"
+${kindHint}${title ? `\n- 시험명: ${title}` : ''}${range ? `\n- 출제 범위: ${range}` : ''}
+
+문제마다 다음을 채워줘:
+- no: 문제 번호 (시험지에 적힌 그대로)
+- bigUnit: 대단원 (예: 다항식, 방정식과 부등식, 도형의 방정식, 함수와 그래프, 수열, 미분법, 적분법, 확률과 통계)
+- smallUnit: 중단원 (예: 이차함수의 최대·최소, 등차수열의 합, 접선의 방정식)
+- ability: 요구 해결능력 — 다음 중 하나로만 → "추론" / "계산" / "그래프활용" / "개념이해" / "문제해석"
+- difficulty: 난이도 — "상" / "중" / "하"
+- solution: 이 문제를 푸는 핵심 해결 방법을 학생이 읽고 바로 떠올릴 수 있게 1~2문장으로 간략히 (풀이 전체가 아니라 '어떻게 접근하는지' 실마리)
+
 ${isPdf ? '모든 쪽의 문제를 빠짐없이, 번호 순서대로 분석해.' : '사진에서 읽을 수 있는 문제만 분석해.'} 한국어로.
 반드시 아래 JSON 형식으로만 답해 (설명 문장 없이 JSON만):
-{"problems":[{"no":"1","unit":"미분법","ability":"계산","difficulty":"중"}],"summary":"이 시험의 능력별 구성과 특징을 2문장으로"}`;
+{"problems":[{"no":"1","bigUnit":"함수와 그래프","smallUnit":"이차함수의 최대·최소","ability":"계산","difficulty":"중","solution":"완전제곱식으로 변형해 꼭짓점을 찾고, 주어진 구간의 양 끝값과 비교해요."}],"summary":"이 시험의 단원·능력별 구성과 특징을 2~3문장으로"}`;
   const raw = await callModel(env, prompt, imageBase64, imageMime, true);
   let parsed;
   try { parsed = JSON.parse(raw.replace(/```json/gi, '').replace(/```/g, '').trim()); }
   catch (e) { return json({ problems: [], summary: raw }); }
+  // 예전 화면(unit 하나만 쓰던 곳)이 깨지지 않게 unit 을 채워둡니다
+  if (Array.isArray(parsed.problems)) {
+    parsed.problems = parsed.problems.map(p => ({
+      ...p,
+      unit: p.unit || [p.bigUnit, p.smallUnit].filter(Boolean).join(' > ') || ''
+    }));
+  }
   return json(parsed);
 }
 

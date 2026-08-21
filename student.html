@@ -691,7 +691,8 @@ async function loadStudentData(onFirstPaint){
         allSe.docs.forEach(d=>{ const e=d.data(); const esch=normSchool(e.school); if(esch!==S_SCHOOL) return; mySe.push({id:d.id,...e,school:esch});
           const ms=mathOf(e);
           ms.forEach(m=>{ if(m.date>=today) events.push({title:e.title,school:esch,grade:e.grade,startDate:e.startDate,endDate:e.endDate,label:m.label||'수학',date:m.date}); });
-          if(!ms.length && e.startDate && e.startDate>=today) events.push({title:e.title,school:esch,grade:e.grade,startDate:e.startDate,endDate:e.endDate,label:'시험기간',date:e.startDate,period:true});
+          // 수학 시험일이 없거나 이미 다 지난 경우엔 '시험기간 시작'으로 알려줍니다 (시험은 아직 남았는데 D-day가 안 뜨던 문제)
+          if(!ms.some(m=>m.date>=today) && e.startDate && e.startDate>=today) events.push({title:e.title,school:esch,grade:e.grade,startDate:e.startDate,endDate:e.endDate,label:'시험기간',date:e.startDate,period:true});
         });
         events.sort((a,b)=>(a.date||'').localeCompare(b.date||''));
         S_MATHEVENTS = events; S_SCHOOLEXAM = events[0] || null; S_SCHOOL_EXAMS = mySe;
@@ -1264,20 +1265,18 @@ function classHomeCardsHtml(pending){
       </div>
       <button class="btn btn-primary btn-sm" onclick="navigate('homework');setTimeout(()=>{var el=document.getElementById('hwcard-${a.id}');if(el)el.scrollIntoView({behavior:'smooth',block:'center'});},120)">📷 제출하기</button>
     </div>`;
-  // 진도 두 칸 (지난주 / 이번주 — 이번주가 비었으면 다음주를 '나갈 진도'로)
+  // 진도 두 칸 — 오늘(이번 주) 진도가 먼저, 지난 주 진도가 뒤
   const currBlock=cid=>{
     if(S_CURRICULUM===null) return `<div style="font-size:12px;color:var(--text-muted);padding:6px 0">진도 불러오는 중…</div>`;
-    const prev=planOf(cid,lastMon);
-    let nextWs=thisMon, next=planOf(cid,thisMon);
-    if(!next){ const n2=planOf(cid,nextMon); if(n2){ next=n2; nextWs=nextMon; } }
-    if(!prev && !next) return '';
+    const now=planOf(cid,thisMon), prev=planOf(cid,lastMon);
+    if(!now && !prev) return '';
     const box=(head,ws,txt,hi)=>`<div style="background:${hi?'var(--primary-light)':'var(--bg)'};border-radius:10px;padding:9px 11px">
         <div style="font-size:11px;font-weight:800;color:${hi?'var(--primary)':'var(--text-muted)'}">${head} <span style="font-weight:600;opacity:.8">${_wkMd(ws)}~${_wkMd(_wkAdd(ws,6))}</span></div>
         <div style="font-size:13px;font-weight:700;margin-top:3px;line-height:1.35">${txt?esc(txt):'<span style="color:var(--text-muted);font-weight:500">아직 등록 전</span>'}</div>
       </div>`;
     return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px">
-      ${box('↩️ 지난 진도',lastMon,prev,false)}
-      ${box('📖 나갈 진도',nextWs,next,true)}
+      ${box('📖 오늘 진도',thisMon,now,true)}
+      ${box('↩️ 지난 주 진도',lastMon,prev,false)}
     </div>`;
   };
   const cards=(S_CLASSES||[]).map(c=>{
@@ -1320,7 +1319,8 @@ function renderHome() {
   const recentScore = scoredExams.length ? scoredExams[0].score+'점' : '-';
 
   document.getElementById('homeContent').innerHTML = `
-    ${(function(){   // 📕 내신 시험(왼쪽) · 📝 모의고사(오른쪽) — 맨 위 2단 D-day
+    ${schoolHomeCardHtml()}
+    ${(function(){   // 📕 내신 시험(왼쪽) · 📝 모의고사(오른쪽) — 2단 D-day
       const t=new Date(); t.setHours(0,0,0,0);
       const ddOf=ds=>Math.round((new Date(ds+'T00:00:00')-t)/86400000);
       const ddTxt=d=>d>0?'D-'+d:(d===0?'D-DAY🔥':'');
@@ -1339,10 +1339,16 @@ function renderHome() {
           <div style="font-size:11px;color:var(--text-muted);font-weight:700">${head}</div>
           <div style="font-size:12.5px;color:var(--text-muted);font-weight:600;margin-top:6px">${msg}</div></div>`;
       const shortD=ds=>`${+ds.slice(5,7)}월 ${+ds.slice(8,10)}일`;   // 카드가 좁아서 연도는 빼고 짧게
+      // 왜 비었는지 바로 알 수 있게 — 학교 미등록 / 아직 일정 없음 / 이번 학기 끝남을 구분해 안내
+      const emptyExamMsg=()=>{
+        if(!S_SCHOOL) return '학교가 등록 안 됐어요<br><span style="font-size:11px">선생님께 학교를 알려주세요</span>';
+        if(!(S_SCHOOL_EXAMS||[]).length) return `${S_SCHOOL} 시험 일정이<br>아직 안 올라왔어요`;
+        return '이번 학기 시험이<br>모두 끝났어요 🎉';
+      };
       const left = e
         ? box('linear-gradient(135deg,#EF4444,#F97316)', '📕 '+(e.school||'').replace(/</g,'&lt;')+' '+(e.title||'').replace(/</g,'&lt;'),
             e.period?'시험 시작':(e.label||'수학').replace(/</g,'&lt;'), shortD(e.date), ddTxt(ddOf(e.date)))
-        : empty('📕 내신 시험','다가오는 시험이 없어요');
+        : empty('📕 내신 시험', emptyExamMsg());
       const right = mk
         ? box('linear-gradient(135deg,#5B6CF5,#7C8CF8)', '📝 모의고사',
             mk.name.replace(/</g,'&lt;').slice(0,14), `${+mk.date.slice(5,7)}월 ${+mk.date.slice(8,10)}일`, ddTxt(mk.dday))
@@ -1403,7 +1409,6 @@ function renderHome() {
           <div style="color:${x.accent};font-weight:700;font-size:13px;margin-top:10px">${x.cta} →</div>
         </div>`).join('')}
     </div>
-    <div style="margin-top:16px">${schoolHomeCardHtml()}</div>
     ${homeGradesHtml()}
     <div class="card">
       ${S_SEASONS.length?`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
@@ -2452,19 +2457,20 @@ async function loadSchoolHome(){
   if(currentSection==='home') renderHome();
 }
 // 📝 전국연합학력평가(모의고사) 일정 — 2026년 시행 기준
-//   고3은 6·9월이 수능 모의평가, 고1·2는 3·6·9·10월 4회
+//   6월·9월 '대수능 모의평가'는 평가원 주관이라 고3만 봐요 (고1·2는 학력평가 일정으로)
 const MOCK_SCHEDULE=[
   {date:'2026-03-24', name:'3월 학력평가', grades:[1,2,3]},
   {date:'2026-05-07', name:'5월 학력평가', grades:[3]},
-  {date:'2026-06-04', name:'6월 모의평가', grades:[1,2,3]},
+  {date:'2026-06-04', name:'6월 모의평가', grades:[3]},
   {date:'2026-07-08', name:'7월 학력평가', grades:[3]},
-  {date:'2026-09-02', name:'9월 모의평가', grades:[1,2,3]},
+  {date:'2026-09-02', name:'9월 모의고사', grades:[1,2,3]},
   {date:'2026-10-20', name:'10월 학력평가', grades:[1,2,3]},
   {date:'2026-11-19', name:'수능', grades:[3]}
 ];
-// 내 학년 추정 — 반 이름의 '고1/고2/고3'에서 (없으면 1학년으로 봄)
+// 내 학년 추정 — 반 이름의 '고1/고2/고3'에서. 중등부(반 이름에 '중')는 0 = 모의고사 대상 아님
 function myGrade(){
   for(const c of (S_CLASSES||[])){ const m=String(c.name||'').match(/고\s*([123])/); if(m) return +m[1]; }
+  if((S_CLASSES||[]).some(c=>/중\s*[123]?/.test(String(c.name||'')))) return 0;
   return 1;
 }
 // 다음 모의고사 = 선생님 등록분 우선 → 전국 학력평가 일정 → 학교 학사일정

@@ -568,7 +568,7 @@ function getAttendance(){return ATTENDANCE_CACHE;}
 function getExams(){return EXAMS_CACHE;}
 function getExamSubs(){return EXAMSUBS_CACHE;}
 async function saveAttendance(d){ d.ts=Date.now(); await db.collection('attendance').doc(d.date+'_'+d.classId).set(d); await loadAttendance(); }
-async function saveExam(d){ d.createdAt=new Date().toISOString().slice(0,10); await db.collection('exams').add(d); await loadExams(); }
+async function saveExam(d){ d.createdAt=new Date().toISOString().slice(0,10); const ref=await db.collection('exams').add(d); await loadExams(); return ref.id; }
 async function updateExamSub(sid,u){ await db.collection('examSubs').doc(sid).update(u); await loadExamSubs(); }
 
 // ===== 질문 = Firebase 공유 (학생이 올리면 선생님이 봄) =====
@@ -646,6 +646,37 @@ async function updateMakeupFS(id, patch){ await db.collection('makeups').doc(id)
 async function deleteMakeupFS(id){ await db.collection('makeups').doc(id).delete(); await loadMakeups(); }
 // 학생 명단에 있는 학교 목록(중복 제거) — 빠른 선택용
 function allSchools(){ const set=new Set(); getStudents().forEach(s=>{ if(s.school) set.add(s.school); }); getSchoolExams().forEach(e=>{ if(e.school) set.add(e.school); }); return [...set]; }
+// 🏫 지금 챙길 학교 = 재원생이 한 명이라도 남은 학교.
+//   다 퇴원한 학교는 일정 화면에서 감춥니다 — NEIS 학사일정 수집·저장은 그대로 두고 '보이지만' 않게 해요.
+//   (그 학교 학생이 다시 들어오거나 휴원이 풀리면 자동으로 도로 보입니다)
+let showEmptySchools=false;
+function activeSchoolSet(){
+  const set=new Set();
+  getStudents().forEach(s=>{ if(s.school && isActiveStudent(s)) set.add(normSchool(s.school)); });
+  return set;
+}
+function schoolHasStudents(school){ return activeSchoolSet().has(normSchool(school||'')); }
+// 화면에 보여줄 내신 일정만 (숨김 해제 토글이 켜져 있으면 전부)
+function visibleSchoolExams(){
+  const list=getSchoolExams();
+  if(showEmptySchools) return list;
+  const act=activeSchoolSet();
+  return list.filter(e=>!e.school || act.has(normSchool(e.school)));
+}
+function hiddenSchools(){
+  const act=activeSchoolSet();
+  return [...new Set(getSchoolExams().filter(e=>e.school && !act.has(normSchool(e.school))).map(e=>normSchool(e.school)))];
+}
+function toggleEmptySchools(){ showEmptySchools=!showEmptySchools; rNaesin(); }
+// 숨김 안내 줄 — 몇 개 학교가 감춰졌는지 + 다시 보기
+function hiddenSchoolNoteHtml(){
+  const hid=hiddenSchools();
+  if(!hid.length && !showEmptySchools) return '';
+  return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--text-muted);margin-bottom:10px">
+    <span>🙈 재원생이 없는 학교 ${hid.length}곳${hid.length?` (${hid.map(s=>s.replace(/</g,'&lt;')).join(', ')})`:''}은 ${showEmptySchools?'지금 함께 보이는 중':'일정에서 숨겼어요'}</span>
+    <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px" onclick="toggleEmptySchools()">${showEmptySchools?'다시 숨기기':'그래도 보기'}</button>
+  </div>`;
+}
 function ddayBadge(mathDate){
   if(!mathDate) return '';
   const t=new Date(); t.setHours(0,0,0,0);
@@ -663,7 +694,8 @@ function examMathDates(e){
 }
 let seEditId=null;
 function schoolExamCardHtml(){
-  const list=getSchoolExams(), editS=seEditId?list.find(e=>e.id===seEditId):null, schools=allSchools();
+  // 목록은 재원생 있는 학교만 보여주고, 수정 중인 항목은 숨겨졌더라도 찾을 수 있게 전체에서 찾습니다
+  const list=visibleSchoolExams(), editS=seEditId?getSchoolExams().find(e=>e.id===seEditId):null, schools=allSchools();
   const esc=s=>(s||'').replace(/"/g,'&quot;');
   return `<div class="card" ${editS?'style="border-left:4px solid var(--orange)"':'style="border-left:4px solid var(--primary)"'}>
     <div class="card-title">${editS?'✏️ 내신 일정 수정':'🏫 학교별 내신 시험 일정'} <span style="font-size:12px;color:var(--text-muted);font-weight:400">(학생 ‘학교’와 자동 매칭 → 학생 홈에 D-day)</span></div>
@@ -702,7 +734,8 @@ function schoolExamCardHtml(){
       <button class="btn btn-primary" onclick="doSaveSchoolExam()">${editS?'수정 저장 💾':'일정 추가'}</button>
       ${editS?`<button class="btn btn-outline" onclick="seEditId=null;rNaesin()">취소</button>`:''}
     </div>
-    ${list.length?`<div class="table-wrap" style="margin-top:14px"><table>
+    <div style="margin-top:14px">${hiddenSchoolNoteHtml()}</div>
+    ${list.length?`<div class="table-wrap"><table>
       <thead><tr><th>학교</th><th>시험</th><th>시험기간</th><th>수학 시험일</th><th style="min-width:210px">시험 범위</th><th>관리</th></tr></thead>
       <tbody>${list.slice().sort((a,b)=>(a.startDate||'').localeCompare(b.startDate||'')||(a.school||'').localeCompare(b.school||'')).map(e=>{
         const n=getStudents().filter(x=>isNaesinStudent(x)&&(x.school||'')===normSchool(e.school)).length;
@@ -884,7 +917,7 @@ async function doSaveExamScope(id, val){
   catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
 function examTimelineHtml(){
-  const exams=getSchoolExams().filter(e=>e.startDate);
+  const exams=visibleSchoolExams().filter(e=>e.startDate);
   const now=new Date(), pad=n=>String(n).padStart(2,'0');
   if(examCalY==null){ examCalY=now.getFullYear(); examCalM=now.getMonth(); }
   const todayStr=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
@@ -1117,8 +1150,8 @@ function schoolBooksHtml(){
 // 사진형 학교 정보 표 (학교=열, 항목=행, 학생은 등급 T/S/A로 자동)
 function examTitleRank(t){ t=t||''; const h=t.includes('2학기')?2:1; const k=t.includes('기말')?2:1; return (t.includes('중간')||t.includes('기말'))?(h*10+k):99; }
 function schoolInfoHtml(){
-  const list=getSchoolExams();
-  if(!list.length) return `<div class="card" style="text-align:center;padding:30px;color:var(--text-muted)">아직 등록된 학교(내신 시험)가 없어요.<br><span style="font-size:12px">‘📅 시험 정보’에서 학교를 추가하면 여기에 정리돼요.</span></div>`;
+  const list=visibleSchoolExams();   // 다 퇴원한 학교는 감춤
+  if(!list.length) return `<div class="card" style="text-align:center;padding:30px;color:var(--text-muted)">${getSchoolExams().length?'재원생이 있는 학교의 시험이 없어요.':'아직 등록된 학교(내신 시험)가 없어요.'}<br><span style="font-size:12px">‘📅 시험 정보’에서 학교를 추가하면 여기에 정리돼요.</span></div>${hiddenSchoolNoteHtml()}`;
   const esc=s=>(s||'').replace(/</g,'&lt;');
   const actives=getStudents().filter(isNaesinStudent);   // 내신 인원 = 담임 반 학생만
   const tiers=['T','S','A'];
@@ -1160,6 +1193,7 @@ function schoolInfoHtml(){
   };
   return `<div class="card">
     <div class="card-title">🏫 학교 정보 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(시험 선택 → 학교별 준비 + 학생 자동 · ‘시험 정보’에서 입력)</span></div>
+    ${hiddenSchoolNoteHtml()}
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
       ${titles.map(t=>`<button class="btn ${t===cur?'btn-primary':'btn-outline'} btn-sm" onclick="naesinExamTitle='${t.replace(/'/g,'')}';rNaesin()">${esc(t)}</button>`).join('')}
     </div>
@@ -1443,7 +1477,11 @@ async function doAnalyzeExam(){
     try{ img=await compressImage(file); }catch(e){ try{ img={base64:await fileToBase64(file),mime:file.type}; }catch(e2){ out.innerHTML='<div style="color:var(--red)">사진 처리 실패</div>'; return; } }
   }
   try{
-    const res=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({imageBase64:img.base64,imageMime:img.mime})});
+    const res=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      imageBase64:img.base64, imageMime:img.mime, examKind:anKind,
+      title:((document.getElementById('an-title')||{}).value||'').trim(),
+      range:((document.getElementById('an-range')||{}).value||'').trim()
+    })});
     const data=await res.json();
     if(!res.ok) throw new Error(data.error||'오류');
     lastAnalysis=data;
@@ -1463,20 +1501,28 @@ function renderAnalysis(data){
   const counts={}; probs.forEach(p=>{const a=p.ability||'기타';counts[a]=(counts[a]||0)+1;});
   const total=probs.length;
   const comp=Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([a,c])=>`<span class="badge b-primary" style="margin:2px">${a} ${Math.round(c/total*100)}%</span>`).join('');
+  const uCounts={}; probs.forEach(p=>{ const u=anBig(p); uCounts[u]=(uCounts[u]||0)+1; });
+  const uComp=Object.entries(uCounts).sort((a,b)=>b[1]-a[1]).map(([u,c])=>`<span class="badge b-gray" style="margin:2px">${anEsc(u)} ${c}문항</span>`).join('');
+  const dCounts={}; probs.forEach(p=>{ const d=p.difficulty||'-'; dCounts[d]=(dCounts[d]||0)+1; });
   out.innerHTML=`
-    <div style="background:var(--primary-light);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:12px;font-size:13px;color:var(--primary-dark)">📊 ${data.summary||''}</div>
-    <div style="margin-bottom:10px">${comp}</div>
+    <div style="background:var(--primary-light);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:12px;font-size:13px;color:var(--primary-dark)">📊 ${anEsc(data.summary||'')}</div>
+    <div style="margin-bottom:6px">${uComp}</div>
+    <div style="margin-bottom:10px">${comp} ${['상','중','하'].filter(d=>dCounts[d]).map(d=>`<span class="badge ${d==='상'?'b-red':(d==='하'?'b-green':'b-yellow')}" style="margin:2px">난이도 ${d} ${dCounts[d]}문항</span>`).join('')}</div>
     <div class="table-wrap"><table>
-      <thead><tr><th>번호</th><th>단원</th><th>요구 능력</th><th>난이도</th></tr></thead>
-      <tbody>${probs.map(p=>`<tr><td><strong>${p.no||'-'}</strong></td><td>${p.unit||'-'}</td><td><span class="badge b-primary">${p.ability||'-'}</span></td><td>${p.difficulty||'-'}</td></tr>`).join('')}</tbody>
+      <thead><tr><th style="width:44px">번호</th><th>대단원</th><th>중단원</th><th style="width:76px">요구 능력</th><th style="width:50px">난이도</th><th>해결 방법</th></tr></thead>
+      <tbody>${probs.map(p=>`<tr>
+        <td><strong>${anEsc(p.no||'-')}</strong></td>
+        <td>${anEsc(anBig(p))}</td>
+        <td style="color:var(--text-muted)">${anEsc(anSmall(p)||'-')}</td>
+        <td><span class="badge b-primary">${anEsc(p.ability||'-')}</span></td>
+        <td style="text-align:center;font-weight:700">${anEsc(p.difficulty||'-')}</td>
+        <td style="font-size:12px;line-height:1.45">${anEsc(p.solution||'-')}</td>
+      </tr>`).join('')}</tbody>
     </table></div>
     <div style="font-size:11px;color:var(--text-muted);margin:8px 0">⚠️ AI 분석이라 가끔 부정확할 수 있어요. 참고용으로 봐주세요.</div>
     <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
-      <div style="font-weight:700;margin-bottom:8px">📋 이 분석으로 시험 등록 (분석 결과도 함께 저장)</div>
-      <div class="form-row-2">
-        <div class="form-group">${classSelect('an-cls')}</div>
-        <div class="form-group"><input class="form-input" id="an-title" placeholder="시험명 (예: 6월 모의고사)"></div>
-      </div>
+      <div style="font-weight:700;margin-bottom:8px">📋 이 분석으로 시험 등록 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(등록해야 학생별 분석서를 만들 수 있어요)</span></div>
+      <div class="form-group" style="max-width:320px">${classSelect('an-cls')}</div>
       <button class="btn btn-green" onclick="doRegisterAnalyzedExam()">✅ 시험으로 등록</button>
     </div>`;
 }
@@ -1486,11 +1532,254 @@ async function doRegisterAnalyzedExam(){
   if(!classId||!title){ showToast('반과 시험명을 입력해주세요','error'); return; }
   const cls=CLASSES.find(c=>c.id===classId);
   const probs=(lastAnalysis&&lastAnalysis.problems)||[];
+  const range=(document.getElementById('an-range')||{}).value||'';
+  const maxScore=parseInt((document.getElementById('an-max')||{}).value,10)||100;
   try{
-    await saveExam({ classId, className:cls?.name||'', title, range:'', maxScore:100, date:new Date().toISOString().slice(0,10), analysis:probs, analysisSummary:(lastAnalysis&&lastAnalysis.summary)||'' });
-    showToast(`"${title}" 시험 등록 완료! 분석도 함께 저장됐어요 📋`,'success');
+    const id=await saveExam({ classId, className:cls?.name||'', title, kind:anKind, range:range.trim(), maxScore, date:new Date().toISOString().slice(0,10), analysis:probs, analysisSummary:(lastAnalysis&&lastAnalysis.summary)||'' });
+    showToast(`"${title}" 등록 완료! 이제 학생별 정오표를 찍으면 분석서가 나와요 📋`,'success');
+    anRepExamId=id||''; anRepStId=''; anOX=null;
     rGrades();
   }catch(e){ showToast('등록 실패: '+e.message,'error'); }
+}
+
+// ================================================================
+// 📋 시험지 분석서 — 시험지(사진·PDF) 분석 + 학생별 정오표 → 리포트
+//   내신·데일리 테스트 모두 같은 흐름: ① 시험지 올려 분석 → ② 시험으로 등록
+//   → ③ 학생 고르고 틀린 문제만 X로 → ④ 분석서(정오표+단원·능력·난이도별 정답률+풀이) 출력
+// ================================================================
+let anKind='내신';                      // 분석할 시험 종류
+let anRepExamId='', anRepStId='';       // 분석서 대상 시험 · 학생
+let anOX=null;                          // 문항별 정오 {번호:true(맞음)|false(틀림)}
+// [값, 버튼 라벨, 분석서 제목]
+const AN_KINDS=[['내신','🏫 내신 시험','내신 시험지'],['데일리','📅 데일리 테스트','데일리 테스트'],['모의','📝 모의고사','모의고사'],['단원','📗 단원평가','단원평가']];
+function anKindTitle(k){ const f=AN_KINDS.find(x=>x[0]===k); return f?f[2]:'시험지'; }
+// 반 이름은 저장된 풀네임(예: 고1T A1) 뒤에 '반'만 붙여 부릅니다 (학생 포털과 동일)
+function anClsLabel(n){ n=String(n==null?'':n).trim(); if(!n) return ''; return /반$/.test(n)?n:n+'반'; }
+const AN_C={ pri:'#5B6CF5', green:'#10B981', red:'#EF4444', orange:'#F59E0B', muted:'#64748B', border:'#E2E8F0', bg:'#F8FAFC', text:'#1E293B' };
+function anEsc(s){ return String(s==null?'':s).replace(/</g,'&lt;'); }
+function anParseNos(v){ if(Array.isArray(v)) return v.map(String); return String(v||'').split(/[,\s]+/).map(s=>s.trim()).filter(Boolean); }
+function anProbs(exam){ return (exam && Array.isArray(exam.analysis)) ? exam.analysis : []; }
+// 예전 분석(unit 한 칸)도 '대단원 > 중단원'으로 나눠 읽습니다
+function anBig(p){ if(p.bigUnit) return String(p.bigUnit).trim(); const u=String(p.unit||'').split('>')[0]; return u.trim()||'기타'; }
+function anSmall(p){ if(p.smallUnit) return String(p.smallUnit).trim(); const parts=String(p.unit||'').split('>'); return parts.length>1?parts[1].trim():''; }
+function anExamsWithAnalysis(){ return getExams().filter(e=>anProbs(e).length); }
+// 저장된 틀린 번호 → 정오표. 기록이 없으면 '전부 맞음'에서 시작해 틀린 것만 누르게 (선생님 입력이 제일 빠른 방식)
+function anLoadOX(){
+  const exam=getExams().find(e=>e.id===anRepExamId);
+  const sub=getExamSubs().find(s=>s.examId===anRepExamId && s.studentId===anRepStId);
+  const wrong=new Set(anParseNos(sub&&sub.wrongNos));
+  anOX={}; anProbs(exam).forEach(p=>{ anOX[String(p.no)] = !wrong.has(String(p.no)); });
+}
+function anPickExam(id){ anRepExamId=id; anOX=null; rGrades(); }
+function anPickStudent(id){ anRepStId=id; anOX=null; rGrades(); }
+function anToggleOX(no){
+  no=String(no); if(!anOX) anLoadOX();
+  anOX[no]=!anOX[no];
+  const el=document.getElementById('anrep'); if(el) el.innerHTML=anReportPanelHtml();
+}
+function anSetAll(v){
+  if(!anOX) anLoadOX();
+  Object.keys(anOX).forEach(k=>anOX[k]=v);
+  const el=document.getElementById('anrep'); if(el) el.innerHTML=anReportPanelHtml();
+}
+// 단원·능력·난이도별 정답률 집계
+function anGroup(probs, keyFn, ox){
+  const m={};
+  probs.forEach(p=>{ const k=(keyFn(p)||'기타');
+    const c=m[k]||(m[k]={total:0,correct:0,wrong:[]});
+    c.total++; if(ox[String(p.no)]) c.correct++; else c.wrong.push(String(p.no)); });
+  return Object.entries(m).map(([k,v])=>({name:k, ...v, rate:Math.round(v.correct/v.total*100)}))
+    .sort((a,b)=>a.rate-b.rate);   // 약한 것부터
+}
+function anBarsHtml(title, rows){
+  if(!rows.length) return '';
+  return `<div style="margin-top:14px">
+    <div style="font-size:13px;font-weight:800;margin-bottom:6px;color:${AN_C.text}">${title}</div>
+    ${rows.map(r=>{ const col=r.rate>=80?AN_C.green:(r.rate>=50?AN_C.orange:AN_C.red);
+      return `<div style="margin-bottom:7px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+          <span style="color:${AN_C.text};font-weight:600">${anEsc(r.name)}</span>
+          <span style="font-weight:800;color:${col}">${r.rate}% <span style="font-weight:500;color:${AN_C.muted}">(${r.correct}/${r.total})</span></span>
+        </div>
+        <div style="height:7px;background:${AN_C.bg};border-radius:4px;overflow:hidden"><div style="height:100%;width:${r.rate}%;background:${col};border-radius:4px"></div></div>
+      </div>`; }).join('')}
+  </div>`;
+}
+// 📄 분석서 본문 (인쇄에도 그대로 쓰이므로 색을 변수 대신 값으로 씁니다)
+function anReportHtml(){
+  const exam=getExams().find(e=>e.id===anRepExamId);
+  const st=getStudents().find(s=>s.id===anRepStId);
+  if(!exam||!st) return '';
+  const probs=anProbs(exam); if(!probs.length) return '';
+  if(!anOX) anLoadOX();
+  const ox=anOX;
+  const total=probs.length, correct=probs.filter(p=>ox[String(p.no)]).length;
+  const wrongProbs=probs.filter(p=>!ox[String(p.no)]);
+  const rate=Math.round(correct/total*100);
+  const maxScore=exam.maxScore||100;
+  const score=Math.round(correct/total*maxScore);
+  const kindLbl=anKindTitle(exam.kind);
+  const cell=(l,v,c)=>`<div style="flex:1;min-width:74px;text-align:center;background:${AN_C.bg};border-radius:10px;padding:9px 6px">
+    <div style="font-size:11px;color:${AN_C.muted};margin-bottom:2px">${l}</div><div style="font-size:20px;font-weight:800;color:${c}">${v}</div></div>`;
+  return `<div style="font-family:'Noto Sans KR',-apple-system,sans-serif;color:${AN_C.text};max-width:760px">
+    <div style="border-bottom:3px solid ${AN_C.pri};padding-bottom:10px;margin-bottom:14px">
+      <div style="font-size:12px;color:${AN_C.pri};font-weight:800">${kindLbl} 분석서</div>
+      <div style="font-size:21px;font-weight:800;margin-top:3px">${anEsc(exam.title)}</div>
+      <div style="font-size:12px;color:${AN_C.muted};margin-top:3px">${anEsc(st.name)} 학생 · ${anEsc(anClsLabel(exam.className))}${exam.range?' · 범위 '+anEsc(exam.range):''} · ${anEsc(exam.date||'')}</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+      ${cell('점수', score+'점', AN_C.pri)}${cell('정답률', rate+'%', rate>=80?AN_C.green:(rate>=50?AN_C.orange:AN_C.red))}
+      ${cell('맞은 문항', correct+'개', AN_C.green)}${cell('틀린 문항', (total-correct)+'개', AN_C.red)}${cell('전체', total+'문항', AN_C.muted)}
+    </div>
+    <div style="font-size:11px;color:${AN_C.muted};margin-bottom:14px">점수는 문항 수 기준 환산값이에요 (배점이 다르면 참고용).</div>
+
+    <div style="font-size:13px;font-weight:800;margin-bottom:6px">✅ 정오표</div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">
+      ${probs.map(p=>{ const okq=ox[String(p.no)];
+        return `<span style="min-width:38px;text-align:center;padding:5px 7px;border-radius:8px;font-size:12px;font-weight:800;background:${okq?'#DCFCE7':'#FEE2E2'};color:${okq?AN_C.green:AN_C.red}">${anEsc(p.no)} ${okq?'O':'X'}</span>`; }).join('')}
+    </div>
+
+    ${anBarsHtml('📚 대단원별 정답률', anGroup(probs, anBig, ox))}
+    ${anBarsHtml('🎯 요구 해결능력별 정답률', anGroup(probs, p=>p.ability, ox))}
+    ${anBarsHtml('⚖️ 난이도별 정답률', anGroup(probs, p=>p.difficulty, ox))}
+
+    <div style="font-size:13px;font-weight:800;margin:18px 0 6px">📝 틀린 문제 분석 <span style="font-weight:500;color:${AN_C.muted};font-size:11px">(대단원 · 중단원 · 요구능력 · 난이도 · 해결 방법)</span></div>
+    ${wrongProbs.length?`<table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="background:${AN_C.bg}">
+        <th style="padding:6px;border:1px solid ${AN_C.border};width:38px">번호</th>
+        <th style="padding:6px;border:1px solid ${AN_C.border};text-align:left">단원</th>
+        <th style="padding:6px;border:1px solid ${AN_C.border};width:74px">요구능력</th>
+        <th style="padding:6px;border:1px solid ${AN_C.border};width:48px">난이도</th>
+        <th style="padding:6px;border:1px solid ${AN_C.border};text-align:left">해결 방법</th>
+      </tr></thead>
+      <tbody>${wrongProbs.map(p=>`<tr>
+        <td style="padding:6px;border:1px solid ${AN_C.border};text-align:center;font-weight:800;color:${AN_C.red}">${anEsc(p.no)}</td>
+        <td style="padding:6px;border:1px solid ${AN_C.border}"><strong>${anEsc(anBig(p))}</strong>${anSmall(p)?`<div style="color:${AN_C.muted};font-size:11px">${anEsc(anSmall(p))}</div>`:''}</td>
+        <td style="padding:6px;border:1px solid ${AN_C.border};text-align:center">${anEsc(p.ability||'-')}</td>
+        <td style="padding:6px;border:1px solid ${AN_C.border};text-align:center;font-weight:700;color:${p.difficulty==='상'?AN_C.red:(p.difficulty==='하'?AN_C.green:AN_C.orange)}">${anEsc(p.difficulty||'-')}</td>
+        <td style="padding:6px;border:1px solid ${AN_C.border};line-height:1.45">${anEsc(p.solution||'-')}</td>
+      </tr>`).join('')}</tbody>
+    </table>`:`<div style="padding:14px;background:#DCFCE7;border-radius:10px;color:${AN_C.green};font-weight:800;text-align:center">🎉 틀린 문제가 없어요! 완벽해요</div>`}
+
+    ${(function(){   // 이번 시험에서 챙길 것 — 정답률 낮은 순으로 자동 요약
+      const weakU=anGroup(probs, anBig, ox).filter(r=>r.rate<70).slice(0,3);
+      const weakA=anGroup(probs, p=>p.ability, ox).filter(r=>r.rate<70).slice(0,2);
+      if(!weakU.length && !weakA.length) return '';
+      return `<div style="margin-top:16px;padding:12px 14px;background:#EEF2FF;border-radius:10px">
+        <div style="font-size:13px;font-weight:800;color:${AN_C.pri};margin-bottom:5px">🔎 이번 시험에서 챙길 것</div>
+        ${weakU.length?`<div style="font-size:12.5px;line-height:1.6">· 단원: ${weakU.map(r=>`<strong>${anEsc(r.name)}</strong>(${r.rate}%)`).join(', ')}</div>`:''}
+        ${weakA.length?`<div style="font-size:12.5px;line-height:1.6">· 능력: ${weakA.map(r=>`<strong>${anEsc(r.name)}</strong>(${r.rate}%)`).join(', ')}</div>`:''}
+      </div>`;
+    })()}
+    ${exam.analysisSummary?`<div style="margin-top:12px;font-size:11.5px;color:${AN_C.muted};line-height:1.6">📊 시험지 총평: ${anEsc(exam.analysisSummary)}</div>`:''}
+    <div style="margin-top:10px;font-size:10.5px;color:${AN_C.muted}">⚠️ 단원·능력·난이도·해결 방법은 AI 분석이라 가끔 부정확할 수 있어요. 선생님이 확인 후 사용해주세요.</div>
+  </div>`;
+}
+// 정오표 입력 + 분석서 미리보기 패널
+function anReportPanelHtml(){
+  const exam=getExams().find(e=>e.id===anRepExamId);
+  const st=getStudents().find(s=>s.id===anRepStId);
+  if(!exam) return `<div style="color:var(--text-muted);padding:12px;font-size:13px">위에서 분석된 시험을 먼저 고르세요.</div>`;
+  const probs=anProbs(exam);
+  if(!probs.length) return `<div style="color:var(--text-muted);padding:12px;font-size:13px">이 시험엔 저장된 시험지 분석이 없어요. 위에서 시험지를 올려 분석한 뒤 등록하세요.</div>`;
+  if(!st) return `<div style="color:var(--text-muted);padding:12px;font-size:13px">분석서를 만들 학생을 고르세요.</div>`;
+  if(!anOX) anLoadOX();
+  return `
+    <div style="background:var(--bg);border-radius:12px;padding:12px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        <span style="font-size:13px;font-weight:800">✏️ 정오표 — 틀린 문제를 눌러 <span style="color:var(--red)">X</span>로 바꾸세요</span>
+        <span style="display:flex;gap:6px">
+          <button class="btn btn-outline btn-sm" onclick="anSetAll(true)">전부 O</button>
+          <button class="btn btn-outline btn-sm" onclick="anSetAll(false)">전부 X</button>
+        </span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px">
+        ${probs.map(p=>{ const okq=anOX[String(p.no)];
+          return `<button type="button" onclick="anToggleOX('${String(p.no).replace(/'/g,'')}')" title="${anEsc(anBig(p))}${anSmall(p)?' > '+anEsc(anSmall(p)):''}"
+            style="min-width:44px;padding:7px 8px;border-radius:9px;border:1.5px solid ${okq?'#86EFAC':'#FCA5A5'};background:${okq?'#DCFCE7':'#FEE2E2'};color:${okq?'#059669':'#DC2626'};font-weight:800;font-size:13px;cursor:pointer">${anEsc(p.no)} ${okq?'O':'X'}</button>`; }).join('')}
+      </div>
+      <div class="btn-row" style="margin-top:10px">
+        <button class="btn btn-green" onclick="doSaveAnOX()">💾 정오표 저장 (성적도 함께)</button>
+        <button class="btn btn-primary" onclick="printAnalysisReport()">🖨 분석서 인쇄 / PDF</button>
+      </div>
+    </div>
+    <div id="anrep-body">${anReportHtml()}</div>`;
+}
+// 정오표 저장 → examSubs (기존 성적 리포트와 같은 문서를 씁니다)
+async function doSaveAnOX(){
+  const exam=getExams().find(e=>e.id===anRepExamId), st=getStudents().find(s=>s.id===anRepStId);
+  if(!exam||!st){ showToast('시험과 학생을 고르세요','error'); return; }
+  if(!anOX) anLoadOX();
+  const probs=anProbs(exam);
+  const wrong=probs.filter(p=>!anOX[String(p.no)]).map(p=>String(p.no));
+  const correct=probs.length-wrong.length;
+  const score=probs.length?Math.round(correct/probs.length*(exam.maxScore||100)):null;
+  // 약한 능력 = 정답률 70% 미만인 요구능력
+  const weak=anGroup(probs, p=>p.ability, anOX).filter(r=>r.rate<70).map(r=>r.name);
+  const payload={ wrongNos:wrong.join(', '), weakAbilities:weak, score, oxTs:Date.now() };
+  try{
+    const existing=getExamSubs().find(s=>s.examId===exam.id && s.studentId===st.id);
+    if(existing) await db.collection('examSubs').doc(existing.id).update(payload);
+    else await db.collection('examSubs').add({ examId:exam.id, examTitle:exam.title, classId:exam.classId, className:exam.className, studentId:st.id, studentName:st.name, submittedAt:new Date().toLocaleString('ko-KR'), comment:'', perQuestion:[], ts:Date.now(), ...payload });
+    await loadExamSubs();
+    showToast(`${st.name} 정오표 저장 — ${correct}/${probs.length} (${score}점) 📊`,'success');
+    rGrades();
+  }catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+function printAnalysisReport(){
+  const html=anReportHtml();
+  if(!html){ showToast('먼저 시험과 학생을 고르세요','error'); return; }
+  const st=getStudents().find(s=>s.id===anRepStId), exam=getExams().find(e=>e.id===anRepExamId);
+  const w=window.open('','_blank','width=820,height=900');
+  if(!w){ showToast('팝업이 막혔어요. 브라우저에서 팝업을 허용해주세요','warning'); return; }
+  w.document.write(`<html><head><meta charset="utf-8"><title>${anEsc((st&&st.name)||'')} ${anEsc((exam&&exam.title)||'')} 분석서</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>@page{margin:14mm} body{margin:0;padding:20px} table{page-break-inside:auto} tr{page-break-inside:avoid}</style>
+    </head><body>${html}</body></html>`);
+  w.document.close();
+  setTimeout(()=>{ try{ w.focus(); w.print(); }catch(e){} }, 600);
+}
+// 📋 시험지 분석서 탭 전체
+function examAnalysisTabHtml(){
+  const withAn=anExamsWithAnalysis();
+  const exam=getExams().find(e=>e.id===anRepExamId);
+  const sts=exam?getStudentsByClass(exam.classId):[];
+  return `
+    <div class="card" style="border-left:4px solid var(--primary)">
+      <div class="card-title">🤖 ① 시험지 분석 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(사진 또는 PDF · 대단원/중단원 · 요구능력 · 난이도 · 해결 방법)</span></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+        ${AN_KINDS.map(([k,l])=>`<button class="btn ${anKind===k?'btn-primary':'btn-outline'} btn-sm" onclick="anKind='${k}';rGrades()">${l}</button>`).join('')}
+      </div>
+      <div class="form-row-3">
+        <div class="form-group"><label class="form-label">시험명</label><input class="form-input" id="an-title" placeholder="예: 2학기 중간고사 / 9월 3주 데일리"></div>
+        <div class="form-group"><label class="form-label">출제 범위 (선택)</label><input class="form-input" id="an-range" placeholder="예: 공통수학2 1~3단원"></div>
+        <div class="form-group"><label class="form-label">만점</label><input class="form-input" id="an-max" type="number" value="100"></div>
+      </div>
+      <div class="upload-area" onclick="this.querySelector('input').click()">
+        <div class="u-icon">📄</div><p id="an-label">시험지 사진 또는 PDF를 선택하세요 <span style="opacity:.8;font-size:12px">· PDF는 여러 쪽도 한 번에</span></p>
+        <input type="file" accept="image/*,application/pdf,.pdf" id="an-photo" onchange="document.getElementById('an-label').textContent=this.files[0]?('📎 '+this.files[0].name):'시험지 사진 또는 PDF를 선택하세요'">
+      </div>
+      <button class="btn btn-primary" onclick="doAnalyzeExam()">🤖 분석하기</button>
+      <div id="an-result" style="margin-top:14px"></div>
+    </div>
+    <div class="card" style="border-left:4px solid var(--green)">
+      <div class="card-title">📋 ② 학생별 분석서 만들기 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(정오표를 찍으면 분석서가 완성돼요)</span></div>
+      ${withAn.length?`
+        <div class="form-group"><label class="form-label">분석된 시험</label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            ${withAn.map(e=>`<button class="btn ${e.id===anRepExamId?'btn-primary':'btn-outline'} btn-sm" onclick="anPickExam('${e.id}')">${(AN_KINDS.find(k=>k[0]===e.kind)||[,'📄'])[1].split(' ')[0]} ${anEsc(e.title)} <span style="opacity:.7">${anEsc(e.className||'')} · ${anProbs(e).length}문항</span></button>`).join('')}
+          </div>
+        </div>
+        ${exam?`<div class="form-group"><label class="form-label">학생 (${anEsc(exam.className||'')})</label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            ${sts.length?sts.map(s=>{ const done=getExamSubs().some(x=>x.examId===exam.id&&x.studentId===s.id&&x.wrongNos!=null);
+              return `<button class="btn ${s.id===anRepStId?'btn-primary':'btn-outline'} btn-sm" onclick="anPickStudent('${s.id}')">${done?'✅ ':''}${anEsc(s.name)}</button>`; }).join('')
+              :'<span style="font-size:13px;color:var(--text-muted)">이 반에 학생이 없어요</span>'}
+          </div>
+        </div>`:''}
+        <div id="anrep">${anReportPanelHtml()}</div>
+      `:`<div style="color:var(--text-muted);padding:12px;font-size:13px">아직 분석된 시험이 없어요. 위에서 시험지를 올려 분석한 뒤 <strong>시험으로 등록</strong>하면 여기에 나타나요.</div>`}
+    </div>`;
 }
 
 // ================================================================
@@ -1712,7 +2001,7 @@ function dashCalendarHtml(){
   const todayStr=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
   const firstDow=new Date(dashCalY,dashCalM,1).getDay(), dim=new Date(dashCalY,dashCalM+1,0).getDate();
   const wdKeys=['sun','mon','tue','wed','thu','fri','sat'];
-  const exams=getSchoolExams(), makeups=getMakeups();
+  const exams=visibleSchoolExams(), makeups=getMakeups();
   const cells=[]; for(let i=0;i<firstDow;i++) cells.push(null); for(let d=1;d<=dim;d++) cells.push(d); while(cells.length%7) cells.push(null);
   const dowLbl=['일','월','화','수','목','금','토'];
   const cell=d=>{
@@ -3282,7 +3571,7 @@ function naesinFilledCount(){ const sts=naesinStudents(); const done=sts.filter(
 
 // ===== 📈 내신 성적 변화 추이 (중간→기말) + 휴원·퇴원생 성적 조회 =====
 let trendSubject='공통수학1', trendStatus='재원', gradeView='입력';  // 성적관리 상단 서브탭
-let gradeTab='naesin';  // 성적관리 대탭: naesin(내신) / daily(학원 데일리 테스트) / mock(모의)
+let gradeTab='naesin';  // 성적관리 대탭: naesin(내신) / daily(학원 데일리 테스트) / mock(모의) / analysis(시험지 분석서)
 function numFromScore(s){ const m=String(s==null?'':s).match(/-?\d+(\.\d+)?/); return m?parseFloat(m[0]):null; }  // "94+"→94, "40점대"→40
 function naesinTrendRows(){
   const sts = trendStatus==='전체' ? STUDENTS_CACHE.slice() : STUDENTS_CACHE.filter(s=>studentStatus(s)===trendStatus);
@@ -3388,8 +3677,10 @@ function rGrades(){
         <button class="btn ${gradeTab==='naesin'?'btn-primary':'btn-outline'} btn-sm" onclick="gradeTab='naesin';rGrades()">🏫 내신 성적</button>
         <button class="btn ${gradeTab==='daily'?'btn-primary':'btn-outline'} btn-sm" onclick="gradeTab='daily';rGrades()">📅 학원 데일리 테스트</button>
         <button class="btn ${gradeTab==='mock'?'btn-primary':'btn-outline'} btn-sm" onclick="gradeTab='mock';rGrades()">📝 모의 시험</button>
+        <button class="btn ${gradeTab==='analysis'?'btn-primary':'btn-outline'} btn-sm" onclick="gradeTab='analysis';rGrades()">📋 시험지 분석서</button>
       </div>
     </div>
+    ${gradeTab==='analysis'?examAnalysisTabHtml():''}
     ${gradeTab==='naesin'?`
     <div class="card" style="padding:10px 14px;margin-bottom:12px">
       <div style="display:inline-flex;background:var(--bg);border-radius:11px;padding:4px;gap:4px;flex-wrap:wrap">
@@ -3423,14 +3714,10 @@ function rGrades(){
       </div>
       <div id="gradeDash">${studentGradeDash(gradeDashStId)}</div>
     </div>
-    <div class="card" style="border-left:4px solid var(--primary)">
-      <div class="card-title">🤖 AI 시험지 분석 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(문제별 단원·요구능력·난이도)</span></div>
-      <div class="upload-area" onclick="this.querySelector('input').click()">
-        <div class="u-icon">📄</div><p id="an-label">시험지 사진 또는 PDF를 선택하세요 <span style="opacity:.8;font-size:12px">· PDF는 여러 쪽도 한 번에</span></p>
-        <input type="file" accept="image/*,application/pdf,.pdf" id="an-photo" onchange="document.getElementById('an-label').textContent=this.files[0]?('📎 '+this.files[0].name):'시험지 사진 또는 PDF를 선택하세요'">
+    <div class="card" style="padding:12px 14px;border-left:4px solid var(--primary)">
+      <div style="font-size:13px">🤖 시험지(사진·PDF)를 올려 <strong>대단원·중단원·요구능력·난이도·해결 방법</strong>을 분석하고, 학생별 정오표로 분석서를 만들려면
+        <button class="btn btn-primary btn-sm" style="margin-left:6px" onclick="gradeTab='analysis';rGrades()">📋 시험지 분석서 탭으로 →</button>
       </div>
-      <button class="btn btn-primary" onclick="doAnalyzeExam()">🤖 분석하기</button>
-      <div id="an-result" style="margin-top:14px"></div>
     </div>
     <div class="card" ${editE?'style="border-left:4px solid var(--orange)"':''}>
       <div class="card-title">${editE?'✏️ 시험 수정':'📝 시험 만들기'}</div>
@@ -3872,7 +4159,7 @@ function calendarCardHtml(){
   const firstDow=new Date(calY,calM,1).getDay();
   const dim=new Date(calY,calM+1,0).getDate();
   const wdKeys=['sun','mon','tue','wed','thu','fri','sat'];
-  const exams=getSchoolExams(), makeups=getMakeups();
+  const exams=visibleSchoolExams(), makeups=getMakeups();
   const cells=[]; for(let i=0;i<firstDow;i++) cells.push(null); for(let d=1;d<=dim;d++) cells.push(d); while(cells.length%7) cells.push(null);
   function dayCell(d){
     const dow=new Date(calY,calM,d).getDay();
@@ -4066,7 +4353,7 @@ async function doAutoMakeups(){
   const today=new Date().toISOString().slice(0,10);
   const pad=n=>String(n).padStart(2,'0');
   const plans=[];
-  getSchoolExams().forEach(e=>{
+  visibleSchoolExams().forEach(e=>{
     examMathDates(e).forEach(m=>{
       if(!m.date || m.date<today) return;
       const d=new Date(m.date+'T00:00:00'); d.setDate(d.getDate()-1);
@@ -4400,7 +4687,7 @@ function rCurriculum(){
   let body='';
   for(let i=0;i<weeks;i++){ const ws=addDays(start,i*7), we=addDays(ws,6), cur=ws===thisMon;
     // 📕 이 주에 시험기간이 걸치는 학교들 (진도 계획 세울 때 바로 보이게)
-    const exW=[...new Set(getSchoolExams().filter(e=>e.startDate&&e.endDate&&!(e.endDate<ws||e.startDate>we)).map(e=>shortSchool(e.school)).filter(Boolean))];
+    const exW=[...new Set(visibleSchoolExams().filter(e=>e.startDate&&e.endDate&&!(e.endDate<ws||e.startDate>we)).map(e=>shortSchool(e.school)).filter(Boolean))];
     const holW=[0,1,2,3,4,5,6].map(k=>({d:addDays(ws,k), n:holidayName(addDays(ws,k))})).filter(x=>x.n);
     body+=`<tr style="${exW.length?'background:#FEF2F2':''}">
       <td style="text-align:center;font-weight:800;position:sticky;left:0;background:${cur?'#E7EAFE':(exW.length?'#FEE2E2':'var(--bg)')};z-index:1">${i+1}${cur?'<div style="font-size:9px;color:var(--primary)">이번주</div>':''}</td>
