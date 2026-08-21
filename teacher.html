@@ -756,7 +756,11 @@ async function neisCodeOf(school){
 function ymdT(d){ const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}`; }
 // 시험 관련 일정을 연속 구간으로 묶기 → {title, from, to}
 // 내신 시험만 — 수능·모의고사·예비소집·시험장 설치 등은 내신이 아니라서 제외
-const NEIS_NOT_EXAM=/수능|대학수학능력|모의|예비소집|시험장|졸업/;
+const NEIS_NOT_EXAM=/수능|대학수학능력|모의|학력평가|예비소집|시험장|졸업/;
+// 학교마다 '지필평가'로만 쓰는 곳이 있어서(동안고 '1차 지필 평가') 지필도 시험으로 인식
+const NEIS_IS_EXAM=/고사|시험|지필/;
+// 11월에 보는 기말은 고3(수능 전 조기 시행), 그 외는 고1·2
+function examGradeOf(ymd){ return (+(ymd||'').slice(4,6)===11) ? '고3' : '고1·2'; }
 // 학교마다 제각각인 시험 이름을 '{N}학기 중간/기말고사'로 통일 (1차 정기시험·지필평가 등)
 function normExamTitle(name, ymd){
   const m=+(ymd||'').slice(4,6);                       // 3~7월=1학기 / 8~2월=2학기
@@ -768,7 +772,7 @@ function normExamTitle(name, ymd){
   return name;
 }
 function examPeriodsOf(rows){
-  const ev=rows.filter(r=>/고사|시험/.test(r.EVENT_NM||'') && !NEIS_NOT_EXAM.test(r.EVENT_NM||''))
+  const ev=rows.filter(r=>NEIS_IS_EXAM.test(r.EVENT_NM||'') && !NEIS_NOT_EXAM.test(r.EVENT_NM||''))
     .map(r=>({d:r.AA_YMD, n:normExamTitle((r.EVENT_NM||'').trim(), r.AA_YMD)})).sort((a,b)=>a.d.localeCompare(b.d));
   const out=[];
   ev.forEach(x=>{
@@ -818,7 +822,7 @@ async function doLoadNeisSched(){
       const fd=`${p.from.slice(0,4)}-${p.from.slice(4,6)}-${p.from.slice(6,8)}`;
       const td=`${p.to.slice(0,4)}-${p.to.slice(4,6)}-${p.to.slice(6,8)}`;
       if(getSchoolExams().some(x=>normSchool(x.school)===s && x.startDate===fd)) return;
-      jobs.push(db.collection('schoolExams').add({school:s, title:p.title, startDate:fd, endDate:td, grade:'', mathDates:[], mathDate:'', jikboStart:'', autoFromNeis:true, ts:Date.now()}));
+      jobs.push(db.collection('schoolExams').add({school:s, title:p.title, startDate:fd, endDate:td, grade:examGradeOf(p.from), mathDates:[], mathDate:'', jikboStart:'', autoFromNeis:true, ts:Date.now()}));
     });
   });
   let added=0;
@@ -831,7 +835,7 @@ async function doAddExamFromNeis(school, title, from, to){
   const s=(from||''), e=(to||'');
   const fd=`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`, td=`${e.slice(0,4)}-${e.slice(4,6)}-${e.slice(6,8)}`;
   if(getSchoolExams().some(x=>normSchool(x.school)===school && x.startDate===fd && (x.title||'')===title)){ showToast('이미 등록된 일정이에요','warning'); return; }
-  try{ await addSchoolExam({school, title, startDate:fd, endDate:td, grade:'', mathDates:[], mathDate:'', jikboStart:''});
+  try{ await addSchoolExam({school, title, startDate:fd, endDate:td, grade:examGradeOf(from), mathDates:[], mathDate:'', jikboStart:''});
     showToast(`${school} "${title}" 내신 일정 등록 ✓ (수학 시험일은 시험 정보에서 채워주세요)`,'success'); rNaesin(); }
   catch(err){ showToast('등록 실패: '+err.message,'error'); }
 }
@@ -1050,7 +1054,7 @@ function neisScheduleHtml(){
             </div>`; }).join('')}
         </div>`:''}
         ${keys.length?`<div style="font-size:12px;line-height:1.85">${keys.map(k=>`<div style="display:flex;gap:8px"><span style="color:var(--text-muted);min-width:44px">${+k.slice(4,6)}/${+k.slice(6,8)}</span><span>${[...new Set(byDay[k])].map(nm=>{
-            const norm=(/고사|시험/.test(nm)&&!NEIS_NOT_EXAM.test(nm))?normExamTitle(nm.trim(),k):'';
+            const norm=(NEIS_IS_EXAM.test(nm)&&!NEIS_NOT_EXAM.test(nm))?normExamTitle(nm.trim(),k):'';
             return el(nm)+((norm&&norm!==nm.trim())?` <span style="font-size:10px;color:var(--primary);font-weight:700">= ${el(norm)}</span>`:'');
           }).join(', ')}</span></div>`).join('')}</div>`
           :'<div style="font-size:12px;color:var(--text-muted)">앞으로 등록된 일정이 없어요</div>'}
