@@ -507,10 +507,11 @@ function applyPreset(pid,classId){
   set('hw-textbook',p.textbook); set('hw-title', p.title||p.textbook); set('hw-content', p.content||'');
   set('hw-pstart', p.probStart||''); set('hw-pend', p.probEnd||''); set('hw-plabel', p.probLabel||''); set('hw-photos', p.maxPhotos||30);
   const st=document.getElementById('hw-start'); if(st && !st.value) st.value=new Date().toISOString().slice(0,10);
+  hwSyncDue();   // 마감일이 비어 있으면 출제일 +1주로 채워둠
   const cls=CLASSES.find(c=>c.id===classId);
   if(classId){ const cs=document.getElementById('hw-cls'); if(cs) cs.value=classId; }
   const anchor=document.getElementById('hw-cls'); if(anchor&&anchor.scrollIntoView) anchor.scrollIntoView({behavior:'smooth',block:'center'});
-  showToast(`${cls?cls.name+' · ':''}${p.textbook} 준비됨 — 마감일 정하고 저장하세요`,'success');
+  showToast(`${cls?cls.name+' · ':''}${p.textbook} 준비됨 — 마감일(출제일 +1주) 확인하고 저장하세요`,'success');
 }
 async function doSaveHwPreset(){
   const textbook=(document.getElementById('hp-textbook').value||'').trim();
@@ -2429,6 +2430,23 @@ function allTextbooks(){
   getAssignments().forEach(a=>{ if(a.textbook) set.add(a.textbook); });
   return [...set].slice(0,16);
 }
+// 📅 마감일은 출제일 +1주가 기본 — 내준 날만 정하면 마감이 알아서 따라옵니다.
+//   선생님이 마감일을 직접 고른 뒤에는 건드리지 않아요 (data-auto 표시로 구분).
+function hwAddWeek(ds, days){
+  if(!ds) return '';
+  const d=new Date(ds+'T00:00:00'); if(isNaN(d.getTime())) return '';
+  d.setDate(d.getDate()+(days==null?7:days));
+  const p=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+}
+function hwSyncDue(){
+  const st=document.getElementById('hw-start'), du=document.getElementById('hw-due');
+  if(!st||!du) return;
+  if(du.value && du.dataset.auto!=='1') return;   // 직접 정한 마감일은 그대로 둡니다
+  const v=hwAddWeek(st.value);
+  if(v){ du.value=v; du.dataset.auto='1'; }
+}
+function hwDueTouched(){ const du=document.getElementById('hw-due'); if(du) du.dataset.auto=''; }
 // 📄 지난 숙제 복제 — 폼에 그대로 채우고 반·마감일만 새로
 function doDupAsgn(aid){
   const a=getAssignments().find(x=>x.id===aid); if(!a) return;
@@ -2438,7 +2456,8 @@ function doDupAsgn(aid){
   set('hw-pstart',a.probStart||''); set('hw-pend',a.probEnd||''); set('hw-plabel',a.probLabel||''); set('hw-photos',a.maxPhotos||30);
   const cs=document.getElementById('hw-cls'); if(cs) cs.value=a.classId||'';
   const st=document.getElementById('hw-start'); if(st) st.value=new Date().toISOString().slice(0,10);
-  const du=document.getElementById('hw-due'); if(du) du.value='';
+  const du=document.getElementById('hw-due'); if(du){ du.value=''; du.dataset.auto='1'; }
+  hwSyncDue();   // 복제한 숙제도 마감일은 오늘 +1주로
   const anchor=document.getElementById('hw-cls'); if(anchor&&anchor.scrollIntoView) anchor.scrollIntoView({behavior:'smooth',block:'center'});
   showToast(`"${a.title}" 복제됨 — 반·마감일 확인하고 저장하세요 📄`,'success');
 }
@@ -2495,8 +2514,8 @@ function rHomework(){
       <div class="card-title">${editA?'✏️ 과제 수정':'➕ 새 과제 만들기'}</div>
       <div class="form-row-3">
         <div class="form-group"><label class="form-label">대상 반</label>${classSelect('hw-cls')}</div>
-        <div class="form-group"><label class="form-label">출제일 (내준 날)</label><input class="form-input" id="hw-start" type="date" value="${editA?(editA.startDate||''):new Date().toISOString().slice(0,10)}"></div>
-        <div class="form-group"><label class="form-label">마감일</label><input class="form-input" id="hw-due" type="date" value="${editA?(editA.dueDate||''):''}"></div>
+        <div class="form-group"><label class="form-label">출제일 (내준 날)</label><input class="form-input" id="hw-start" type="date" onchange="hwSyncDue()" value="${editA?(editA.startDate||''):new Date().toISOString().slice(0,10)}"></div>
+        <div class="form-group"><label class="form-label">마감일 <span style="font-size:11px;color:var(--text-muted)">(출제일 +1주 자동 · 바꿔도 돼요)</span></label><input class="form-input" id="hw-due" type="date" onchange="hwDueTouched()" ${editA?'':'data-auto="1"'} value="${editA?(editA.dueDate||''):hwAddWeek(new Date().toISOString().slice(0,10))}"></div>
       </div>
       <div class="form-group"><label class="form-label">교재 <span style="font-size:11px;color:var(--text-muted)">(아래 칩을 누르면 자동 입력)</span></label>
         <input class="form-input" id="hw-textbook" placeholder="예: 쎈 공통수학1" value="${editA?esc(editA.textbook):''}">
