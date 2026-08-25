@@ -1461,6 +1461,14 @@ function renderHome() {
 // ================================================================
 // 🔢 오답 방식 숙제 카드
 // 오답 그리드용 숫자 집합 — 시작~끝 + 자유범위(1~100, 105~110 등 여러 구간) 파싱. 문자 섞이면 [] (자유입력만)
+// 🔢 '홀수번만 / 짝수번만' 숙제 — 선생님이 고르면 그 번호만 남깁니다.
+//   구간을 그대로 두고 걸러내는 방식이라 '1~100 홀수'도 번호 그리드가 그대로 나와요.
+function parityKeep(nums, parity){
+  if(parity!=='odd' && parity!=='even') return nums;
+  const want = parity==='odd' ? 1 : 0;
+  return nums.filter(n=>{ const v=parseInt(n,10); return isNaN(v) ? true : (Math.abs(v)%2)===want; });
+}
+function parityLabel(parity){ return parity==='odd'?'홀수번만':(parity==='even'?'짝수번만':''); }
 function oapGridNums(a){
   const nums=[];
   if(a.probStart&&a.probEnd){ for(let n=a.probStart;n<=a.probEnd&&n-a.probStart<500;n++) nums.push(n); }
@@ -1470,7 +1478,7 @@ function oapGridNums(a){
       if(m){ let x=+m[1],y=+m[2]; if(x>y)[x,y]=[y,x]; for(let i=x;i<=y&&i-x<500;i++) nums.push(i); }
       else{ const v=parseInt(part,10); if(v>0) nums.push(v); } });
   }
-  return [...new Set(nums)].sort((x,y)=>x-y);
+  return parityKeep([...new Set(nums)].sort((x,y)=>x-y), a.probParity);
 }
 // 문제 번호를 '구간(섹션)'으로 파싱 — 번호가 리셋되는 문제집(1~100 / 다시 1~20) 지원
 //  probLabel에 '/' 있으면 구간 분리, 각 구간은 '이름: 범위' 또는 '범위'. 리셋 구간은 ①②로 구분.
@@ -1501,8 +1509,10 @@ function oapSections(a){
   };
   const lbl=(a.probLabel||'').trim();
   const circ='①②③④⑤⑥⑦⑧⑨⑩';
+  const par=a.probParity;
+  const keep=secs=>secs.map(s=>({...s, nums:parityKeep(s.nums, par)})).filter(s=>s.nums.length);
   if(lbl && lbl.includes('/')){
-    return lbl.split('/').map((seg,i)=>{
+    return keep(lbl.split('/').map((seg,i)=>{
       seg=seg.trim();
       const pf=prefixSeg(seg);                                   // 문자 접두 구간 우선
       if(pf) return { name:pf.prefix, prefix:pf.prefix, sep:'', nums:pf.nums };
@@ -1513,21 +1523,23 @@ function oapSections(a){
       if(pf2) return { name:name||pf2.prefix, prefix:pf2.prefix, sep:'', nums:pf2.nums };
       const prefix = name || (circ[i]||('구간'+(i+1)));
       return { name:prefix, prefix, sep:'-', nums:parseRanges(rangeTxt) };
-    }).filter(s=>s.nums.length);
+    }).filter(s=>s.nums.length));
   }
   const pf=prefixSeg(lbl);                                       // '/' 없는 단일 문자 접두 구간
-  if(pf) return [{ name:pf.prefix, prefix:pf.prefix, sep:'', nums:pf.nums }];
+  if(pf) return keep([{ name:pf.prefix, prefix:pf.prefix, sep:'', nums:pf.nums }]);
   let nums=[];
   if(a.probStart&&a.probEnd){ for(let n=a.probStart;n<=a.probEnd&&n-a.probStart<500;n++) nums.push(n); }
   if(lbl && /^[\d\s,~\-]+$/.test(lbl)){ nums=nums.concat(parseRanges(lbl)); }
-  nums=[...new Set(nums)].sort((x,y)=>x-y);
+  nums=parityKeep([...new Set(nums)].sort((x,y)=>x-y), par);
   return nums.length ? [{ name:'', prefix:'', sep:'-', nums }] : [];
 }
 function renderOapCard(a){
   const wrongNos = a.wrongNos||[]; const corrections = a.corrections||{}; const oapOk=a.oapOk||{}; const oapRedo=a.oapRedo||{}; const oapOffline=a.oapOffline||{};
   const sub = a.subId ? S_SUBMISSIONS.find(s=>s.id===a.subId) : null;
   const hasPhoto = a.hasPhoto; const photos=a.photos||[];
-  const rangeHint = (a.probStart&&a.probEnd) ? `${a.probStart}~${a.probEnd}번` : (a.probLabel||'');
+  const parLbl = parityLabel(a.probParity);
+  const rangeHint = ((a.probStart&&a.probEnd) ? `${a.probStart}~${a.probEnd}번` : (a.probLabel||''))
+    + (parLbl?` <span style="color:var(--primary)">(${parLbl})</span>`:'');
   const badge = a.oapConfirmed ? '<span class="badge b-green">오답 완료 ✅</span>'
     : (!(hasPhoto && a.oapEntered) ? '<span class="badge b-primary">제출 전 (사진+번호)</span>'
     : (wrongNos.length===0 ? '<span class="badge b-green">다 맞았어요 ✅</span>'
@@ -1824,6 +1836,7 @@ function renderHomework() {
         </div>
         <div class="hw-title" style="margin-bottom:6px">${a.title}</div>
         ${a.textbook?`<div style="font-size:12px;color:var(--primary);font-weight:600;margin-bottom:4px">📘 ${a.textbook}</div>`:''}
+        ${parityLabel(a.probParity)?`<div style="font-size:12px;color:var(--primary);font-weight:700;margin-bottom:4px">🔢 ${parityLabel(a.probParity)} 풀어요</div>`:''}
         <div class="hw-body">${a.content}</div>
         <div class="hw-due">📅 ${a.startDate?fmtDateFull(a.startDate)+' ~ ':''}${fmtDateFull(a.dueDate)} 까지 제출</div>
         ${a.rejected?`<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:var(--radius-sm);padding:12px;margin:10px 0">

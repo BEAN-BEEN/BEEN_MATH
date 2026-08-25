@@ -2534,6 +2534,14 @@ function rHomework(){
         <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
           <input class="form-input" id="hw-plabel" style="flex:1;min-width:140px" placeholder="여러 구간·리셋·문자 (예: 1~100, 105~110  /  본문 1~100 / 복습 1~20  /  H30~I70)" value="${editA?esc(editA.probLabel||''):''}">
         </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px">
+          <span style="font-size:12px;color:var(--text-muted)">풀 문제</span>
+          ${[['','전체'],['odd','홀수번만'],['even','짝수번만']].map(([v,l])=>`
+            <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;border:1.5px solid var(--border);border-radius:8px;padding:5px 10px;cursor:pointer;background:var(--surface)">
+              <input type="radio" name="hw-parity" value="${v}" ${((editA&&editA.probParity)||'')===v?'checked':''}> ${l}
+            </label>`).join('')}
+          <span style="font-size:11px;color:var(--text-muted)">홀수/짝수를 고르면 학생 화면 번호 그리드에도 그 번호만 나와요</span>
+        </div>
         <div style="font-size:11px;color:var(--text-muted);margin-top:6px">· 한 구간(1~20)이면 위 칸 → 번호 그리드. 아래 칸: 이어지는 여러 구간은 <strong>쉼표</strong>(1~100, 105~110). <strong>번호가 리셋(1~100 하다 다시 1~20)되면 슬래시 <code>/</code></strong>로 나눠요 — 이름 붙이려면 <code>본문 1~100 / 복습 1~20</code>. 문자(H30~I70)도 가능. 문항 많아도 학생은 번호 눌러서 선택.</div>
       </div>
       <div class="form-group" style="max-width:180px"><label class="form-label">최대 사진 수 <span style="font-size:11px;color:var(--text-muted)">(범위 미입력 시)</span></label><input class="form-input" id="hw-photos" type="number" value="${editA?(editA.maxPhotos||30):30}" min="1" max="30"></div>
@@ -2698,11 +2706,17 @@ function oapRosterHtml(a, subs, sts){
     }).join('')}</tbody>
   </table></div></div>`;
 }
+// 🔢 '홀수번만/짝수번만' 선택값 — 없으면 '' (전체)
+function hwParityValue(){
+  const el=document.querySelector('input[name="hw-parity"]:checked');
+  const v=el?el.value:'';
+  return (v==='odd'||v==='even')?v:'';
+}
 async function doSaveAsgn(){
   const classId=document.getElementById('hw-cls').value,title=document.getElementById('hw-title').value.trim();
   if(!classId||!title){showToast('반과 제목을 입력해주세요','error');return;}
   const cls=CLASSES.find(c=>c.id===classId);
-  const data={classId,className:cls?.name||'',title,content:document.getElementById('hw-content').value.trim(),textbook:document.getElementById('hw-textbook').value.trim(),startDate:document.getElementById('hw-start').value,dueDate:document.getElementById('hw-due').value,maxPhotos:parseInt(document.getElementById('hw-photos').value)||30,probStart:parseInt(document.getElementById('hw-pstart').value)||null,probEnd:parseInt(document.getElementById('hw-pend').value)||null,probLabel:(document.getElementById('hw-plabel').value||'').trim()||null};
+  const data={classId,className:cls?.name||'',title,content:document.getElementById('hw-content').value.trim(),textbook:document.getElementById('hw-textbook').value.trim(),startDate:document.getElementById('hw-start').value,dueDate:document.getElementById('hw-due').value,maxPhotos:parseInt(document.getElementById('hw-photos').value)||30,probStart:parseInt(document.getElementById('hw-pstart').value)||null,probEnd:parseInt(document.getElementById('hw-pend').value)||null,probLabel:(document.getElementById('hw-plabel').value||'').trim()||null,probParity:hwParityValue()};
   try{
     if(hwEditId){
       await updateAssignment(hwEditId,data); hwEditId=null;
