@@ -1469,6 +1469,15 @@ function parityKeep(nums, parity){
   return nums.filter(n=>{ const v=parseInt(n,10); return isNaN(v) ? true : (Math.abs(v)%2)===want; });
 }
 function parityLabel(parity){ return parity==='odd'?'홀수번만':(parity==='even'?'짝수번만':''); }
+// 구간 글자 안에 적힌 '홀수 / 짝수'를 떼어냅니다 — 구간마다 다르게 낼 수 있게.
+//   "17~114 홀수" → {parity:'odd', rest:'17~114'} · 없으면 {parity:null, rest:원문}
+function segParity(txt){
+  const s=String(txt==null?'':txt);
+  const m=s.match(/(홀수|짝수|odd|even)\s*(번)?\s*(만)?/i);
+  if(!m) return { parity:null, rest:s.trim() };
+  const parity=/홀|odd/i.test(m[1]) ? 'odd' : 'even';
+  return { parity, rest:(s.slice(0,m.index)+s.slice(m.index+m[0].length)).trim() };
+}
 function oapGridNums(a){
   const nums=[];
   if(a.probStart&&a.probEnd){ for(let n=a.probStart;n<=a.probEnd&&n-a.probStart<500;n++) nums.push(n); }
@@ -1510,28 +1519,32 @@ function oapSections(a){
   const lbl=(a.probLabel||'').trim();
   const circ='①②③④⑤⑥⑦⑧⑨⑩';
   const par=a.probParity;
-  const keep=secs=>secs.map(s=>({...s, nums:parityKeep(s.nums, par)})).filter(s=>s.nums.length);
+  // 구간별 홀짝: 그 구간에 '홀수'/'짝수'를 적으면 그 구간에만 적용, 안 적으면 위 라디오값을 따릅니다.
+  //   예) "17~114 홀수 / 91~136 / 1~15"  → 첫 구간만 홀수, 나머지는 전부
+  const cut=seg=>{ const sp=segParity(seg); return { par: sp.parity||par, txt: sp.rest, tagged: !!sp.parity }; };
   if(lbl && lbl.includes('/')){
-    return keep(lbl.split('/').map((seg,i)=>{
-      seg=seg.trim();
-      const pf=prefixSeg(seg);                                   // 문자 접두 구간 우선
-      if(pf) return { name:pf.prefix, prefix:pf.prefix, sep:'', nums:pf.nums };
-      let name='', rangeTxt=seg;
-      const nm=seg.match(/^([^\d]*?)\s*([\d].*)$/);   // 앞 비숫자=이름, 나머지=범위 (콜론 유무 무관)
+    return lbl.split('/').map((seg,i)=>{
+      const c=cut(seg.trim());
+      const mk=o=>({ ...o, parity:c.par, parityTag:c.tagged, nums:parityKeep(o.nums, c.par) });
+      const pf=prefixSeg(c.txt);                                 // 문자 접두 구간 우선
+      if(pf) return mk({ name:pf.prefix, prefix:pf.prefix, sep:'', nums:pf.nums });
+      let name='', rangeTxt=c.txt;
+      const nm=c.txt.match(/^([^\d]*?)\s*([\d].*)$/);   // 앞 비숫자=이름, 나머지=범위 (콜론 유무 무관)
       if(nm){ name=(nm[1]||'').replace(/[:：]/g,'').trim(); rangeTxt=nm[2].trim(); }
       const pf2=prefixSeg(rangeTxt);                             // "발전 A1~A20"처럼 이름 뒤가 문자구간
-      if(pf2) return { name:name||pf2.prefix, prefix:pf2.prefix, sep:'', nums:pf2.nums };
+      if(pf2) return mk({ name:name||pf2.prefix, prefix:pf2.prefix, sep:'', nums:pf2.nums });
       const prefix = name || (circ[i]||('구간'+(i+1)));
-      return { name:prefix, prefix, sep:'-', nums:parseRanges(rangeTxt) };
-    }).filter(s=>s.nums.length));
+      return mk({ name:prefix, prefix, sep:'-', nums:parseRanges(rangeTxt) });
+    }).filter(s=>s.nums.length);
   }
-  const pf=prefixSeg(lbl);                                       // '/' 없는 단일 문자 접두 구간
-  if(pf) return keep([{ name:pf.prefix, prefix:pf.prefix, sep:'', nums:pf.nums }]);
+  const one=cut(lbl);
+  const pf=prefixSeg(one.txt);                                   // '/' 없는 단일 문자 접두 구간
+  if(pf){ const nn=parityKeep(pf.nums, one.par); return nn.length?[{ name:pf.prefix, prefix:pf.prefix, sep:'', nums:nn, parity:one.par, parityTag:one.tagged }]:[]; }
   let nums=[];
   if(a.probStart&&a.probEnd){ for(let n=a.probStart;n<=a.probEnd&&n-a.probStart<500;n++) nums.push(n); }
-  if(lbl && /^[\d\s,~\-]+$/.test(lbl)){ nums=nums.concat(parseRanges(lbl)); }
-  nums=parityKeep([...new Set(nums)].sort((x,y)=>x-y), par);
-  return nums.length ? [{ name:'', prefix:'', sep:'-', nums }] : [];
+  if(one.txt && /^[\d\s,~\-]+$/.test(one.txt)){ nums=nums.concat(parseRanges(one.txt)); }
+  nums=parityKeep([...new Set(nums)].sort((x,y)=>x-y), one.par);
+  return nums.length ? [{ name:'', prefix:'', sep:'-', nums, parity:one.par, parityTag:one.tagged }] : [];
 }
 function renderOapCard(a){
   const wrongNos = a.wrongNos||[]; const corrections = a.corrections||{}; const oapOk=a.oapOk||{}; const oapRedo=a.oapRedo||{}; const oapOffline=a.oapOffline||{};
@@ -1580,7 +1593,8 @@ function renderOapCard(a){
     let gridHtml='';
     if(showGrid){
       sections.forEach(sec=>{
-        if(multi && sec.name) gridHtml+=`<div style="font-size:12px;font-weight:800;color:var(--primary);margin:10px 0 4px">📑 ${sec.name}</div>`;
+        const pl=parityLabel(sec.parity);   // 구간마다 홀수/짝수가 다를 수 있어 구간 제목에 같이 보여줍니다
+        if(multi && (sec.name||pl)) gridHtml+=`<div style="font-size:12px;font-weight:800;color:var(--primary);margin:10px 0 4px">📑 ${sec.name||''}${pl?` <span style="font-weight:600">· ${pl}</span>`:''}</div>`;
         let btns=''; sec.nums.forEach(n=>{ const label=sec.prefix?`${sec.prefix}${sec.sep!=null?sec.sep:'-'}${n}`:String(n);
           const disp=(sec.prefix&&sec.sep==='')?label:n;   // 문자 접두 구간은 'A1'을 그대로 표시
           btns+=`<button type="button" class="oapnum" data-no="${label}" onclick="toggleWrong('${a.id}',this)">${disp}</button>`; });
