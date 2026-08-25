@@ -309,18 +309,30 @@
 
     const ref = db.collection('config').doc('teacher');
     const doc = await ref.get();
+    const h = await hashPw('teacher', pw);   // 학생과 같은 방식 — DB엔 해시만 남김
+    const d = doc.exists ? (doc.data()||{}) : null;
 
-    if(!doc.exists){
-      // 최초 설정: 입력한 비밀번호를 선생님 비밀번호로 저장
-      await ref.set({ password: pw, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+    // 최초 설정(문서가 없거나 비어 있음): 해시로 저장
+    if(!d || (!d.pwHash && !d.password)){
+      await ref.set({ pwHash: h, createdAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge:true });
       enterTeacher('선생님 비밀번호가 설정되었어요! 🎉');
       return;
     }
-    if(doc.data().password === pw){
-      enterTeacher('환영합니다, 혜빈쌤!');
-    } else {
-      showToast('비밀번호가 틀렸어요','error');
+    // 이미 해시로 저장된 경우
+    if(d.pwHash){
+      if(d.pwHash === h) enterTeacher('환영합니다, 혜빈쌤!');
+      else showToast('비밀번호가 틀렸어요','error');
+      return;
     }
+    // 예전에 평문으로 저장된 비밀번호 — 맞으면 바로 해시로 바꾸고 평문은 지웁니다 (한 번만 일어나요)
+    if(d.password === pw){
+      try{
+        await ref.update({ pwHash: h, password: firebase.firestore.FieldValue.delete() });
+      }catch(e){ console.warn('비밀번호 해시 전환 실패(로그인은 계속):', e && e.message); }
+      enterTeacher('환영합니다, 혜빈쌤!');
+      return;
+    }
+    showToast('비밀번호가 틀렸어요','error');
   }
   function enterTeacher(msg){
     localStorage.setItem('bm_role','teacher');
