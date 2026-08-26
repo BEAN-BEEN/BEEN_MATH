@@ -206,6 +206,17 @@
   </div>
 </div>
 
+<!-- 📸 숙제 캡처용 보기 — 학생에게 그대로 캡처해 보내는 화면 (캡처 영역엔 버튼을 넣지 않음) -->
+<div id="hwShotModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.72);z-index:1700;align-items:flex-start;justify-content:center;overflow:auto;padding:16px" onclick="if(event.target===this)closeHwShot()">
+  <div style="width:100%;max-width:430px">
+    <div id="hwShotControls" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px"></div>
+    <div id="hwShotSheet" style="background:#fff;border-radius:16px;overflow:hidden"></div>
+    <div style="text-align:center;padding:12px 0 24px">
+      <button onclick="closeHwShot()" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:9px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">닫기</button>
+    </div>
+  </div>
+</div>
+
 <div class="app-layout">
   <nav class="sidebar" id="sidebar">
     <div class="sidebar-logo">
@@ -2564,6 +2575,7 @@ function rHomework(){
         <button class="btn btn-sm" style="${hwPeriod==='week'?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="hwPeriod='week';rHomework()">📌 이번 주 (${asgn.filter(hwInWeek).length})</button>
         <button class="btn btn-sm" style="${hwPeriod==='past'?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="hwPeriod='past';rHomework()">🗂 지난 숙제 (${asgn.filter(a=>!hwInWeek(a)).length})</button>
         <button class="btn btn-sm" style="${hwPeriod==='all'?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="hwPeriod='all';rHomework()">전체 (${asgn.length})</button>
+        <button class="btn btn-outline btn-sm" onclick="openHwShot('')" title="학생에게 캡처해서 보낼 화면">📸 캡처용 보기</button>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <span style="font-size:12px;color:var(--text-muted)">묶음:</span>
@@ -2597,6 +2609,7 @@ function rHomework(){
               <span style="font-size:12px;color:var(--text-muted)">제출 ${subs.length}/${sts.length} · 기간 ${a.startDate||'?'}~${a.dueDate||'-'}</span>
               ${missing>0?`<button class="btn btn-orange btn-sm" onclick="doRemind('${a.classId}','${(a.title||'').replace(/'/g,'')}')">🔔 독촉 알림</button>`:''}
               <button class="btn btn-outline btn-sm" onclick="hwOpenId=hwOpenId==='${a.id}'?null:'${a.id}';rHomework()">${isOpen?'접기':'현황 보기'}</button>
+              <button class="btn btn-outline btn-sm" onclick="openHwShot('${a.classId}')" title="이 반 숙제를 캡처용으로 보기">📸</button>
               <button class="btn btn-outline btn-sm" onclick="doDupAsgn('${a.id}')" title="같은 내용으로 새 과제 만들기">📄 복제</button>
               <button class="btn btn-outline btn-sm" onclick="hwEditId='${a.id}';rHomework();window.scrollTo({top:0,behavior:'smooth'})">✏️ 수정</button>
               <button class="btn btn-red btn-sm" onclick="doDelAsgn('${a.id}','${(a.title||'').replace(/'/g,'')}')">삭제</button>
@@ -2705,6 +2718,78 @@ function oapRosterHtml(a, subs, sts){
       return `<tr><td><strong>${st.name}</strong></td><td>${subCell}</td><td>${statusCell}</td><td style="font-size:12px">${wrongCell}</td><td>${doneCell}</td><td>${photoCell}</td><td>${manageCell}</td></tr>`;
     }).join('')}</tbody>
   </table></div></div>`;
+}
+// ================================================================
+// 📸 숙제 캡처용 보기 — 학생이 "숙제 캡처해서 보내주세요" 할 때 그대로 찍어 보내는 화면.
+//   관리용 화면(제출현황·버튼)은 빼고 제목·교재·범위·내용·마감일만 큼직하게.
+// ================================================================
+let hwShotClassId='', hwShotScope='week';
+const HW_SHOT_SCOPES=[['week','이번 주'],['next','앞으로 낼 것'],['all','전체']];
+function openHwShot(classId){
+  hwShotClassId = classId || (CLASSES[0]&&CLASSES[0].id) || '';
+  hwShotScope='week';
+  renderHwShot();
+  const m=document.getElementById('hwShotModal'); if(m) m.style.display='flex';
+}
+function closeHwShot(){ const m=document.getElementById('hwShotModal'); if(m) m.style.display='none'; }
+function setHwShot(k,v){ if(k==='cls') hwShotClassId=v; else hwShotScope=v; renderHwShot(); }
+// 캡처에 담을 숙제 고르기
+function hwShotList(classId, scope){
+  const today=new Date().toISOString().slice(0,10);
+  const list=getAssignments().filter(a=>a.classId===classId);
+  const dOf=a=>a.dueDate||a.startDate||a.createdAt||'';
+  let out=list;
+  if(scope==='week') out=list.filter(a=>typeof hwInWeek==='function'?hwInWeek(a):true);
+  else if(scope==='next') out=list.filter(a=>!a.dueDate || a.dueDate>=today);
+  return out.slice().sort((a,b)=>(dOf(a)||'').localeCompare(dOf(b)||''));
+}
+// 마감일을 '9월 1일 (월)'로 — 캡처해서 볼 때 요일이 있어야 헷갈리지 않음
+function hwShotDate(ds){
+  if(!ds) return '마감일 없음';
+  const d=new Date(ds+'T00:00:00'); if(isNaN(d.getTime())) return ds;
+  return `${d.getMonth()+1}월 ${d.getDate()}일 (${['일','월','화','수','목','금','토'][d.getDay()]})`;
+}
+// 범위 한 줄 — 시작~끝 / 자유 라벨 + 홀짝
+function hwShotRange(a){
+  const base=(a.probStart&&a.probEnd)?`${a.probStart}~${a.probEnd}번`:(a.probLabel||'');
+  const par=a.probParity==='odd'?'홀수번만':(a.probParity==='even'?'짝수번만':'');
+  return [base, par].filter(Boolean).join(' · ');
+}
+function renderHwShot(){
+  const esc=s=>String(s==null?'':s).replace(/</g,'&lt;');
+  const cls=CLASSES.find(c=>c.id===hwShotClassId);
+  const ctl=document.getElementById('hwShotControls');
+  if(ctl){
+    ctl.innerHTML=
+      `<select onchange="setHwShot('cls',this.value)" style="padding:7px 9px;border-radius:8px;border:none;font-size:13px;font-family:inherit;max-width:200px">
+        ${CLASSES.map(c=>`<option value="${c.id}" ${c.id===hwShotClassId?'selected':''}>${esc(c.name)}</option>`).join('')}
+      </select>`
+      + HW_SHOT_SCOPES.map(([v,l])=>`<button onclick="setHwShot('scope','${v}')" style="border:none;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;${hwShotScope===v?'background:#5B6CF5;color:#fff':'background:rgba(255,255,255,.2);color:#fff'}">${l}</button>`).join('')
+      + `<span style="color:rgba(255,255,255,.75);font-size:11px;margin-left:2px">아래 흰 부분만 캡처해서 보내세요</span>`;
+  }
+  const sheet=document.getElementById('hwShotSheet'); if(!sheet) return;
+  const list=hwShotList(hwShotClassId, hwShotScope);
+  const scopeLbl=(HW_SHOT_SCOPES.find(s=>s[0]===hwShotScope)||[,''])[1];
+  sheet.innerHTML=`
+    <div style="background:linear-gradient(135deg,#5B6CF5,#7C8CF8);color:#fff;padding:16px 18px">
+      <div style="font-size:12px;opacity:.9;font-weight:700">BEEN MATH 숙제</div>
+      <div style="font-size:20px;font-weight:800;margin-top:2px">${esc(anClsLabel(cls&&cls.name))}</div>
+      <div style="font-size:12px;opacity:.9;margin-top:2px">${scopeLbl}${cls&&cls.subject?' · '+esc(cls.subject):''}</div>
+    </div>
+    <div style="padding:14px 16px 18px">
+      ${list.length?list.map(a=>`
+        <div style="border-bottom:1px solid #E2E8F0;padding:13px 0">
+          <div style="display:flex;align-items:baseline;gap:7px;flex-wrap:wrap">
+            <div style="font-size:17px;font-weight:800;color:#1E293B;line-height:1.35">${esc(a.title)}</div>
+          </div>
+          ${a.textbook?`<div style="font-size:13px;color:#5B6CF5;font-weight:700;margin-top:3px">📘 ${esc(a.textbook)}</div>`:''}
+          ${hwShotRange(a)?`<div style="font-size:15px;font-weight:700;color:#1E293B;margin-top:4px">🔢 ${esc(hwShotRange(a))}</div>`:''}
+          ${a.content?`<div style="font-size:14px;color:#334155;line-height:1.55;margin-top:4px;white-space:pre-wrap">${esc(a.content)}</div>`:''}
+          <div style="font-size:13px;font-weight:800;color:#EF4444;margin-top:6px">📅 ${hwShotDate(a.dueDate)}까지</div>
+        </div>`).join('')
+        :`<div style="text-align:center;padding:26px 0;color:#94A3B8;font-size:14px">이 기간에 낸 숙제가 없어요</div>`}
+      <div style="font-size:11px;color:#94A3B8;margin-top:12px;text-align:center">${new Date().getMonth()+1}월 ${new Date().getDate()}일 기준</div>
+    </div>`;
 }
 // 🔢 '홀수번만/짝수번만' 선택값 — 없으면 '' (전체)
 function hwParityValue(){
