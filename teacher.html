@@ -5198,25 +5198,38 @@ function logout(){
   location.href='index.html';
 }
 
-// ===== 3개월 자동삭제 (하루 1회) — 사진 비용 절약 =====
-// 사진: 3개월 지난 제출/답안지 사진을 Storage에서 삭제
-// 기록: 3개월 지난 출석·질문·상담 문서 삭제 (성적 점수는 보존)
+// ===== 오래된 사진 자동정리 (하루 1회) — 사진 비용 절약 =====
+// 원칙: 지우는 건 '아이들이 올린 사진'뿐. 기록은 남긴다.
+//  · 제출·답안지·질문의 사진만 Storage에서 지우고 문서는 그대로 둔다
+//    (제출률·지각률·성적 이력이 사진 때문에 사라지면 안 되니까)
+//  · 학사일정(schoolExams)·공휴일·시즌·진도표 같은 학원 자료는 건드리지 않는다
+//  · 퇴원 6개월 지난 학생만 개인정보 보호 차원에서 통째로 정리한다
 async function pruneOldFirebase(){
   const today=new Date().toISOString().slice(0,10);
   if(localStorage.getItem('bm_lastPrune')===today) return;  // 하루 1회만
   const cutoff=Date.now() - 92*24*60*60*1000;  // 약 3개월
   const delPhotos=async (urls)=>{ if(Array.isArray(urls)) for(const u of urls){ try{ await firebase.storage().refFromURL(u).delete(); }catch(e){} } };
   try{
-    // 숙제 제출: 사진 + 문서 삭제
+    // 숙제 제출: 사진만 지우고 '냈다 / 제때 냈다' 기록은 남긴다
     const subs=await db.collection('submissions').where('ts','<',cutoff).get();
-    for(const d of subs.docs){ await delPhotos(d.data().photos); await d.ref.delete(); }
+    for(const d of subs.docs){
+      const v=d.data();
+      if(v.photosPruned) continue;                       // 이미 정리한 건 건너뜀
+      await delPhotos(v.photos); await delPhotos(v.retryPhotos);
+      await d.ref.update({ photos:[], retryPhotos:[], corrections:{}, photosPruned:true });
+    }
     // 답안지: 사진만 삭제(점수는 보존)
     const es=await db.collection('examSubs').where('ts','<',cutoff).get();
     for(const d of es.docs){ const s=d.data(); if(Array.isArray(s.photos)&&s.photos.length){ await delPhotos(s.photos); await d.ref.update({photos:[]}); } }
-    // 날짜 기록: 출석·질문·상담 문서 삭제
-    for(const col of ['attendance','questions','consultations']){
+    // 질문·상담: 사진만 지우고 글은 남긴다 (출석 기록은 손대지 않음)
+    for(const col of ['questions','consultations']){
       const snap=await db.collection(col).where('ts','<',cutoff).get();
-      for(const d of snap.docs){ await d.ref.delete(); }
+      for(const d of snap.docs){
+        const v=d.data();
+        if(v.photosPruned || !(Array.isArray(v.photos)&&v.photos.length)) continue;
+        await delPhotos(v.photos);
+        await d.ref.update({ photos:[], photosPruned:true });
+      }
     }
     // 🚪 퇴원 6개월(183일) 경과 학생 자동 정리 — 학생 문서 + studentId로 연결된 기록/사진 삭제
     const leaveCut=new Date(Date.now()-183*24*60*60*1000).toISOString().slice(0,10);
