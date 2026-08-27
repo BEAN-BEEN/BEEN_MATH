@@ -2474,7 +2474,7 @@ function rClassroom(){
 // ================================================================
 // HOMEWORK
 // ================================================================
-let hwOpenId=null, hwEditId=null, hwGroupBy='class', hwPeriod='week', hwBoardOpen=false;
+let hwOpenId=null, hwEditId=null, hwGroupBy='date', hwPeriod='week', hwBoardOpen=false;   // 기본은 최신 숙제부터(날짜순)
 let hwSeasonId=null;   // 숙제 관리에서 보고 있는 시즌(null=현재 시즌, '__all'=전체 기간)
 // 숙제 관리에서 고른 시즌 — 없으면 오늘 속한 시즌, '__all'이면 전체
 function hwSelSeason(){ const list=getSeasons(); if(!list.length) return null; if(hwSeasonId==='__all') return null; return list.find(x=>x.id===hwSeasonId) || currentSeason(); }
@@ -2484,20 +2484,34 @@ function thisMonday(){ const n=new Date(); const dow=(n.getDay()+6)%7; n.setDate
 function hwInWeek(a){ const mon=thisMonday(); const s=a.startDate||a.createdAt||''; const d=a.dueDate||''; return (s&&s>=mon) || (d&&d>=mon); }
 function hwPeriodFilter(asgn){ if(hwPeriod==='all') return asgn; const wk=asgn.filter(hwInWeek); return hwPeriod==='week'?wk:asgn.filter(a=>!hwInWeek(a)); }
 // 숙제 목록 정렬: 그룹(반/요일) 기준 + 그룹 안에서 최신순
+// 숙제의 기준 날짜 = 출제일(내준 날). createdAt(등록한 시각)으로 정렬하면 나중에 만든 지난 숙제가 위로 올라와요.
+function hwDateOf(a){ return (a&&(a.startDate||a.createdAt||a.dueDate))||''; }
 function hwOrder(asgn){
   const M={mon:0,tue:1,wed:2,thu:3,fri:4,sat:5,sun:6};
   const wIdx=c=>(M[c]!=null?M[c]:9);
   const arr=[...asgn];
   arr.sort((a,b)=>{
     const ca=CLASSES.find(c=>c.id===a.classId)||{}, cb=CLASSES.find(c=>c.id===b.classId)||{};
+    if(hwGroupBy==='date'){ const d=hwDateOf(b).localeCompare(hwDateOf(a)); if(d) return d; return (b.id>a.id?1:-1); }
     if(hwGroupBy==='day'){ const d=wIdx(clsDays(ca)[0])-wIdx(clsDays(cb)[0]); if(d) return d; }
     else if(a.classId!==b.classId){ const o=(ca.order||0)-(cb.order||0); if(o) return o; return (a.classId>b.classId?1:-1); }
-    return (b.createdAt||b.startDate||'').localeCompare(a.createdAt||a.startDate||'') || (b.id>a.id?1:-1);
+    return hwDateOf(b).localeCompare(hwDateOf(a)) || (b.id>a.id?1:-1);
   });
   return arr;
 }
-function hwGroupKey(a){ const c=CLASSES.find(x=>x.id===a.classId)||{}; return hwGroupBy==='day' ? (clsDays(c)[0]||'기타') : a.classId; }
+function hwGroupKey(a){
+  if(hwGroupBy==='date') return hwDateOf(a)||'날짜 없음';
+  const c=CLASSES.find(x=>x.id===a.classId)||{};
+  return hwGroupBy==='day' ? (clsDays(c)[0]||'기타') : a.classId;
+}
 function hwGroupHeader(key){
+  if(hwGroupBy==='date'){
+    const d=new Date(key+'T00:00:00');
+    if(isNaN(d.getTime())) return '📆 날짜 없음';
+    const wd=['일','월','화','수','목','금','토'][d.getDay()];
+    const today=new Date().toISOString().slice(0,10);
+    return `📆 ${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 (${wd})${key===today?' <span class="badge b-primary" style="font-size:10px">오늘</span>':''}`;
+  }
   if(hwGroupBy==='day'){ return `📅 ${WD_LABEL[key]?WD_LABEL[key]+'요일반':'요일 미지정'}`; }
   const c=CLASSES.find(x=>x.id===key)||{};
   return `📚 ${c.name||'반 미지정'} <span style="color:var(--text-muted);font-weight:400">${clsDayLabel(c)}${c.slot||''}</span>`;
@@ -2678,10 +2692,11 @@ function rHomework(){
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <span style="font-size:12px;color:var(--text-muted)">묶음:</span>
         <div style="display:inline-flex;background:var(--bg);border-radius:9px;padding:3px">
+          <button class="btn btn-sm" style="${hwGroupBy==='date'?'background:var(--primary);color:#fff':'background:transparent;color:var(--text-muted)'}" onclick="hwGroupBy='date';rHomework()">📆 날짜순</button>
           <button class="btn btn-sm" style="${hwGroupBy==='class'?'background:var(--primary);color:#fff':'background:transparent;color:var(--text-muted)'}" onclick="hwGroupBy='class';rHomework()">📚 반별</button>
           <button class="btn btn-sm" style="${hwGroupBy==='day'?'background:var(--primary);color:#fff':'background:transparent;color:var(--text-muted)'}" onclick="hwGroupBy='day';rHomework()">📅 요일별</button>
         </div>
-        <span style="font-size:12px;color:var(--text-muted)">· 최신순</span>
+        <span style="font-size:12px;color:var(--text-muted)">· 최근 숙제부터</span>
       </div>
     </div>
     ${hwPeriodFilter(asgn).length===0?`<div class="card" style="text-align:center;padding:30px;color:var(--text-muted)">${allAsgn.length===0?'아직 만든 과제가 없어요. 위에서 첫 과제를 만들어보세요!':(asgn.length===0?'이 시즌 구간에 낸 숙제가 없어요. 다른 시즌이나 ‘전체 시즌’을 눌러보세요.':(hwPeriod==='week'?'이번 주에 낸 숙제가 없어요. ‘지난 숙제’ 또는 ‘전체’를 눌러보세요.':'해당하는 숙제가 없어요.'))}</div>`:''}

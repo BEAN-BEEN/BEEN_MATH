@@ -1344,7 +1344,10 @@ function renderHome() {
       const emptyExamMsg=()=>{
         if(!S_SCHOOL) return '학교가 등록 안 됐어요<br><span style="font-size:11px">선생님께 학교를 알려주세요</span>';
         if(!(S_SCHOOL_EXAMS||[]).length) return `${S_SCHOOL} 시험 일정이<br>아직 안 올라왔어요`;
-        return '이번 학기 시험이<br>모두 끝났어요 🎉';
+        // 시험 하나 끝났다고 축하하면 안 돼요 — 대부분은 '다음 시험이 아직 안 올라온' 상태입니다.
+        // 학년이 실제로 마무리되는 12~2월에만 축하 문구를 씁니다.
+        const _m=new Date().getMonth()+1;
+        return (_m>=12||_m<=2) ? '올해 시험이<br>다 끝났어요 🎉' : '다음 시험 일정이<br>아직 안 나왔어요';
       };
       const left = e
         ? box('linear-gradient(135deg,#EF4444,#F97316)', '📕 '+(e.school||'').replace(/</g,'&lt;')+' '+(e.title||'').replace(/</g,'&lt;'),
