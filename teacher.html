@@ -391,10 +391,33 @@ function studentInClassAt(s, cid, d){
   const ids=s.classIds||(s.classId?[s.classId]:[]);
   return ids.includes(cid);
 }
+// 📜 반 이력 보여주기 — '언제부터 언제까지 어느 반'이었는지 한눈에.
+//   숙제가 어느 반 것으로 보일지가 이 기록으로 정해지니 화면에 그대로 드러내 둡니다.
+function classHistoryHtml(s){
+  const hist=Array.isArray(s&&s.classHistory)?s.classHistory:[];
+  const esc=v=>String(v==null?'':v).replace(/</g,'&lt;');
+  const nameOf=id=>{ const c=CLASSES.find(x=>x.id===id); return c?c.name:'(삭제된 반)'; };
+  const rows=hist.slice().sort((a,b)=>String(a.from||'').localeCompare(String(b.from||'')));
+  const enroll=s&&s.enrollDate;
+  if(!rows.length && !enroll) return '';
+  return `<div style="background:var(--bg);border-radius:10px;padding:10px 12px;margin-top:8px">
+    <div style="font-size:12px;font-weight:800;color:var(--text-sub);margin-bottom:5px">📜 소속 이력</div>
+    ${enroll?`<div style="font-size:12px;color:var(--text-muted);margin-bottom:3px">📅 등원 시작 <strong style="color:var(--text)">${esc(enroll)}</strong> <span style="font-size:11px">— 이 날부터 그 반 숙제가 보여요</span></div>`:''}
+    ${(s&&s.statusDate&&studentStatus(s)!=='재원')?`<div style="font-size:12px;color:var(--text-muted);margin-bottom:3px">🚪 ${studentStatus(s)} 시작 <strong style="color:var(--text)">${esc(s.statusDate)}</strong></div>`:''}
+    ${rows.length?rows.map(h=>`<div style="font-size:12px;padding:3px 0;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <span class="chip">${esc(anClsLabel(nameOf(h.classId)))}</span>
+      <span style="color:var(--text-muted)">${esc(h.from||'처음')} ~ ${h.to?esc(h.to)+' 전날까지':'<b style="color:var(--green)">지금</b>'}</span>
+    </div>`).join('')
+      :'<div style="font-size:11px;color:var(--text-muted)">반 이동 기록이 아직 없어요 (지금 반 기준으로 숙제가 보여요)</div>'}
+  </div>`;
+}
 // 숙제 a의 인원 명단 = 출제일에 그 반 소속이던 재원생 (반이동해 나간 학생도 지난 숙제엔 그대로 뜸)
 function hwStudents(a){
   const d=(a&&(a.startDate||a.createdAt||a.dueDate))||'';
-  return STUDENTS_CACHE.filter(s=>isActiveStudent(s) && studentInClassAt(s, a&&a.classId, d));
+  return STUDENTS_CACHE.filter(s=> isActiveStudent(s)
+    && studentInClassAt(s, a&&a.classId, d)
+    // 등원 전에 낸 숙제는 그 학생 몫이 아님 — 학생 화면에도 안 보이므로 명단에서도 빼야 미제출로 잘못 뜨지 않음
+    && !(s.enrollDate && d && d < s.enrollDate));
 }
 
 // 학생 추가/삭제 → Firebase에 저장 (회원가입 없이 선생님이 직접 등록)
@@ -2090,6 +2113,12 @@ function renderEditCard(){
       <div style="display:flex;flex-wrap:wrap;gap:6px">
         ${CLASSES.map(c=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;border:1.5px solid var(--border);border-radius:7px;padding:6px 9px;cursor:pointer"><input type="checkbox" class="es-class-chk" value="${c.id}" ${ids.includes(c.id)?'checked':''}> ${c.name} <span style="color:var(--text-muted)">${clsDayLabel(c)+(c.slot||'')}</span></label>`).join('')}
       </div>
+      <div style="background:var(--primary-light);border-radius:10px;padding:11px 13px;margin-top:10px">
+        <label class="form-label" style="margin-bottom:4px">🔀 반을 바꿨다면 — <strong>언제부터</strong> 새 반인가요?</label>
+        <input class="form-input" id="es-movedate" type="date" value="${new Date().toISOString().slice(0,10)}" style="max-width:200px">
+        <div style="font-size:11px;color:var(--text-muted);margin-top:5px">이 날 <strong>이전에 낸 숙제는 이전 반 것</strong>으로, <strong>이 날부터는 새 반 숙제</strong>가 보여요.<br>미래 날짜를 넣으면 그날 자동으로 옮겨져요(예약). 반 체크를 안 바꾸면 이 날짜는 무시돼요.</div>
+      </div>
+      ${classHistoryHtml(s)}
     </div>
     <div class="form-row-2">
       <div class="form-group"><label class="form-label">학교 <span style="color:var(--text-muted);font-weight:400">(내신 시험 일정 매칭용)</span></label><input class="form-input" id="es-school" value="${s.school||''}" placeholder="예: 송도고등학교"></div>
@@ -2103,7 +2132,11 @@ function renderEditCard(){
       </div>
       <input type="hidden" id="es-status" value="${studentStatus(s)}">
       <input class="form-input" id="es-statusmemo" value="${(s.statusMemo||'').replace(/"/g,'&quot;')}" placeholder="사유·메모 (예: 관양고 학원으로 이동)" style="margin-top:8px">
-      ${s.statusDate&&studentStatus(s)!=='재원'?`<div style="font-size:11px;color:var(--text-muted);margin-top:6px">📅 ${studentStatus(s)} 처리일: ${s.statusDate}</div>`:''}
+      <div style="margin-top:8px">
+        <label class="form-label" style="margin-bottom:4px">📅 휴원·퇴원 시작일 <span style="color:var(--text-muted);font-weight:400">(마지막으로 나온 날 다음 날)</span></label>
+        <input class="form-input" id="es-statusdate" type="date" value="${s.statusDate||new Date().toISOString().slice(0,10)}" style="max-width:200px">
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">‘재원’으로 두면 이 날짜는 저장되지 않아요. 이번 달 요약의 퇴원생 수도 이 날짜로 세요.</div>
+      </div>
     </div>
     <div style="background:var(--bg);border-radius:10px;padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <span style="font-size:13px">🔐 로그인 비밀번호: <strong>${s.pwHash?'설정됨':'아직 미설정'}</strong></span>
@@ -2141,9 +2174,12 @@ async function doSaveEdit(){
   let moveNote='';
   if(removedCls.length||addedCls.length){
     const todayStr=new Date().toISOString().slice(0,10);
-    let moveDate=todayStr;
-    const inp=prompt('반 이동일을 입력하세요 (YYYY-MM-DD).\n· 오늘 이전/오늘 → 바로 이동\n· 미래 날짜 → 그날부터 자동 이동(예약)\n(취소하면 오늘 날짜)', moveDate);
-    if(inp && /^\d{4}-\d{2}-\d{2}$/.test(inp.trim())) moveDate=inp.trim();
+    // 이동일은 폼의 '언제부터 새 반인가요?' 칸에서 가져옵니다 (비어 있으면 오늘)
+    const dEl=document.getElementById('es-movedate');
+    let moveDate=(dEl&&/^\d{4}-\d{2}-\d{2}$/.test(dEl.value)) ? dEl.value : todayStr;
+    const nameOf=id=>{ const c=CLASSES.find(x=>x.id===id); return c?c.name:id; };
+    const summary=[ removedCls.length?`나감: ${removedCls.map(nameOf).join(', ')}`:'', addedCls.length?`들어감: ${addedCls.map(nameOf).join(', ')}`:'' ].filter(Boolean).join(' · ');
+    if(!confirm(`${s.name} 학생 반 이동\n\n${summary}\n적용일: ${moveDate}${moveDate>todayStr?' (그날 자동 이동 예약)':''}\n\n· ${moveDate} 이전 숙제 → 이전 반 것으로 남아요\n· ${moveDate}부터 → 새 반 숙제가 보여요\n\n이대로 저장할까요?`)) return;
     if(moveDate>todayStr){
       // 🔜 예약 반 변경 — 지금은 반을 그대로 두고, 그날이 되면 자동 적용
       patch.classIds=oldClassIds;
@@ -2160,9 +2196,12 @@ async function doSaveEdit(){
     }
   }
   // 휴원/퇴원으로 바뀌면 처리일 자동 기록, 재원 복귀 시 처리일 제거
-  const wasStatus=studentStatus(s);
-  if(status!=='재원'){ if(wasStatus!==status || !s.statusDate) patch.statusDate=new Date().toISOString().slice(0,10); }
-  else { patch.statusDate=''; }
+  // 휴원·퇴원 시작일은 폼에서 직접 고른 날짜로 (자동 오늘 대신 — 실제 마지막 등원일과 다를 수 있어서)
+  if(status!=='재원'){
+    const sdEl=document.getElementById('es-statusdate');
+    patch.statusDate=(sdEl&&/^\d{4}-\d{2}-\d{2}$/.test(sdEl.value)) ? sdEl.value
+      : (s.statusDate || new Date().toISOString().slice(0,10));
+  } else { patch.statusDate=''; }
   try{ await updateStudentFS(editStudentId,patch); editStudentId=null; showToast(`${name} 정보 수정 완료 ✓${status!=='재원'?' · '+status+' 처리됨':''}${moveNote}`,'success'); rStudents(); }
   catch(e){ showToast('수정 실패: '+e.message,'error'); }
 }
@@ -2196,6 +2235,11 @@ function rStudents(){
           <div class="form-group"><label class="form-label">학교 <span style="color:var(--text-muted);font-weight:400">(내신 시험 일정 매칭용)</span></label><input class="form-input" id="ns-school" placeholder="예: 송도고등학교"></div>
           <div class="form-group"><label class="form-label">학부모 연락처</label><input class="form-input" id="ns-parent" placeholder="010-0000-0000"></div>
         </div>
+        <div class="form-group" style="background:var(--primary-light);border-radius:10px;padding:11px 13px">
+          <label class="form-label" style="margin-bottom:4px">📅 등원 시작일 <span style="color:var(--text-muted);font-weight:400">(이 학생이 처음 나온 날)</span></label>
+          <input class="form-input" id="ns-enroll" type="date" value="${new Date().toISOString().slice(0,10)}" style="max-width:200px">
+          <div style="font-size:11px;color:var(--text-muted);margin-top:5px">이 날짜 <strong>이전에 낸 숙제</strong>는 이 학생 화면에 안 보여요. 중간에 들어온 학생이 예전 숙제까지 떠안지 않게 하는 장치예요.</div>
+        </div>
         <div class="btn-row">
           <button class="btn btn-primary" onclick="doAddSt()">등록하기</button>
           <button class="btn btn-outline" onclick="showAdd=false;rStudents()">취소</button>
@@ -2223,6 +2267,7 @@ function renderStudentRows(){
             <td>${pushOn(s)?'<span class="badge b-green">🔔 켬</span>':'<span class="badge b-gray" title="학생이 앱에서 알림 켜기를 눌러야 해요">🔕 꺼짐</span>'}</td>
             <td>${statusBadge(st)}${st!=='재원'&&s.statusMemo?`<div style="font-size:11px;color:var(--text-muted);margin-top:2px">${s.statusMemo}</div>`:''}</td>
             <td>${classNamesOf(s).map(n=>`<span class="chip" style="margin:1px 2px">${n}</span>`).join('')||'-'}
+              ${s.enrollDate?`<div style="font-size:10px;color:var(--text-muted);margin-top:3px">📅 ${s.enrollDate}부터</div>`:''}
               ${s.pendingMove?`<div style="font-size:10px;color:var(--orange);font-weight:700;margin-top:3px">🔜 ${s.pendingMove.date}부터 ${(s.pendingMove.classNames||[]).join(', ')||'반 변경'}
                 <span onclick="doCancelPendingMove('${s.id}')" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);font-weight:400">취소</span></div>`:''}</td>
             <td>${s.phone||'-'}</td>
@@ -2243,10 +2288,13 @@ async function doAddSt(){
   if(!name||!phone){showToast('이름과 핸드폰 번호를 입력해주세요','error');return;}
   const last4=phone.replace(/[^0-9]/g,'').slice(-4);
   if(last4.length<4){showToast('핸드폰 번호를 정확히 입력해주세요','error');return;}
+  const enrollDate=(document.getElementById('ns-enroll').value||'')||new Date().toISOString().slice(0,10);
+  // 등원일부터 이 반 소속으로 기록해 둡니다 — 그래야 그 전 숙제가 안 딸려옵니다
+  const classHistory=classIds.map(id=>({classId:id, from:enrollDate, to:''}));
   try{
-    await addStudentFS({ name, phone, phoneLast4:last4, classIds, classNames, parentPhone, school, status:'재원', enrollDate:new Date().toISOString().slice(0,10) });
+    await addStudentFS({ name, phone, phoneLast4:last4, classIds, classNames, parentPhone, school, status:'재원', enrollDate, classHistory });
     showAdd=false;
-    showToast(`${name} 학생 등록 완료! 로그인: 이름 + ${last4}`,'success');
+    showToast(`${name} 학생 등록 완료! ${enrollDate}부터 · 로그인: 이름 + ${last4}`,'success');
     rStudents();
   }catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }

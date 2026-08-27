@@ -759,7 +759,8 @@ function memberAtDate(cid, d){
 function getAssignments(){
   const today = new Date().toISOString().slice(0,10);
   return S_ASSIGNMENTS.filter(a=>{
-    const d = a.startDate || a.createdAt || '';
+    // 기준일은 선생님 화면(hwStudents)과 똑같이 — 두 화면의 명단이 어긋나지 않게
+    const d = a.startDate || a.createdAt || a.dueDate || '';
     // 반이동: 숙제 출제일에 그 반 소속이었나 (이력 없으면 현재 소속 기준)
     if(!memberAtDate(a.classId, d)) return false;
     // 등록일(enrollDate) 이전에 낸 숙제는 신입에게 안 보임
