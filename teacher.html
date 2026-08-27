@@ -2050,11 +2050,26 @@ function rDashboard(){
    </div>`;
   applyDashLayout();
 }
-// 🖥 화면 넓으면 3단(좌·중앙·우), 좁으면 1단
+// 🖥 화면 폭에 따라 3단 / 2단 / 1단.
+//    좁아질수록 '오늘 수업'(dashMain)이 넓은 칸·맨 위로 오게 합니다.
+//    (달력·요약이 넓은 칸을 차지하고 수업이 눌리던 문제)
 function applyDashLayout(){
   const g=document.getElementById('dashGrid'); if(!g) return;
   const w=g.clientWidth||window.innerWidth;
-  g.style.gridTemplateColumns = w>=1280 ? '300px minmax(0,1fr) 320px' : (w>=900 ? 'minmax(0,1fr) 320px' : 'minmax(0,1fr)');
+  const L=document.getElementById('dashLeft');
+  const M=document.getElementById('dashMain');
+  const R=document.getElementById('dashRight');
+  const ord=(el,o)=>{ if(el) el.style.order=o; };
+  if(w>=1280){
+    g.style.gridTemplateColumns='300px minmax(0,1fr) 320px';
+    ord(L,1); ord(M,2); ord(R,3);            // 넓으면 좌·중앙·우 그대로
+  } else if(w>=900){
+    g.style.gridTemplateColumns='minmax(0,1fr) 320px';
+    ord(M,1); ord(R,2); ord(L,3);            // 수업이 넓은 칸, 달력은 아래 줄로
+  } else {
+    g.style.gridTemplateColumns='minmax(0,1fr)';
+    ord(M,1); ord(R,2); ord(L,3);            // 한 줄이면 수업이 맨 위
+  }
 }
 window.addEventListener('resize', function(){ if(document.getElementById('dashGrid')) applyDashLayout(); });
 // 🩹 결석생 — 결석 명단 + 영상 발송 체크만
