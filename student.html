@@ -724,6 +724,21 @@ async function loadStudentData(onFirstPaint){
   catch(e){ S_NOTICES=[]; }
 }
 
+// 🔁 내가 바꾼 것만 다시 읽기 — 사진 한 장 올릴 때마다 전 컬렉션을 다시 읽던 걸 줄입니다.
+//    (Firestore는 문서 1건당 읽기 1회 = 비용. 숙제 하나 냈다고 반·영상·자료까지 다시 받을 이유가 없어요)
+async function refreshMine(what){
+  const sid=STUDENT.id; if(!sid) return;
+  const want=k=>!what || what===k || (Array.isArray(what)&&what.indexOf(k)>=0);
+  const mine=c=>db.collection(c).where('studentId','==',sid).get();
+  const jobs=[];
+  if(want('subs'))      jobs.push(mine('submissions').then(s=>{ S_SUBMISSIONS=s.docs.map(d=>({id:d.id,...d.data()})); }));
+  if(want('reviews'))   jobs.push(mine('reviewSubs').then(s=>{ S_REVIEWSUBS=s.docs.map(d=>({id:d.id,...d.data()})); }));
+  if(want('mocks'))     jobs.push(mine('mockSubs').then(s=>{ S_MOCKSUBS=s.docs.map(d=>({id:d.id,...d.data()})); }));
+  if(want('exams'))     jobs.push(mine('examSubs').then(s=>{ S_EXAMSUBS=s.docs.map(d=>({id:d.id,...d.data()})); }));
+  if(want('questions')) jobs.push(mine('questions').then(s=>{ S_QUESTIONS=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')); }));
+  try{ await Promise.all(jobs); }catch(e){ console.warn('새로고침 실패(무시):', e && e.message); }
+}
+
 // 시험 = Firebase 시험 + 내 답안/점수 상태 합치기
 function getExams(){
   return S_EXAMS.map(e=>{
@@ -743,7 +758,7 @@ async function submitExamAnswer(examId){
     studentId:STUDENT.id, studentName:STUDENT.name,
     submittedAt:new Date().toLocaleString('ko-KR'), score:null, comment:'', ts:Date.now()
   });
-  await loadStudentData();
+  await refreshMine('exams');
 }
 
 // 반이동 이력 기준: 숙제 출제일 d에 학생이 반 cid 소속이었는지
@@ -957,7 +972,7 @@ async function submitHomework(assignmentId) {
     const ref=await db.collection('submissions').add(payload);
     S_SUBMISSIONS.push({ id:ref.id, ...payload });   // 저장 즉시 로컬 반영 → 새로고침이 느리거나 실패해도 '제출 완료' 표시됨
   }
-  try{ await loadStudentData(); }catch(e){ console.warn('제출 후 새로고침 실패(무시):', e); }
+  try{ await refreshMine('subs'); }catch(e){ console.warn('제출 후 새로고침 실패(무시):', e); }
   return failN;
 }
 // ✋ 사진 없이 교실에서 직접 검사받기 요청
@@ -973,7 +988,7 @@ async function submitHomeworkOffline(assignmentId) {
     const ref=await db.collection('submissions').add(payload);
     S_SUBMISSIONS.push({ id:ref.id, ...payload });
   }
-  try{ await loadStudentData(); }catch(e){ console.warn('신청 후 새로고침 실패(무시):', e); }
+  try{ await refreshMine('subs'); }catch(e){ console.warn('신청 후 새로고침 실패(무시):', e); }
 }
 // 🗑 제출 취소 — 선생님이 확인하기 전이면 학생이 스스로 무를 수 있어요 (사진도 함께 정리)
 async function submitHomeworkCancel(subId){
@@ -983,7 +998,7 @@ async function submitHomeworkCancel(subId){
     if(d && Array.isArray(d.photos)){ for(const u of d.photos){ try{ await firebase.storage().refFromURL(u).delete(); }catch(e){} } }
   }catch(e){}
   await db.collection('submissions').doc(subId).delete();
-  await loadStudentData();
+  await refreshMine('subs');
 }
 // ✏️ 오답 고쳐서 다시 제출
 async function submitHomeworkRetry(subId, assignmentId){
@@ -991,7 +1006,7 @@ async function submitHomeworkRetry(subId, assignmentId){
   let photos=[];
   if(fi && fi.files && fi.files.length){ photos=await uploadPhotos(fi.files, 'submissions/'+assignmentId+'/retry'); }
   await db.collection('submissions').doc(subId).update({ retryPhotos:photos, retryDone:true, retrySubmittedAt:new Date().toLocaleString('ko-KR') });
-  await loadStudentData();
+  await refreshMine('subs');
 }
 // 질문 남기기 → Firebase 저장 (선생님이 바로 봐요)
 async function submitQuestion(data) {
@@ -1001,7 +1016,7 @@ async function submitQuestion(data) {
     status: 'pending', aiHint: null, teacherAnswer: null,
     createdAt: new Date().toISOString().slice(0,10), ts: Date.now()
   });
-  await loadStudentData();
+  await refreshMine('questions');
 }
 async function submitConsultation(data) {
   await db.collection('consultations').add({
@@ -1651,7 +1666,7 @@ async function saveWrongNos(aid, nos){
   const base={ wrongNos:nos, oapType:true, corrections:(exist&&exist.corrections)||{}, rejected:false, rejectReason:'', submittedAt:new Date().toLocaleString('ko-KR'), ts:Date.now() };
   if(exist){ await db.collection('submissions').doc(exist.id).update(base); }
   else{ await db.collection('submissions').add({ assignmentId:aid, assignmentTitle:a?a.title:'', classId:a?a.classId:'', className:a?a.className:'', studentId:STUDENT.id, studentName:STUDENT.name, ...base }); }
-  await loadStudentData();
+  await refreshMine('subs');
 }
 // 라벨 정렬 — 둘 다 숫자면 숫자 순, 아니면 문자 순
 function cmpLabel(a,b){ const na=parseFloat(a),nb=parseFloat(b); const aNum=/^\d+$/.test(a),bNum=/^\d+$/.test(b);
@@ -1689,7 +1704,7 @@ async function doUploadCorrection(subId, aid, no){
     const redo=Object.assign({}, sub&&sub.oapRedo); delete redo[no]; // 다시 올렸으니 재오답 표시 해제
     const off=Object.assign({}, sub&&sub.oapOffline); delete off[no]; // 사진 올렸으니 직접검사 표시 해제
     await db.collection('submissions').doc(subId).update({corrections:corr, oapRedo:redo, oapOffline:off});
-    await loadStudentData();
+    await refreshMine('subs');
     const s2=S_SUBMISSIONS.find(s=>s.id===subId);
     const all=(s2.wrongNos||[]).map(String).every(n=>((s2.corrections&&s2.corrections[n])||(s2.oapOffline&&s2.oapOffline[n]))&&!(s2.oapRedo&&s2.oapRedo[n]));
     if(all){ launchConfetti(); showToast('오답 다 처리했어요! 선생님 확인을 기다려요 🎉','success'); } else showToast(no+' 고친 사진 등록 ✓','success');
@@ -1702,7 +1717,7 @@ async function doOfflineCorr(subId, aid, n){
   const sub=S_SUBMISSIONS.find(s=>s.id===subId); if(!sub) return;
   const off=Object.assign({}, sub.oapOffline); off[n]=true;
   const redo=Object.assign({}, sub.oapRedo); delete redo[n];
-  try{ await db.collection('submissions').doc(subId).update({oapOffline:off, oapRedo:redo}); await loadStudentData(); renderSection(currentSection);
+  try{ await db.collection('submissions').doc(subId).update({oapOffline:off, oapRedo:redo}); await refreshMine('subs'); renderSection(currentSection);
     showToast('✋ 직접 검사 요청! 보충/수업 때 선생님께 보여주세요','success'); }
   catch(e){ showToast('실패: '+e.message,'error'); }
 }
@@ -1710,13 +1725,13 @@ async function doCancelOffline(subId, aid, n){
   n=String(n);
   const sub=S_SUBMISSIONS.find(s=>s.id===subId); if(!sub) return;
   const off=Object.assign({}, sub.oapOffline); delete off[n];
-  try{ await db.collection('submissions').doc(subId).update({oapOffline:off}); await loadStudentData(); renderSection(currentSection); }
+  try{ await db.collection('submissions').doc(subId).update({oapOffline:off}); await refreshMine('subs'); renderSection(currentSection); }
   catch(e){ showToast('실패: '+e.message,'error'); }
 }
 async function doResetWrong(subId, aid){
   if(!confirm('틀린 문제 번호를 다시 입력할까요?\n(이미 올린 고친 사진도 초기화돼요)')) return;
   clearPendingWrong(aid);
-  try{ await db.collection('submissions').doc(subId).update({wrongNos:null, corrections:{}, oapOk:{}, oapRedo:{}}); await loadStudentData(); renderSection(currentSection); }
+  try{ await db.collection('submissions').doc(subId).update({wrongNos:null, corrections:{}, oapOk:{}, oapRedo:{}}); await refreshMine('subs'); renderSection(currentSection); }
   catch(e){ showToast('실패: '+e.message,'error'); }
 }
 
@@ -1826,7 +1841,7 @@ async function submitReviewPhoto(rid, no){
     const base={ photos, submittedAt:new Date().toLocaleString('ko-KR'), ts:Date.now() };
     if(exist){ await db.collection('reviewSubs').doc(exist.id).update(base); }
     else{ await db.collection('reviewSubs').add({ reviewId:rid, reviewTitle:r?r.title:'', classId:r?r.classId:'', className:r?r.className:'', studentId:STUDENT.id, studentName:STUDENT.name, checked:false, ...base }); }
-    await loadStudentData();
+    await refreshMine('reviews');
     const nums=(r&&r.nums)||[];
     const s2=S_REVIEWSUBS.find(s=>s.reviewId===rid);
     const all=nums.length>0 && nums.every(n=>s2&&s2.photos&&s2.photos[n]);
@@ -1983,7 +1998,7 @@ async function doDeleteSubPhoto(subId, idx){
   try{
     await db.collection('submissions').doc(subId).update({photos});
     try{ if(url) await firebase.storage().refFromURL(url).delete(); }catch(e){}   // 스토리지에서도 정리(용량)
-    await loadStudentData(); renderSection(currentSection);
+    await refreshMine('subs'); renderSection(currentSection);
     showToast('사진을 지웠어요','warning');
   }catch(e){ showToast('삭제 실패: '+e.message,'error'); }
 }
@@ -2326,12 +2341,12 @@ async function saveMockSub(mockId, data){
   const payload={ mockId, mockTitle:m?m.title:'', studentId:STUDENT.id, studentName:STUDENT.name, className:STUDENT.className, ts:Date.now(), ...data };
   if(exist){ await db.collection('mockSubs').doc(exist.id).update(payload); }
   else{ await db.collection('mockSubs').add(payload); }
-  await loadStudentData();
+  await refreshMine('mocks');
 }
 async function mockReopen(mockId){
   const exist=S_MOCKSUBS.find(s=>s.mockId===mockId);
   try{
-    if(exist){ await db.collection('mockSubs').doc(exist.id).delete(); await loadStudentData(); }
+    if(exist){ await db.collection('mockSubs').doc(exist.id).delete(); await refreshMine('mocks'); }
     renderGrades();
   }catch(e){ showToast('수정 준비 실패: '+e.message+' — 새로고침(Ctrl+Shift+R) 후 다시 해주세요','error'); }
 }
