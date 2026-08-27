@@ -2099,9 +2099,27 @@ function dashCalendarHtml(){
 // ================================================================
 let showAdd=false, stSearch='', editStudentId=null, stStatusFilter='재원', stPushOnly=false;
 function pushOn(s){ return Array.isArray(s.fcmTokens) && s.fcmTokens.length>0; }
+// 반 이동일 칸은 실제로 반 체크를 바꿨을 때만 나타납니다 (평소엔 숨겨서 폼이 안 복잡하게)
+let esOrigIds=[];
+function esClassChanged(){
+  const now=[...document.querySelectorAll('.es-class-chk:checked')].map(e=>e.value);
+  const changed = now.length!==esOrigIds.length || now.some(id=>!esOrigIds.includes(id));
+  const box=document.getElementById('es-movebox');
+  if(box) box.style.display = changed ? '' : 'none';
+  if(!changed) return;
+  const nameOf=id=>{ const c=CLASSES.find(x=>x.id===id); return c?anClsLabel(c.name):id; };
+  const out=esOrigIds.filter(id=>!now.includes(id)).map(nameOf);
+  const inn=now.filter(id=>!esOrigIds.includes(id)).map(nameOf);
+  const sum=document.getElementById('es-movesum');
+  if(sum) sum.innerHTML=[
+    out.length?`<b style="color:var(--red)">나감</b> ${out.join(', ')}`:'',
+    inn.length?`<b style="color:var(--green)">들어감</b> ${inn.join(', ')}`:''
+  ].filter(Boolean).join(' &nbsp;·&nbsp; ');
+}
 function renderEditCard(){
   const s=getStudents().find(x=>x.id===editStudentId); if(!s) return '';
   const ids=s.classIds||(s.classId?[s.classId]:[]);
+  esOrigIds=ids.slice();   // 이동 여부를 비교할 기준
   return `<div class="card" id="editCard" style="border-left:4px solid var(--orange)">
     <div class="card-title">✏️ ${s.name} 정보 수정</div>
     <div class="form-row-2">
@@ -2111,12 +2129,14 @@ function renderEditCard(){
     <div class="form-group">
       <label class="form-label">반 배정 <span style="color:var(--text-muted);font-weight:400">(반 이동 시 체크 변경 — 지난 기록은 유지돼요)</span></label>
       <div style="display:flex;flex-wrap:wrap;gap:6px">
-        ${CLASSES.map(c=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;border:1.5px solid var(--border);border-radius:7px;padding:6px 9px;cursor:pointer"><input type="checkbox" class="es-class-chk" value="${c.id}" ${ids.includes(c.id)?'checked':''}> ${c.name} <span style="color:var(--text-muted)">${clsDayLabel(c)+(c.slot||'')}</span></label>`).join('')}
+        ${CLASSES.map(c=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;border:1.5px solid var(--border);border-radius:7px;padding:6px 9px;cursor:pointer"><input type="checkbox" class="es-class-chk" value="${c.id}" ${ids.includes(c.id)?'checked':''} onchange="esClassChanged()"> ${c.name} <span style="color:var(--text-muted)">${clsDayLabel(c)+(c.slot||'')}</span></label>`).join('')}
       </div>
-      <div style="background:var(--primary-light);border-radius:10px;padding:11px 13px;margin-top:10px">
-        <label class="form-label" style="margin-bottom:4px">🔀 반을 바꿨다면 — <strong>언제부터</strong> 새 반인가요?</label>
+      <div id="es-movebox" style="display:none;background:var(--primary-light);border-radius:10px;padding:11px 13px;margin-top:10px;border:1.5px solid var(--primary)">
+        <div style="font-size:13px;font-weight:800;color:var(--primary);margin-bottom:3px">🔀 반이 바뀌었어요</div>
+        <div id="es-movesum" style="font-size:12px;margin-bottom:7px"></div>
+        <label class="form-label" style="margin-bottom:4px">언제부터 새 반인가요?</label>
         <input class="form-input" id="es-movedate" type="date" value="${new Date().toISOString().slice(0,10)}" style="max-width:200px">
-        <div style="font-size:11px;color:var(--text-muted);margin-top:5px">이 날 <strong>이전에 낸 숙제는 이전 반 것</strong>으로, <strong>이 날부터는 새 반 숙제</strong>가 보여요.<br>미래 날짜를 넣으면 그날 자동으로 옮겨져요(예약). 반 체크를 안 바꾸면 이 날짜는 무시돼요.</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:5px">이 날 <strong>이전에 낸 숙제는 이전 반 것</strong>으로, <strong>이 날부터는 새 반 숙제</strong>가 보여요.<br>미래 날짜를 넣으면 그날 자동으로 옮겨져요(예약).</div>
       </div>
       ${classHistoryHtml(s)}
     </div>
@@ -2483,11 +2503,35 @@ function hwGroupHeader(key){
   return `📚 ${c.name||'반 미지정'} <span style="color:var(--text-muted);font-weight:400">${clsDayLabel(c)}${c.slot||''}</span>`;
 }
 // 그동안 쓴 교재 모음 (반 기본교재 + 과거 숙제 교재) — 칩으로 빠른선택
+// 📘 교재 칩은 반 과목·지난 숙제에서 자동으로 모입니다.
+//   안 쓰는 게 쌓이면 지저분해서 '숨김 목록'을 따로 둡니다 — 숙제 기록 자체는 그대로 둡니다.
+let HIDDEN_TB=[];
+async function loadHiddenTextbooks(){
+  try{ const d=await db.collection('settings').doc('hiddenTextbooks').get();
+    HIDDEN_TB=(d.exists && Array.isArray(d.data().list)) ? d.data().list : []; }
+  catch(e){ HIDDEN_TB=[]; }
+}
+async function saveHiddenTextbooks(){
+  await db.collection('settings').doc('hiddenTextbooks').set({ list:HIDDEN_TB, ts:Date.now() }, { merge:true });
+}
+async function doHideTextbook(t){
+  t=String(t||'').trim(); if(!t || HIDDEN_TB.includes(t)) return;
+  HIDDEN_TB=[...HIDDEN_TB, t];
+  try{ await saveHiddenTextbooks(); showToast(`📘 '${t}' 칩을 숨겼어요 (숙제 기록은 그대로예요)`,'success'); rHomework(); }
+  catch(e){ HIDDEN_TB=HIDDEN_TB.filter(x=>x!==t); showToast('저장 실패: '+e.message,'error'); }
+}
+async function doResetHiddenTextbooks(){
+  if(!HIDDEN_TB.length) return;
+  if(!confirm(`숨긴 교재 ${HIDDEN_TB.length}개를 다시 보이게 할까요?\n\n${HIDDEN_TB.join(', ')}`)) return;
+  const back=HIDDEN_TB; HIDDEN_TB=[];
+  try{ await saveHiddenTextbooks(); showToast('숨긴 교재를 모두 되돌렸어요','success'); rHomework(); }
+  catch(e){ HIDDEN_TB=back; showToast('저장 실패: '+e.message,'error'); }
+}
 function allTextbooks(){
   const set=new Set();
   CLASSES.forEach(c=>{ if(c.subject) set.add(c.subject); });
   getAssignments().forEach(a=>{ if(a.textbook) set.add(a.textbook); });
-  return [...set].slice(0,16);
+  return [...set].filter(t=>!HIDDEN_TB.includes(t)).slice(0,16);
 }
 // 📅 마감일은 출제일 +1주가 기본 — 내준 날만 정하면 마감이 알아서 따라옵니다.
 //   선생님이 마감일을 직접 고른 뒤에는 건드리지 않아요 (data-auto 표시로 구분).
@@ -2576,9 +2620,15 @@ function rHomework(){
         <div class="form-group"><label class="form-label">출제일 (내준 날)</label><input class="form-input" id="hw-start" type="date" onchange="hwSyncDue()" value="${editA?(editA.startDate||''):new Date().toISOString().slice(0,10)}"></div>
         <div class="form-group"><label class="form-label">마감일 <span style="font-size:11px;color:var(--text-muted)">(출제일 +1주 자동 · 바꿔도 돼요)</span></label><input class="form-input" id="hw-due" type="date" onchange="hwDueTouched()" ${editA?'':'data-auto="1"'} value="${editA?(editA.dueDate||''):hwAddWeek(new Date().toISOString().slice(0,10))}"></div>
       </div>
-      <div class="form-group"><label class="form-label">교재 <span style="font-size:11px;color:var(--text-muted)">(아래 칩을 누르면 자동 입력)</span></label>
+      <div class="form-group"><label class="form-label">교재 <span style="font-size:11px;color:var(--text-muted)">(칩을 누르면 자동 입력 · ✕ 누르면 그 칩만 숨겨요)</span></label>
         <input class="form-input" id="hw-textbook" placeholder="예: 쎈 공통수학1" value="${editA?esc(editA.textbook):''}">
-        ${tbChips.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${tbChips.map(t=>`<button type="button" class="btn btn-outline btn-sm" onclick="pickTextbook(this.dataset.t)" data-t="${esc(t)}">📘 ${t}</button>`).join('')}</div>`:''}
+        ${tbChips.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center">${tbChips.map(t=>`
+          <span style="display:inline-flex;align-items:center;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+            <button type="button" class="btn btn-sm" style="border:none;border-radius:0;background:var(--surface);color:var(--text-sub)" onclick="pickTextbook(this.dataset.t)" data-t="${esc(t)}">📘 ${t}</button>
+            <button type="button" title="이 칩 숨기기" style="border:none;background:var(--bg);color:var(--text-muted);cursor:pointer;padding:6px 8px;font-size:12px;font-family:inherit" onclick="doHideTextbook(this.dataset.t)" data-t="${esc(t)}">✕</button>
+          </span>`).join('')}
+          ${HIDDEN_TB.length?`<button type="button" class="btn btn-outline btn-sm" style="font-size:11px" onclick="doResetHiddenTextbooks()">🙈 숨긴 교재 ${HIDDEN_TB.length}개 되돌리기</button>`:''}
+        </div>`:`<div style="font-size:11px;color:var(--text-muted);margin-top:8px">보이는 교재 칩이 없어요.${HIDDEN_TB.length?` <a onclick="doResetHiddenTextbooks()" style="cursor:pointer;color:var(--primary);text-decoration:underline">숨긴 ${HIDDEN_TB.length}개 되돌리기</a>`:''}</div>`}
       </div>
       <div class="form-group"><label class="form-label">과제 제목 *</label><input class="form-input" id="hw-title" placeholder="예: 수학Ⅱ 3단원 연습문제" value="${editA?esc(editA.title):''}"></div>
       <div class="form-group"><label class="form-label">과제 내용</label><textarea class="form-textarea" id="hw-content" placeholder="교재 페이지, 문제 범위 등">${editA?(editA.content||''):''}</textarea></div>
@@ -5127,6 +5177,7 @@ async function init(){
     loadClassChecks(),   // 반별 오답 마무리 체크·데일리테스트 기록
     loadMyTodos(),       // 내 체크리스트(개인 할 일)
     loadSchoolBooks(),   // 학교별 교재·출판사
+    loadHiddenTextbooks(), // 숨긴 교재 칩
     loadVideoViews()     // 영상 시청 기록
   ].map(p=>Promise.resolve(p).catch(e=>console.warn('일부 데이터 로드 실패(무시):',e))));
   try{ const n=await applyPendingMoves(); if(n) showToast(`예약된 반 이동 ${n}건이 오늘 적용됐어요 🔜`,'success'); }catch(e){}
