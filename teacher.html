@@ -727,6 +727,16 @@ function examMathDates(e){
   if(e.mathDate) return [{label:'수학', date:e.mathDate}];
   return [];
 }
+// 목록 정렬: 아직 안 끝난 시험을 가까운 순으로 위에, 이미 끝난 시험은 최근 순으로 아래에.
+function cmpExamUpcomingFirst(a,b){
+  const today=new Date().toISOString().slice(0,10);
+  const endOf=e=>e.endDate||e.startDate||'';
+  const doneA=!!(endOf(a) && endOf(a)<today), doneB=!!(endOf(b) && endOf(b)<today);
+  if(doneA!==doneB) return doneA?1:-1;                              // 끝난 건 아래로
+  const sa=a.startDate||'', sb=b.startDate||'';
+  const d = doneA ? sb.localeCompare(sa) : sa.localeCompare(sb);    // 끝난 건 최근 순, 남은 건 가까운 순
+  return d || (a.school||'').localeCompare(b.school||'');
+}
 let seEditId=null;
 function schoolExamCardHtml(){
   // 목록은 재원생 있는 학교만 보여주고, 수정 중인 항목은 숨겨졌더라도 찾을 수 있게 전체에서 찾습니다
@@ -772,8 +782,8 @@ function schoolExamCardHtml(){
     <div style="margin-top:14px">${hiddenSchoolNoteHtml()}</div>
     ${list.length?`<div class="table-wrap"><table>
       <thead><tr><th>학교</th><th>시험</th><th>시험기간</th><th>수학 시험일</th><th style="min-width:210px">시험 범위</th><th>관리</th></tr></thead>
-      <tbody>${list.slice().sort((a,b)=>(a.startDate||'').localeCompare(b.startDate||'')||(a.school||'').localeCompare(b.school||'')).map(e=>{
-        const n=getStudents().filter(x=>isNaesinStudent(x)&&(x.school||'')===normSchool(e.school)).length;
+      <tbody>${list.slice().sort(cmpExamUpcomingFirst).map(e=>{
+        const n=getStudents().filter(x=>isActiveStudent(x)&&normSchool(x.school||'')===normSchool(e.school)).length;
         const bk=getSchoolBook(normSchool(e.school));
         return `<tr>
         <td><span class="chip">${e.school}</span><div style="font-size:10px;color:var(--text-muted);margin-top:2px">${n}명${bk.publisher?' · '+esc(bk.publisher):''}</div></td>
@@ -861,6 +871,25 @@ function normExamTitle(name, ymd){
   if(/정기시험|지필/.test(t))    return `${term}학기 ${m>=11||m<=2?'기말':'중간'}고사`;
   return name;
 }
+// NEIS는 주말·공휴일엔 일정을 안 주기 때문에, 시험기간이 그 사이에서 두 토막으로 끊겨 들어옵니다.
+// (예: 금 10/2 시험 → 개천절·주말 → 화 10/6 시험 = 원래 한 시험인데 10/1~10/2 와 10/6~10/8 로 쪼개짐)
+// 사이에 '학교 가는 날'이 하나도 없으면 같은 시험으로 봅니다.
+function examGapIsOffDaysOnly(fromYmd, toYmd){
+  if(!fromYmd || !toYmd || fromYmd>=toYmd) return false;
+  const mk=v=>new Date(+v.slice(0,4), +v.slice(4,6)-1, +v.slice(6,8));
+  const d=mk(fromYmd), end=mk(toYmd);
+  d.setDate(d.getDate()+1);
+  let gap=0;
+  while(d<end){
+    if(++gap>5) return false;                       // 너무 벌어지면 별개 시험
+    const p=n=>String(n).padStart(2,'0');
+    const iso=`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+    const dow=d.getDay();
+    if(dow!==0 && dow!==6 && !holidayName(iso)) return false;   // 평일이 끼면 다른 시험
+    d.setDate(d.getDate()+1);
+  }
+  return true;
+}
 function examPeriodsOf(rows){
   const ev=rows.filter(r=>NEIS_IS_EXAM.test(r.EVENT_NM||'') && !NEIS_NOT_EXAM.test(r.EVENT_NM||''))
     .map(r=>({d:r.AA_YMD, n:normExamTitle((r.EVENT_NM||'').trim(), r.AA_YMD)})).sort((a,b)=>a.d.localeCompare(b.d));
@@ -868,7 +897,7 @@ function examPeriodsOf(rows){
   ev.forEach(x=>{
     const last=out[out.length-1];
     const prevDay=last?(function(){ const d=new Date(+last.to.slice(0,4),+last.to.slice(4,6)-1,+last.to.slice(6,8)); d.setDate(d.getDate()+1); return ymdT(d); })():null;
-    if(last && last.title===x.n && (x.d===last.to || x.d===prevDay)) last.to=x.d;
+    if(last && last.title===x.n && (x.d===last.to || x.d===prevDay || examGapIsOffDaysOnly(last.to, x.d))) last.to=x.d;
     else out.push({title:x.n, from:x.d, to:x.d});
   });
   return out;
@@ -882,6 +911,41 @@ function majorEventsOf(rows){
     .sort((a,b)=>(a.AA_YMD||'').localeCompare(b.AA_YMD||''))
     .forEach(r=>{ const n=(r.EVENT_NM||'').trim(); if(seen[n]) return; seen[n]=1; out.push({d:r.AA_YMD, n}); });
   return out.slice(0,8);
+}
+// 이미 쪼개져 저장된 시험을 하나로 합칩니다 (같은 학교·같은 시험명 + 사이가 휴일뿐).
+function splitExamPairs(){
+  const byKey={};
+  getSchoolExams().filter(e=>e.startDate&&e.endDate).forEach(e=>{
+    const k=normSchool(e.school)+'|'+((e.title||'').trim());
+    (byKey[k]=byKey[k]||[]).push(e);
+  });
+  const pairs=[];
+  Object.values(byKey).forEach(list=>{
+    list.sort((a,b)=>a.startDate.localeCompare(b.startDate));
+    for(let i=0;i<list.length-1;i++){
+      const a=list[i], b=list[i+1];
+      const ymd=v=>String(v).replace(/-/g,'');
+      if(b.startDate<=a.endDate || examGapIsOffDaysOnly(ymd(a.endDate), ymd(b.startDate))) pairs.push([a,b]);
+    }
+  });
+  return pairs;
+}
+async function doMergeSplitExams(){
+  const pairs=splitExamPairs();
+  if(!pairs.length){ showToast('쪼개진 시험이 없어요','success'); return; }
+  const lines=pairs.map(([a,b])=>`· ${shortSchool(a.school)} ${a.title||''}: ${a.startDate}~${a.endDate} + ${b.startDate}~${b.endDate} → ${a.startDate}~${b.endDate}`);
+  const NL=String.fromCharCode(10);
+  const msg=['주말·공휴일 때문에 두 토막으로 등록된 시험을 합칠까요?','']
+    .concat(lines).concat(['','뒤쪽 기록은 지워지고 앞쪽 기간이 늘어나요.']).join(NL);
+  if(!confirm(msg)) return;
+  try{
+    for(const [a,b] of pairs){
+      const mathDates=[...(examMathDates(a)||[]), ...(examMathDates(b)||[])];
+      await updateSchoolExam(a.id, { endDate:b.endDate, mathDates, scope:(a.scope||b.scope||'') });
+      await deleteSchoolExam(b.id);
+    }
+    showToast(`시험 ${pairs.length}건을 합쳤어요 ✓`,'success'); rNaesin();
+  }catch(e){ showToast('합치기 실패: '+e.message,'error'); }
 }
 let neisProgress='';
 async function doLoadNeisSched(){
@@ -951,6 +1015,22 @@ async function doSaveExamScope(id, val){
   try{ await updateSchoolExam(id,{scope:(val||'').trim()}); showToast('시험 범위 저장 ✓','success'); }
   catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
+// 🔔 내 학생은 있는데 시험 일정이 아직 없는 학교 — 이걸 알려줘야 새로 등록할 수 있어요.
+function schoolsMissingExamHtml(){
+  const today=new Date().toISOString().slice(0,10);
+  const cnt={};
+  getStudents().forEach(st=>{ if(!isActiveStudent(st)) return; const sc=normSchool(st.school||''); if(!sc) return; cnt[sc]=(cnt[sc]||0)+1; });
+  const hasUpcoming=new Set();
+  getSchoolExams().forEach(e=>{ const end=e.endDate||e.startDate||''; if(end && end>=today) hasUpcoming.add(normSchool(e.school||'')); });
+  const missing=Object.keys(cnt).filter(sc=>!hasUpcoming.has(sc)).sort((a,b)=>cnt[b]-cnt[a]);
+  if(!missing.length) return '';
+  const esc=v=>String(v||'').replace(/</g,'&lt;');
+  return `<div style="background:#FEF9C3;border:1px solid #FDE047;border-radius:10px;padding:11px 13px;margin-bottom:10px">
+    <div style="font-size:13px;font-weight:800;color:#854D0E;margin-bottom:5px">🔔 다가오는 시험 일정이 아직 없는 학교 ${missing.length}곳</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${missing.map(sc=>`<span style="background:#fff;border:1px solid #FDE047;border-radius:7px;padding:4px 9px;font-size:12px;font-weight:700;color:#713F12">${esc(sc)} <span style="font-weight:400;color:#A16207">${cnt[sc]}명</span></span>`).join('')}</div>
+    <div style="font-size:11px;color:#A16207;margin-top:6px">아래 ‘학교별 내신 시험 일정’에서 등록하거나, NEIS 불러오기를 눌러보세요.</div>
+  </div>`;
+}
 function examTimelineHtml(){
   const exams=visibleSchoolExams().filter(e=>e.startDate);
   const now=new Date(), pad=n=>String(n).padStart(2,'0');
@@ -982,7 +1062,7 @@ function examTimelineHtml(){
   const bars=inMonth.map(e=>{
     const s=e.startDate<mStart?1:dayOf(e.startDate), en=e.endDate>mEnd?dim:dayOf(e.endDate);
     const left=(s-1)/dim*100, width=Math.max(2,(en-s+1)/dim*100);
-    const n=getStudents().filter(x=>isNaesinStudent(x)&&(x.school||'')===normSchool(e.school)).length;
+    const n=getStudents().filter(x=>isActiveStudent(x)&&normSchool(x.school||'')===normSchool(e.school)).length;
     return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-top:1px solid var(--border);flex-wrap:wrap">
       <div style="min-width:86px;font-size:12px;font-weight:700">${el(shortSchool(e.school))}<span style="font-size:10px;color:var(--text-muted);font-weight:400"> ${n}명</span></div>
       <div style="flex:1;min-width:150px;position:relative;height:20px;background:var(--bg);border-radius:5px">
@@ -995,7 +1075,7 @@ function examTimelineHtml(){
   }).join('');
   return `<div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
-      <div class="card-title" style="margin:0">📕 시험 일정 한눈에 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(어느 학교가 시험인지 · 범위는 바로 적을 수 있어요)</span></div>
+      <div class="card-title" style="margin:0">📕 시험 일정 한눈에 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(어느 학교가 시험인지 · 범위는 바로 적을 수 있어요)</span>${splitExamPairs().length?` <button class="btn btn-outline btn-sm" style="margin-left:6px" onclick="doMergeSplitExams()">🔗 쪼개진 시험 ${splitExamPairs().length}건 합치기</button>`:''}</div>
       <div style="display:flex;align-items:center;gap:6px">
         <button class="btn btn-outline btn-sm" onclick="examCalShift(-1)">◀</button>
         <strong style="font-size:14px;min-width:88px;text-align:center">${examCalY}년 ${examCalM+1}월</strong>
@@ -1009,6 +1089,7 @@ function examTimelineHtml(){
     </div></div>
     <div style="font-size:11px;color:var(--text-muted);margin-top:8px">📕 빨강=시험기간 · 📐=수학 시험일</div>
     <div style="margin-top:12px">
+      ${schoolsMissingExamHtml()}
       <div style="font-size:13px;font-weight:800;margin-bottom:4px">📊 ${examCalM+1}월 학교별 시험기간</div>
       ${inMonth.length?bars:'<div style="font-size:12px;color:var(--text-muted);padding:8px 0">이 달에 시험이 있는 학교가 없어요</div>'}
     </div>
