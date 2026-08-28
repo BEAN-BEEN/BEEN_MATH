@@ -896,6 +896,18 @@ function oapProgress(asn){
     (a.wrongNos||[]).forEach(n=>{ total++; if(a.oapOk && a.oapOk[n]) done++; }); });
   return { total, done, rate: total?Math.round(done/total*100):null };
 }
+// 🔴 오답률 — 푼 문제 중 틀린 비율. '얼마나 맞았나'를 보는 축이에요.
+//    (오답 완료율은 '틀린 걸 고쳤나'라서 서로 다릅니다)
+function oapWrongRate(asn){
+  let total=0, wrong=0;
+  asn.forEach(a=>{
+    if(!a.isOap || !a.oapEntered) return;
+    const n=oapSections(a).reduce((sum,sec)=>sum+sec.nums.length,0);
+    if(!n) return;                      // 번호를 셀 수 없는 숙제는 빼요
+    total+=n; wrong+=(a.wrongNos||[]).length;
+  });
+  return { total, wrong, rate: total?Math.round(wrong/total*100):null };
+}
 function getReport(){
   const asn=getAssignments().filter(a=>asnInSeasonS(a, studentSelSeason()));   // 제출률은 선택 시즌 구간 숙제만
   const hwTotal=asn.length, hwSub=asn.filter(a=>a.status==='submitted').length;
@@ -910,6 +922,8 @@ function getReport(){
     lateRate: punct.lateRate,       // 냈지만 마감 뒤에 낸 비율
     retryRate: oapProgress(asn).rate==null?100:oapProgress(asn).rate,   // 오답이 없으면 100%
     oapStat: oapProgress(asn),
+    wrongRate: oapWrongRate(asn).rate,          // null = 셀 수 있는 오답 숙제가 아직 없음
+    wrongStat: oapWrongRate(asn),
     attendanceRate: att.rate==null?100:att.rate,
     avgScore: scored.length?Math.round(scored.reduce((s,e)=>s+e.score,0)/scored.length):0,
     teacherComment: (S_REPORT && S_REPORT.teacherComment) || REPORT.teacherComment,
@@ -1458,6 +1472,7 @@ function renderHome() {
         ['숙제 제출률', r.homeworkRate+'%', 'var(--primary)', ''],
         ['⏰ 지각 제출률', r.lateRate+'%', 'var(--red)', `제출은 했지만 마감 뒤에 낸 비율 · 지각 ${r.homeworkReport.lateCount}회 · 제때 ${r.homeworkReport.onTime}회`],
         ['출석률', r.attendanceRate+'%', 'var(--green)', ''],
+        ['🔴 오답률', (r.wrongRate==null?'-':r.wrongRate+'%'), 'var(--red)', r.wrongStat.total?`푼 문제 ${r.wrongStat.total}개 중 ${r.wrongStat.wrong}개 틀림`:'아직 셀 수 있는 오답 숙제가 없어요'],
         ['🔶 오답 완료율', r.retryRate+'%', 'var(--orange)', r.oapStat.total?`틀린 문제 ${r.oapStat.total}개 중 ${r.oapStat.done}개 확인 완료`:'아직 등록된 오답이 없어요']
       ].map(([l,v,c,hint])=>`
         <div style="margin-bottom:12px">
@@ -2605,9 +2620,9 @@ function renderReport() {
   document.getElementById('reportContent').innerHTML = `
     <div class="report-stats">
       <div class="rp-stat"><div class="rval">${r.homeworkRate}<span class="runit">%</span></div><div class="rlabel">숙제 제출률</div></div>
+      <div class="rp-stat"><div class="rval">${r.wrongRate==null?'-':r.wrongRate}<span class="runit">%</span></div><div class="rlabel">오답률</div></div>
       <div class="rp-stat"><div class="rval">${r.retryRate}<span class="runit">%</span></div><div class="rlabel">오답 완료율</div></div>
       <div class="rp-stat"><div class="rval">${r.attendanceRate}<span class="runit">%</span></div><div class="rlabel">출석률</div></div>
-      <div class="rp-stat"><div class="rval">${r.avgScore}<span class="runit">점</span></div><div class="rlabel">평균 점수</div></div>
     </div>
     ${reportTrendCharts()}
     <div class="card">

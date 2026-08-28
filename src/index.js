@@ -123,11 +123,12 @@ ${kindHint}${title ? `\n- 시험명: ${title}` : ''}${range ? `\n- 출제 범위
 - smallUnit: 중단원 (예: 이차함수의 최대·최소, 등차수열의 합, 접선의 방정식)
 - ability: 요구 해결능력 — 다음 중 하나로만 → "추론" / "계산" / "그래프활용" / "개념이해" / "문제해석"
 - difficulty: 난이도 — "상" / "중" / "하"
+- intent: 출제의도 — 이 문제로 무엇을 확인하려는지 한 문장 (예: 완전제곱식 변형을 스스로 떠올릴 수 있는지)
 - solution: 이 문제를 푸는 핵심 해결 방법을 학생이 읽고 바로 떠올릴 수 있게 1~2문장으로 간략히 (풀이 전체가 아니라 '어떻게 접근하는지' 실마리)
 
 ${isPdf ? '모든 쪽의 문제를 빠짐없이, 번호 순서대로 분석해.' : '사진에서 읽을 수 있는 문제만 분석해.'} 한국어로.
 반드시 아래 JSON 형식으로만 답해 (설명 문장 없이 JSON만):
-{"problems":[{"no":"1","bigUnit":"함수와 그래프","smallUnit":"이차함수의 최대·최소","ability":"계산","difficulty":"중","solution":"완전제곱식으로 변형해 꼭짓점을 찾고, 주어진 구간의 양 끝값과 비교해요."}],"summary":"이 시험의 단원·능력별 구성과 특징을 2~3문장으로"}`;
+{"problems":[{"no":"1","bigUnit":"함수와 그래프","smallUnit":"이차함수의 최대·최소","ability":"계산","difficulty":"중","intent":"구간이 주어진 이차함수의 최댓값을 스스로 판단할 수 있는지","solution":"완전제곱식으로 변형해 꼭짓점을 찾고, 주어진 구간의 양 끝값과 비교해요."}],"summary":"이 시험의 단원·능력별 구성과 특징을 2~3문장으로"}`;
   const raw = await callModel(env, prompt, imageBase64, imageMime, true);
   let parsed;
   try { parsed = JSON.parse(raw.replace(/```json/gi, '').replace(/```/g, '').trim()); }
