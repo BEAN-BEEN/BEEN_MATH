@@ -1938,7 +1938,7 @@ function monthSummaryHtml(){
       ${out.부담임.length?`<div>🟠 부담임반 퇴원: ${out.부담임.map(s=>(s.name||'')+' <span style="opacity:.7">'+classNamesOf(s).join('·')+'</span>').join(', ')}</div>`:''}
       ${out.미배정.length?`<div>⚪ 반 없음: ${out.미배정.map(s=>s.name||'').join(', ')}</div>`:''}
     </div>`:''}
-    </div></div>`;
+  </div>`;
 }
 // ✅ 내 체크리스트 — 선생님 개인 할 일 (settings/myTodos)
 let MYTODOS=[];
