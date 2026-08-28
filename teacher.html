@@ -349,9 +349,9 @@ async function loadClasses(){
   }
   CLASSES=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.order!=null?a.order:99)-(b.order!=null?b.order:99));
 }
-async function addClassFS(data){ await db.collection('classes').add(data); await loadClasses(); }
-async function updateClassFS(id,upd){ await db.collection('classes').doc(id).update(upd); await loadClasses(); }
-async function deleteClassFS(id){ await db.collection('classes').doc(id).delete(); await loadClasses(); }
+async function addClassFS(data){ const ref=await db.collection('classes').add(data); if(!cacheAdd('classes', ref.id, data)) await loadClasses(); }
+async function updateClassFS(id,upd){ await db.collection('classes').doc(id).update(upd); if(!cachePut('classes', id, upd)) await loadClasses(); }
+async function deleteClassFS(id){ await db.collection('classes').doc(id).delete(); if(!cacheDel('classes', id)) await loadClasses(); }
 
 // ===== 학생 명단: Firebase Firestore에서 불러옴 (캐시) =====
 let STUDENTS_CACHE=[];
@@ -362,6 +362,80 @@ async function loadStudents(){
   STUDENTS_CACHE=snap.docs.map(d=>{ const x={id:d.id, ...d.data()}; if(x.school) x.school=normSchool(x.school); return x; });
 }
 function getStudents(){return STUDENTS_CACHE;}
+// ===== 로컬 캐시 반영 — 문서 하나를 고치려고 컬렉션을 통째로 다시 읽지 않는다 =====
+//  읽기 비용의 대부분이 여기서 났다: 대시보드에서 학생 한 명 숙제를 체크할 때마다
+//  submissions 전체(수백 건)를 다시 읽어서, 한 반 20명이면 수천 회가 됐다.
+//  서버에 쓴 것과 똑같이 로컬 배열만 고치고, 로더와 같은 기준으로 다시 정렬한다.
+//  조금이라도 확실하지 않으면 false를 돌려주고, 그때만 예전처럼 전체를 다시 읽는다.
+const cmpStr=(a,b)=>{ a=String(a==null?'':a); b=String(b==null?'':b); return a<b?-1:(a>b?1:0); };
+const CACHE_DEF={
+  classes:      {get:()=>CLASSES,           sort:a=>a.sort((x,y)=>(x.order!=null?x.order:99)-(y.order!=null?y.order:99))},
+  students:     {get:()=>STUDENTS_CACHE,    sort:a=>a.sort((x,y)=>cmpStr(x.name,y.name)), norm:d=>{ if(d.school) d.school=normSchool(d.school); return d; }},
+  assignments:  {get:()=>ASSIGNMENTS_CACHE, sort:a=>a.sort((x,y)=>cmpStr(y.createdAt,x.createdAt))},
+  submissions:  {get:()=>SUBMISSIONS_CACHE},
+  hwPresets:    {get:()=>HWPRESETS_CACHE,   sort:a=>a.sort((x,y)=>cmpStr(y.createdAt,x.createdAt))},
+  naesin:       {get:()=>NAESIN_CACHE},
+  reviews:      {get:()=>REVIEWS_CACHE,     sort:a=>a.sort((x,y)=>cmpStr(y.createdAt,x.createdAt))},
+  reviewSubs:   {get:()=>REVIEWSUBS_CACHE},
+  attendance:   {get:()=>ATTENDANCE_CACHE,  sort:a=>a.sort((x,y)=>cmpStr(y.date,x.date))},
+  exams:        {get:()=>EXAMS_CACHE,       sort:a=>a.sort((x,y)=>cmpStr(y.date,x.date))},
+  examSubs:     {get:()=>EXAMSUBS_CACHE},
+  questions:    {get:()=>QUESTIONS_CACHE,   sort:a=>a.sort((x,y)=>cmpStr(y.createdAt,x.createdAt))},
+  videos:       {get:()=>VIDEOS_CACHE,      sort:a=>a.sort((x,y)=>cmpStr(y.date,x.date))},
+  materials:    {get:()=>MATERIALS_CACHE,   sort:a=>a.sort((x,y)=>cmpStr(y.uploadDate,x.uploadDate))},
+  consultations:{get:()=>CONSULTS_CACHE,    sort:a=>a.sort((x,y)=>cmpStr(y.submittedAt,x.submittedAt))},
+  reports:      {get:()=>REPORTS_CACHE},
+  notices:      {get:()=>NOTICES_CACHE,     sort:a=>a.sort((x,y)=>(y.ts||0)-(x.ts||0))},
+  schoolExams:  {get:()=>SCHOOLEXAMS_CACHE, sort:a=>a.sort((x,y)=>cmpStr(x.mathDate,y.mathDate)), norm:d=>{ if(d.school) d.school=normSchool(d.school); return d; }},
+  mockExams:    {get:()=>MOCKEXAMS_CACHE,   sort:a=>a.sort((x,y)=>cmpStr(y.date,x.date))},
+  mockSubs:     {get:()=>MOCKSUBS_CACHE},
+  makeups:      {get:()=>MAKEUPS_CACHE,     sort:a=>a.sort((x,y)=>cmpStr(x.date,y.date))},
+  absences:     {get:()=>ABSENCES_CACHE},
+  seasons:      {get:()=>SEASONS_CACHE,     sort:a=>a.sort((x,y)=>cmpStr(y.startDate,x.startDate))},
+  bogang:       {get:()=>BOGANG_CACHE,      sort:a=>a.sort((x,y)=>cmpStr(y.date,x.date))},
+  progressLog:  {get:()=>PROGLOG_CACHE}
+};
+// Firestore 센티널(FieldValue.delete 등)은 로컬에서 결과를 알 수 없다.
+// delete()만 뜻이 분명해 키 제거로 처리하고, 그 밖이면 null → 호출한 쪽이 전체를 다시 읽는다.
+function fvKind(v){
+  if(!(v && typeof v==='object')) return '';
+  try{ if(!(v instanceof firebase.firestore.FieldValue)) return ''; }catch(e){ return ''; }
+  try{ return v.constructor===firebase.firestore.FieldValue.delete().constructor ? 'delete' : 'other'; }catch(e){ return 'other'; }
+}
+function cacheMergeObj(base, patch){
+  const out=Object.assign({}, base);
+  for(const k in patch){ const kind=fvKind(patch[k]);
+    if(kind==='delete') delete out[k];
+    else if(kind) return null;          // 뜻을 모르는 센티널 — 전체 재로드로 넘긴다
+    else out[k]=patch[k];
+  }
+  return out;
+}
+function cacheArr(col){ const d=CACHE_DEF[col]; return d?d.get():null; }
+function cacheResort(col){ const d=CACHE_DEF[col]; if(d&&d.sort){ const a=d.get(); if(a) d.sort(a); } }
+function cacheNorm(col, doc){ const d=CACHE_DEF[col]; return (d&&d.norm)?d.norm(doc):doc; }
+function cacheDel(col, id){
+  const a=cacheArr(col); if(!a||!id) return false;
+  const i=a.findIndex(x=>x.id===id); if(i<0) return false;
+  a.splice(i,1); return true;
+}
+// 수정 — 이미 있는 문서에 patch를 덮어쓴다
+function cachePut(col, id, patch){
+  const a=cacheArr(col); if(!a||!id) return false;
+  const i=a.findIndex(x=>x.id===id); if(i<0) return false;
+  const merged=cacheMergeObj(a[i], patch); if(!merged) return false;
+  a[i]=cacheNorm(col, merged); cacheResort(col); return true;
+}
+// 추가 — 서버에 쓴 그대로 로컬에도 넣는다
+function cacheAdd(col, id, doc){
+  const a=cacheArr(col); if(!a||!id) return false;
+  const clean=cacheMergeObj({}, doc); if(!clean) return false;
+  clean.id=id; a.push(cacheNorm(col, clean)); cacheResort(col); return true;
+}
+// set() — 통째로 바꾸거나, 없으면 새로 넣는다
+function cacheSet(col, id, doc){ cacheDel(col, id); return cacheAdd(col, id, doc); }
+// set({merge:true}) — 있으면 합치고, 없으면 새로 넣는다
+function cacheMerge(col, id, doc){ return cachePut(col, id, doc) || cacheAdd(col, id, doc); }
 // 재원 = 활성. 휴원·퇴원은 명단·출석·숙제·알림·통계에서 제외(기록은 보존)
 function studentStatus(s){ return (s&&s.status)||'재원'; }
 function isActiveStudent(s){ return studentStatus(s)==='재원'; }
@@ -421,7 +495,7 @@ function hwStudents(a){
 }
 
 // 학생 추가/삭제 → Firebase에 저장 (회원가입 없이 선생님이 직접 등록)
-async function addStudentFS(data){ await db.collection('students').add(data); await loadStudents(); }
+async function addStudentFS(data){ const ref=await db.collection('students').add(data); if(!cacheAdd('students', ref.id, data)) await loadStudents(); }
 // 🔜 예약 반 변경 — 예약일이 되면 자동으로 반을 바꿔주고 이력(classHistory)까지 남김
 async function applyPendingMoves(){
   const today=new Date().toISOString().slice(0,10);
@@ -447,7 +521,7 @@ async function doCancelPendingMove(sid){
   try{ await db.collection('students').doc(sid).update({pendingMove:null}); s.pendingMove=null; showToast('반 이동 예약을 취소했어요','warning'); rStudents(); }
   catch(e){ showToast('취소 실패: '+e.message,'error'); }
 }
-async function deleteStudentFS(id){ await db.collection('students').doc(id).delete(); await loadStudents(); }
+async function deleteStudentFS(id){ await db.collection('students').doc(id).delete(); if(!cacheDel('students', id)) await loadStudents(); }
 
 // ===== 숙제(과제)·제출 = Firebase 공유 (선생님이 올리면 학생이 봄) =====
 let ASSIGNMENTS_CACHE=[], SUBMISSIONS_CACHE=[];
@@ -487,15 +561,15 @@ function hwPunctuality(asgns, subs){
     onTimeRate: total?Math.round(onTime/total*100):null,
     lateRate: total?Math.round(lateN/total*100):null };
 }
-async function saveAssignment(d){ d.createdAt=new Date().toISOString().slice(0,10); const ref=await db.collection('assignments').add(d); await loadAssignments(); return ref.id; }
-async function updateSub(sid,u){ await db.collection('submissions').doc(sid).update(u); await loadSubmissions(); }
+async function saveAssignment(d){ d.createdAt=new Date().toISOString().slice(0,10); const ref=await db.collection('assignments').add(d); if(!cacheAdd('assignments', ref.id, d)) await loadAssignments(); return ref.id; }
+async function updateSub(sid,u){ await db.collection('submissions').doc(sid).update(u); if(!cachePut('submissions', sid, u)) await loadSubmissions(); }
 
 // ===== 📚 교재 서랍 = 자주 내는 숙제 프리셋(교재+범위) — 드래그로 반에 뿌리기 =====
 let HWPRESETS_CACHE=[];
 async function loadHwPresets(){ try{ const s=await db.collection('hwPresets').get(); HWPRESETS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')); }catch(e){ HWPRESETS_CACHE=[]; } }
 function getHwPresets(){ return HWPRESETS_CACHE; }
-async function saveHwPreset(d){ d.createdAt=new Date().toISOString(); await db.collection('hwPresets').add(d); await loadHwPresets(); }
-async function deleteHwPreset(id){ await db.collection('hwPresets').doc(id).delete(); await loadHwPresets(); }
+async function saveHwPreset(d){ d.createdAt=new Date().toISOString(); const ref=await db.collection('hwPresets').add(d); if(!cacheAdd('hwPresets', ref.id, d)) await loadHwPresets(); }
+async function deleteHwPreset(id){ await db.collection('hwPresets').doc(id).delete(); if(!cacheDel('hwPresets', id)) await loadHwPresets(); }
 function hwPresetRange(p){ if(p.probStart&&p.probEnd) return `${p.probStart}~${p.probEnd}번`; if(p.probLabel) return p.probLabel; return '범위 없음'; }
 function hwPresetDrawerHtml(){
   const ps=getHwPresets();
@@ -572,11 +646,11 @@ function getNaesin(studentId,subject,term){ return NAESIN_CACHE.find(n=>n.studen
 async function upsertNaesin(student, subject, term, fields){
   const exist=getNaesin(student.id,subject,term);
   const base={ score:(fields.score||'').trim(), grade:(fields.grade||'').trim(), note:(fields.note||'').trim(), updatedAt:new Date().toLocaleString('ko-KR'), ts:Date.now() };
-  if(exist){ await db.collection('naesin').doc(exist.id).update(base); }
-  else{ await db.collection('naesin').add({ studentId:student.id, studentName:student.name, school:student.school||'', className:(classNamesOf?classNamesOf(student).join(','):''), subject, term, createdAt:new Date().toISOString().slice(0,10), ...base }); }
-  await loadNaesin();
+  if(exist){ await db.collection('naesin').doc(exist.id).update(base); if(!cachePut('naesin', exist.id, base)) await loadNaesin(); }
+  else{ const doc={ studentId:student.id, studentName:student.name, school:student.school||'', className:(classNamesOf?classNamesOf(student).join(','):''), subject, term, createdAt:new Date().toISOString().slice(0,10), ...base };
+    const ref=await db.collection('naesin').add(doc); if(!cacheAdd('naesin', ref.id, doc)) await loadNaesin(); }
 }
-async function deleteNaesin(id){ await db.collection('naesin').doc(id).delete(); await loadNaesin(); }
+async function deleteNaesin(id){ await db.collection('naesin').doc(id).delete(); if(!cacheDel('naesin', id)) await loadNaesin(); }
 
 // ===== 복습(리뷰)·복습 제출 = Firebase 공유 (선생님이 번호 지정 → 학생 재풀이 사진 → 확인) =====
 let REVIEWS_CACHE=[], REVIEWSUBS_CACHE=[];
@@ -584,9 +658,9 @@ async function loadReviews(){ const s=await db.collection('reviews').get(); REVI
 async function loadReviewSubs(){ const s=await db.collection('reviewSubs').get(); REVIEWSUBS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})); }
 function getReviews(){return REVIEWS_CACHE;}
 function getReviewSubs(rid){return REVIEWSUBS_CACHE.filter(s=>s.reviewId===rid);}
-async function saveReview(d){ d.createdAt=new Date().toISOString().slice(0,10); await db.collection('reviews').add(d); await loadReviews(); }
-async function updateReview(id,d){ await db.collection('reviews').doc(id).update(d); await loadReviews(); }
-async function deleteReview(id){ await db.collection('reviews').doc(id).delete(); await loadReviews(); }
+async function saveReview(d){ d.createdAt=new Date().toISOString().slice(0,10); const ref=await db.collection('reviews').add(d); if(!cacheAdd('reviews', ref.id, d)) await loadReviews(); }
+async function updateReview(id,d){ await db.collection('reviews').doc(id).update(d); if(!cachePut('reviews', id, d)) await loadReviews(); }
+async function deleteReview(id){ await db.collection('reviews').doc(id).delete(); if(!cacheDel('reviews', id)) await loadReviews(); }
 // 한 복습 제출 상태 — 지정 번호가 모두 사진이 올라오면 done
 function revStat(rev,sub){
   const nums=Array.isArray(rev.nums)?rev.nums:[];
@@ -604,15 +678,15 @@ async function loadExamSubs(){ const s=await db.collection('examSubs').get(); EX
 function getAttendance(){return ATTENDANCE_CACHE;}
 function getExams(){return EXAMS_CACHE;}
 function getExamSubs(){return EXAMSUBS_CACHE;}
-async function saveAttendance(d){ d.ts=Date.now(); await db.collection('attendance').doc(d.date+'_'+d.classId).set(d); await loadAttendance(); }
-async function saveExam(d){ d.createdAt=new Date().toISOString().slice(0,10); const ref=await db.collection('exams').add(d); await loadExams(); return ref.id; }
-async function updateExamSub(sid,u){ await db.collection('examSubs').doc(sid).update(u); await loadExamSubs(); }
+async function saveAttendance(d){ d.ts=Date.now(); const id=d.date+'_'+d.classId; await db.collection('attendance').doc(id).set(d); if(!cacheSet('attendance', id, d)) await loadAttendance(); }
+async function saveExam(d){ d.createdAt=new Date().toISOString().slice(0,10); const ref=await db.collection('exams').add(d); if(!cacheAdd('exams', ref.id, d)) await loadExams(); return ref.id; }
+async function updateExamSub(sid,u){ await db.collection('examSubs').doc(sid).update(u); if(!cachePut('examSubs', sid, u)) await loadExamSubs(); }
 
 // ===== 질문 = Firebase 공유 (학생이 올리면 선생님이 봄) =====
 let QUESTIONS_CACHE=[];
 async function loadQuestions(){ const s=await db.collection('questions').get(); QUESTIONS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')); }
 function getQuestions(){ return QUESTIONS_CACHE; }
-async function answerQ(qid,ans){ await db.collection('questions').doc(qid).update({teacherAnswer:ans, status:'answered'}); await loadQuestions(); }
+async function answerQ(qid,ans){ const patch={teacherAnswer:ans, status:'answered'}; await db.collection('questions').doc(qid).update(patch); if(!cachePut('questions', qid, patch)) await loadQuestions(); }
 
 // ===== 영상·자료실·상담·리포트 = Firebase 공유 =====
 let VIDEOS_CACHE=[], MATERIALS_CACHE=[], CONSULTS_CACHE=[], REPORTS_CACHE=[];
@@ -623,8 +697,8 @@ async function loadReports(){ const s=await db.collection('reports').get(); REPO
 let NOTICES_CACHE=[];
 async function loadNotices(){ const s=await db.collection('notices').get(); NOTICES_CACHE=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.ts||0)-(a.ts||0)); }
 function getNotices(){ return NOTICES_CACHE; }
-async function addNotice(text){ await db.collection('notices').add({text, ts:Date.now(), createdAt:new Date().toLocaleString('ko-KR')}); await loadNotices(); }
-async function delNotice(id){ await db.collection('notices').doc(id).delete(); await loadNotices(); }
+async function addNotice(text){ const doc={text, ts:Date.now(), createdAt:new Date().toLocaleString('ko-KR')}; const ref=await db.collection('notices').add(doc); if(!cacheAdd('notices', ref.id, doc)) await loadNotices(); }
+async function delNotice(id){ await db.collection('notices').doc(id).delete(); if(!cacheDel('notices', id)) await loadNotices(); }
 async function doAddNotice(){
   const t=document.getElementById('notice-text').value.trim();
   if(!t){ showToast('공지 내용을 입력해주세요','error'); return; }
@@ -636,18 +710,18 @@ async function doDelNotice(id){ if(!confirm('이 공지를 삭제할까요?'))re
 let SCHOOLEXAMS_CACHE=[];
 async function loadSchoolExams(){ const s=await db.collection('schoolExams').get(); SCHOOLEXAMS_CACHE=s.docs.map(d=>{ const x={id:d.id,...d.data()}; if(x.school) x.school=normSchool(x.school); return x; }).sort((a,b)=>(a.mathDate||'').localeCompare(b.mathDate||'')); }
 function getSchoolExams(){ return SCHOOLEXAMS_CACHE; }
-async function addSchoolExam(d){ await db.collection('schoolExams').add({...d, ts:Date.now()}); await loadSchoolExams(); }
-async function updateSchoolExam(id,d){ await db.collection('schoolExams').doc(id).update(d); await loadSchoolExams(); }
-async function deleteSchoolExam(id){ await db.collection('schoolExams').doc(id).delete(); await loadSchoolExams(); }
+async function addSchoolExam(d){ const doc={...d, ts:Date.now()}; const ref=await db.collection('schoolExams').add(doc); if(!cacheAdd('schoolExams', ref.id, doc)) await loadSchoolExams(); }
+async function updateSchoolExam(id,d){ await db.collection('schoolExams').doc(id).update(d); if(!cachePut('schoolExams', id, d)) await loadSchoolExams(); }
+async function deleteSchoolExam(id){ await db.collection('schoolExams').doc(id).delete(); if(!cacheDel('schoolExams', id)) await loadSchoolExams(); }
 // 📝 모의고사 (학생 자가 등록)
 let MOCKEXAMS_CACHE=[], MOCKSUBS_CACHE=[];
 async function loadMockExams(){ const s=await db.collection('mockExams').get(); MOCKEXAMS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.date||'').localeCompare(a.date||'')); }
 async function loadMockSubs(){ const s=await db.collection('mockSubs').get(); MOCKSUBS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})); }
 function getMockExams(){ return MOCKEXAMS_CACHE; }
 function getMockSubs(){ return MOCKSUBS_CACHE; }
-async function addMockExam(d){ await db.collection('mockExams').add({...d, createdAt:new Date().toISOString().slice(0,10), ts:Date.now()}); await loadMockExams(); }
-async function updateMockExam(id,d){ await db.collection('mockExams').doc(id).update(d); await loadMockExams(); }
-async function deleteMockExam(id){ await db.collection('mockExams').doc(id).delete(); await loadMockExams(); }
+async function addMockExam(d){ const doc={...d, createdAt:new Date().toISOString().slice(0,10), ts:Date.now()}; const ref=await db.collection('mockExams').add(doc); if(!cacheAdd('mockExams', ref.id, doc)) await loadMockExams(); }
+async function updateMockExam(id,d){ await db.collection('mockExams').doc(id).update(d); if(!cachePut('mockExams', id, d)) await loadMockExams(); }
+async function deleteMockExam(id){ await db.collection('mockExams').doc(id).delete(); if(!cacheDel('mockExams', id)) await loadMockExams(); }
 // 🔶 보강 일정 (특정 날짜 단발성)
 let MAKEUPS_CACHE=[];
 async function loadMakeups(){ const s=await db.collection('makeups').get(); MAKEUPS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.date||'').localeCompare(b.date||'')); }
@@ -660,8 +734,8 @@ function getAbsences(){ return ABSENCES_CACHE; }
 let SEASONS_CACHE=[];
 async function loadSeasons(){ try{ const s=await db.collection('seasons').get(); SEASONS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.startDate||'').localeCompare(a.startDate||'')); }catch(e){ SEASONS_CACHE=[]; } }
 function getSeasons(){ return SEASONS_CACHE; }
-async function addSeason(d){ await db.collection('seasons').add({...d, ts:Date.now()}); await loadSeasons(); }
-async function deleteSeasonFS(id){ await db.collection('seasons').doc(id).delete(); await loadSeasons(); }
+async function addSeason(d){ const doc={...d, ts:Date.now()}; const ref=await db.collection('seasons').add(doc); if(!cacheAdd('seasons', ref.id, doc)) await loadSeasons(); }
+async function deleteSeasonFS(id){ await db.collection('seasons').doc(id).delete(); if(!cacheDel('seasons', id)) await loadSeasons(); }
 function currentSeason(){ const t=new Date().toISOString().slice(0,10); const list=getSeasons();
   return list.find(s=>s.startDate&&s.startDate<=t&&(!s.endDate||s.endDate>=t)) || list[0] || null; }
 function asnInSeason(a, season){ if(!season) return true; const d=a.startDate||a.createdAt||a.dueDate||''; if(!d) return true; return (!season.startDate||d>=season.startDate)&&(!season.endDate||d<=season.endDate); }
@@ -678,9 +752,9 @@ async function doAddSeason(){
 async function doDelSeason(id,name){ if(!confirm(`"${name}" 시즌을 삭제할까요?\n(집계 기간 구분만 사라지고 숙제·성적은 그대로예요)`)) return;
   try{ await deleteSeasonFS(id); if(gradeSeasonId===id) gradeSeasonId=null; showToast('시즌 삭제','warning'); rClassroom(); }catch(e){ showToast('삭제 실패: '+e.message,'error'); } }
 function absentDatesOf(studentId){ return new Set(getAbsences().filter(a=>a.studentId===studentId).map(a=>a.date)); }
-async function addMakeup(d){ await db.collection('makeups').add({...d, ts:Date.now()}); await loadMakeups(); }
-async function updateMakeupFS(id, patch){ await db.collection('makeups').doc(id).update(patch); await loadMakeups(); }
-async function deleteMakeupFS(id){ await db.collection('makeups').doc(id).delete(); await loadMakeups(); }
+async function addMakeup(d){ const doc={...d, ts:Date.now()}; const ref=await db.collection('makeups').add(doc); if(!cacheAdd('makeups', ref.id, doc)) await loadMakeups(); }
+async function updateMakeupFS(id, patch){ await db.collection('makeups').doc(id).update(patch); if(!cachePut('makeups', id, patch)) await loadMakeups(); }
+async function deleteMakeupFS(id){ await db.collection('makeups').doc(id).delete(); if(!cacheDel('makeups', id)) await loadMakeups(); }
 // 학생 명단에 있는 학교 목록(중복 제거) — 빠른 선택용
 function allSchools(){ const set=new Set(); getStudents().forEach(s=>{ if(s.school) set.add(s.school); }); getSchoolExams().forEach(e=>{ if(e.school) set.add(e.school); }); return [...set]; }
 // 🏫 지금 챙길 학교 = 재원생이 한 명이라도 남은 학교.
@@ -1492,12 +1566,12 @@ function getVideoViews(){ return VIDEOVIEWS_CACHE; }
 function getMaterials(){ return MATERIALS_CACHE; }
 function getConsultations(){ return CONSULTS_CACHE; }
 function getReports(){ return REPORTS_CACHE; }
-async function saveVideo(d){ d.createdAt=new Date().toISOString().slice(0,10); await db.collection('videos').add(d); await loadVideos(); }
-async function deleteVideo(id){ await db.collection('videos').doc(id).delete(); await loadVideos(); }
-async function saveMaterial(d){ d.uploadDate=new Date().toISOString().slice(0,10); await db.collection('materials').add(d); await loadMaterials(); }
+async function saveVideo(d){ d.createdAt=new Date().toISOString().slice(0,10); const ref=await db.collection('videos').add(d); if(!cacheAdd('videos', ref.id, d)) await loadVideos(); }
+async function deleteVideo(id){ await db.collection('videos').doc(id).delete(); if(!cacheDel('videos', id)) await loadVideos(); }
+async function saveMaterial(d){ d.uploadDate=new Date().toISOString().slice(0,10); const ref=await db.collection('materials').add(d); if(!cacheAdd('materials', ref.id, d)) await loadMaterials(); }
 async function deleteMaterial(id){
   try{ const snap=await db.collection('materials').doc(id).get(); const d=snap.exists?snap.data():null; if(d&&d.fileUrl){ try{ await firebase.storage().refFromURL(d.fileUrl).delete(); }catch(e){} } }catch(e){}
-  await db.collection('materials').doc(id).delete(); await loadMaterials();
+  await db.collection('materials').doc(id).delete(); if(!cacheDel('materials', id)) await loadMaterials();
 }
 // 📎 파일(PDF·문서·이미지 등) 원본 그대로 Storage 업로드 → 다운로드 URL 반환
 async function uploadFile(file, folder){
@@ -1506,8 +1580,8 @@ async function uploadFile(file, folder){
   await ref.put(file);
   return { url:await ref.getDownloadURL(), name:file.name, size:file.size };
 }
-async function updateConsult(id,u){ await db.collection('consultations').doc(id).update(u); await loadConsults(); }
-async function saveReport(d){ await db.collection('reports').doc(d.studentId).set(d,{merge:true}); await loadReports(); }
+async function updateConsult(id,u){ await db.collection('consultations').doc(id).update(u); if(!cachePut('consultations', id, u)) await loadConsults(); }
+async function saveReport(d){ await db.collection('reports').doc(d.studentId).set(d,{merge:true}); if(!cacheMerge('reports', d.studentId, d)) await loadReports(); }
 function getSchedule(){ return loadData('schedule',[]); } // (시간표는 반(class) 정보로 대체됨)
 
 // ================================================================
@@ -2096,9 +2170,9 @@ async function doSaveAnOX(){
   const payload={ wrongNos:wrong.join(', '), weakAbilities:weak, score, oxTs:Date.now() };
   try{
     const existing=getExamSubs().find(s=>s.examId===exam.id && s.studentId===st.id);
-    if(existing) await db.collection('examSubs').doc(existing.id).update(payload);
-    else await db.collection('examSubs').add({ examId:exam.id, examTitle:exam.title, classId:exam.classId, className:exam.className, studentId:st.id, studentName:st.name, submittedAt:new Date().toLocaleString('ko-KR'), comment:'', perQuestion:[], ts:Date.now(), ...payload });
-    await loadExamSubs();
+    if(existing){ await db.collection('examSubs').doc(existing.id).update(payload); if(!cachePut('examSubs', existing.id, payload)) await loadExamSubs(); }
+    else{ const doc={ examId:exam.id, examTitle:exam.title, classId:exam.classId, className:exam.className, studentId:st.id, studentName:st.name, submittedAt:new Date().toLocaleString('ko-KR'), comment:'', perQuestion:[], ts:Date.now(), ...payload };
+      const ref=await db.collection('examSubs').add(doc); if(!cacheAdd('examSubs', ref.id, doc)) await loadExamSubs(); }
     showToast(`${st.name} 정오표 저장 — ${correct}/${probs.length} (${score}점) 📊`,'success');
     rGrades();
   }catch(e){ showToast('저장 실패: '+e.message,'error'); }
@@ -2732,7 +2806,7 @@ async function doDelSt(id,name){
   try{ await deleteStudentFS(id); showToast('학생이 삭제되었어요','warning'); rStudents(); }
   catch(e){ showToast('삭제 실패: '+e.message,'error'); }
 }
-async function updateStudentFS(id,upd){ await db.collection('students').doc(id).update(upd); await loadStudents(); }
+async function updateStudentFS(id,upd){ await db.collection('students').doc(id).update(upd); if(!cachePut('students', id, upd)) await loadStudents(); }
 function showStDetail(id){
   const s=getStudents().find(x=>x.id===id);if(!s)return;
   const ids=s.classIds||(s.classId?[s.classId]:[]);
@@ -2996,9 +3070,11 @@ async function doCheckAllOffline(aid){
   if(!confirm(`미제출 ${missing.length}명을 전원 '직접 확인'으로 처리할까요?\n(공책으로 다 검사했을 때 쓰세요)`)) return;
   try{
     for(const st of missing){
-      await db.collection('submissions').add({ assignmentId:aid, assignmentTitle:a.title||'', classId:a.classId||'', className:a.className||'', studentId:st.id, studentName:st.name, photos:[], offline:true, byTeacher:true, submittedAt:new Date().toLocaleString('ko-KR'), checked:true, needsRetry:false, ts:Date.now() });
+      const doc={ assignmentId:aid, assignmentTitle:a.title||'', classId:a.classId||'', className:a.className||'', studentId:st.id, studentName:st.name, photos:[], offline:true, byTeacher:true, submittedAt:new Date().toLocaleString('ko-KR'), checked:true, needsRetry:false, ts:Date.now() };
+      const ref=await db.collection('submissions').add(doc);
+      if(!cacheAdd('submissions', ref.id, doc)) await loadSubmissions();
     }
-    await loadSubmissions(); showToast(`${missing.length}명 전원 직접확인 완료 ✋`,'success'); rHomework();
+    showToast(`${missing.length}명 전원 직접확인 완료 ✋`,'success'); rHomework();
   }catch(e){ showToast('실패: '+e.message,'error'); }
 }
 // 🚨 이번 주 미제출 한눈에 (반·숙제별 미제출자 모아보기 + 독촉)
@@ -3187,8 +3263,8 @@ function pickTextbook(t){
   const ti=document.getElementById('hw-title');
   if(ti && (!ti.value.trim() || allTextbooks().includes(ti.value.trim()))) ti.value=t;
 }
-async function updateAssignment(id,d){ await db.collection('assignments').doc(id).update(d); await loadAssignments(); }
-async function deleteAssignment(id){ await db.collection('assignments').doc(id).delete(); await loadAssignments(); }
+async function updateAssignment(id,d){ await db.collection('assignments').doc(id).update(d); if(!cachePut('assignments', id, d)) await loadAssignments(); }
+async function deleteAssignment(id){ await db.collection('assignments').doc(id).delete(); if(!cacheDel('assignments', id)) await loadAssignments(); }
 // 🔢 오답 방식 숙제 — 학생별 상태
 function oapStat(sub){
   const entered = sub && Array.isArray(sub.wrongNos);
@@ -3445,7 +3521,7 @@ async function doDelReview(id,title){
 }
 async function doCheckReview(subId){
   const sub=REVIEWSUBS_CACHE.find(s=>s.id===subId); if(!sub) return;
-  try{ await db.collection('reviewSubs').doc(subId).update({checked:!sub.checked}); await loadReviewSubs(); rReview(); }
+  try{ const patch={checked:!sub.checked}; await db.collection('reviewSubs').doc(subId).update(patch); if(!cachePut('reviewSubs', subId, patch)) await loadReviewSubs(); rReview(); }
   catch(e){ showToast('처리 실패: '+e.message,'error'); }
 }
 
@@ -3524,7 +3600,7 @@ async function doConfirmWrong(subId,label){
   const sub=SUBMISSIONS_CACHE.find(s=>s.id===subId); if(!sub) return;
   const ok=Object.assign({},sub.oapOk); ok[label]=true; const redo=Object.assign({},sub.oapRedo); delete redo[label];
   const off=Object.assign({},sub.oapOffline); delete off[label];
-  try{ await db.collection('submissions').doc(subId).update({oapOk:ok,oapRedo:redo,oapOffline:off}); await loadSubmissions(); rWrong(); }
+  try{ const patch={oapOk:ok,oapRedo:redo,oapOffline:off}; await db.collection('submissions').doc(subId).update(patch); if(!cachePut('submissions', subId, patch)) await loadSubmissions(); rWrong(); }
   catch(e){ showToast('처리 실패: '+e.message,'error'); }
 }
 // ✅ 학생 오답 일괄 '맞음' — 오답 많을 때 한 명씩 확인 안 하고 한 번에 (보충 검사 등)
@@ -3536,20 +3612,20 @@ async function doConfirmAllWrong(subId){
   if(!confirm(`${sub.studentName||'학생'} 남은 오답 ${pend.length}개를 전부 '맞음'으로 확인할까요?`)) return;
   const ok=Object.assign({},sub.oapOk), redo=Object.assign({},sub.oapRedo);
   wn.forEach(n=>{ ok[n]=true; delete redo[n]; });
-  try{ await db.collection('submissions').doc(subId).update({oapOk:ok, oapRedo:redo}); await loadSubmissions(); rWrong(); showToast(`${sub.studentName||'학생'} 오답 ${pend.length}개 전체 맞음 ✅`,'success'); }
+  try{ const patch={oapOk:ok, oapRedo:redo}; await db.collection('submissions').doc(subId).update(patch); if(!cachePut('submissions', subId, patch)) await loadSubmissions(); rWrong(); showToast(`${sub.studentName||'학생'} 오답 ${pend.length}개 전체 맞음 ✅`,'success'); }
   catch(e){ showToast('처리 실패: '+e.message,'error'); }
 }
 async function doRedoWrong(subId,label){
   const sub=SUBMISSIONS_CACHE.find(s=>s.id===subId); if(!sub) return;
   const redo=Object.assign({},sub.oapRedo); redo[label]=true; const ok=Object.assign({},sub.oapOk); delete ok[label];
   const off=Object.assign({},sub.oapOffline); delete off[label];
-  try{ await db.collection('submissions').doc(subId).update({oapRedo:redo,oapOk:ok,oapOffline:off}); await loadSubmissions(); rWrong(); showToast('재오답 표시 — 학생이 다시 풀어 올려요','warning'); }
+  try{ const patch={oapRedo:redo,oapOk:ok,oapOffline:off}; await db.collection('submissions').doc(subId).update(patch); if(!cachePut('submissions', subId, patch)) await loadSubmissions(); rWrong(); showToast('재오답 표시 — 학생이 다시 풀어 올려요','warning'); }
   catch(e){ showToast('처리 실패: '+e.message,'error'); }
 }
 async function doUnconfirmWrong(subId,label){
   const sub=SUBMISSIONS_CACHE.find(s=>s.id===subId); if(!sub) return;
   const ok=Object.assign({},sub.oapOk); delete ok[label];
-  try{ await db.collection('submissions').doc(subId).update({oapOk:ok}); await loadSubmissions(); rWrong(); }
+  try{ const patch={oapOk:ok}; await db.collection('submissions').doc(subId).update(patch); if(!cachePut('submissions', subId, patch)) await loadSubmissions(); rWrong(); }
   catch(e){ showToast('처리 실패: '+e.message,'error'); }
 }
 async function doAddWrong(subId){
@@ -3558,7 +3634,7 @@ async function doAddWrong(subId){
   if(!labels.length){ showToast('추가할 문제 번호를 입력해주세요','warning'); return; }
   const sub=SUBMISSIONS_CACHE.find(s=>s.id===subId); if(!sub) return;
   const wn=[...new Set([...(sub.wrongNos||[]).map(String),...labels])];
-  try{ await db.collection('submissions').doc(subId).update({wrongNos:wn}); await loadSubmissions(); rWrong(); showToast(`오답 ${labels.length}개 보완 — 학생이 다시 풀어 올려요`,'success'); }
+  try{ const patch={wrongNos:wn}; await db.collection('submissions').doc(subId).update(patch); if(!cachePut('submissions', subId, patch)) await loadSubmissions(); rWrong(); showToast(`오답 ${labels.length}개 보완 — 학생이 다시 풀어 올려요`,'success'); }
   catch(e){ showToast('추가 실패: '+e.message,'error'); }
 }
 // ================================================================
@@ -3652,11 +3728,11 @@ async function doQuickCheck(assignmentId, studentId, pct){
     notDone, notDoneReason: notDone?'검사에서 안 함':'', notDoneAt: notDone?new Date().toLocaleString('ko-KR'):'' };
   try{
     const exist=getSubsByAssignment(assignmentId).find(s=>s.studentId===studentId);
-    if(exist) await db.collection('submissions').doc(exist.id).update(patch);
-    else await db.collection('submissions').add({ assignmentId, assignmentTitle:a.title||'',
+    if(exist){ await db.collection('submissions').doc(exist.id).update(patch); if(!cachePut('submissions', exist.id, patch)) await loadSubmissions(); }
+    else{ const doc={ assignmentId, assignmentTitle:a.title||'',
       classId:a.classId||'', className:a.className||'', studentId:st.id, studentName:st.name,
-      photos:[], submittedAt:new Date().toLocaleString('ko-KR'), ts:Date.now(), needsRetry:false, ...patch });
-    await loadSubmissions();
+      photos:[], submittedAt:new Date().toLocaleString('ko-KR'), ts:Date.now(), needsRetry:false, ...patch };
+      const ref=await db.collection('submissions').add(doc); if(!cacheAdd('submissions', ref.id, doc)) await loadSubmissions(); }
     showToast(st.name+' — '+hwGradeLabel(pct),'success');
     if(curSec==='homework') rHomeworkHub(); else rDashboard();
   }catch(e){ showToast('저장 실패: '+e.message,'error'); }
@@ -3673,14 +3749,15 @@ async function doOapTeacherCheck(assignmentId, studentId, allCorrect){
   }
   const oapOk={}, oapOffline={}; nums.forEach(n=>{ oapOk[n]=true; oapOffline[n]=true; });   // 선생님이 검사 = 확인완료 처리
   try{
-    await db.collection('submissions').add({
+    const doc={
       assignmentId, assignmentTitle:a.title||'', classId:a.classId||'', className:a.className||'',
       studentId:st.id, studentName:st.name, photos:[],
       wrongNos:nums, corrections:{}, oapOffline, oapOk,
       offline:true, byTeacher:true, submittedAt:new Date().toLocaleString('ko-KR'),
       checked:true, needsRetry:false, ts:Date.now()
-    });
-    await loadSubmissions();
+    };
+    const ref=await db.collection('submissions').add(doc);
+    if(!cacheAdd('submissions', ref.id, doc)) await loadSubmissions();
     showToast(allCorrect?`${st.name} 검사 완료 — 다 맞음 😎`:`${st.name} 검사 완료 — 오답 ${nums.length}개 기록 ✓`,'success');
     rCheck();
   }catch(e){ showToast('처리 실패: '+e.message,'error'); }
@@ -4051,9 +4128,10 @@ async function toggleAbsent(sid, name, cid, cname){
   const today=dashDay();
   const ex=getAbsences().find(a=>a.date===today && a.studentId===sid);
   try{
-    if(ex){ await db.collection('absences').doc(ex.id).delete(); showToast(name+' 결석 취소','warning'); }
-    else{ await db.collection('absences').doc(today+'_'+sid).set({date:today, studentId:sid, studentName:name, classId:cid, className:cname, ts:Date.now()}); showToast(name+' 결석 표시 🔴','success'); }
-    await loadAbsences(); rDashboard();
+    if(ex){ await db.collection('absences').doc(ex.id).delete(); if(!cacheDel('absences', ex.id)) await loadAbsences(); showToast(name+' 결석 취소','warning'); }
+    else{ const id=today+'_'+sid, doc={date:today, studentId:sid, studentName:name, classId:cid, className:cname, ts:Date.now()};
+      await db.collection('absences').doc(id).set(doc); if(!cacheSet('absences', id, doc)) await loadAbsences(); showToast(name+' 결석 표시 🔴','success'); }
+    rDashboard();
   }catch(e){ showToast('결석 처리 실패: '+e.message,'error'); }
 }
 // 🔔 오늘 수업 반 학생들에게 알림(푸시) 보내기
@@ -4106,15 +4184,16 @@ async function migrateOapPrefix(aid){
   let cnt=0;
   try{
     for(const s of subs){
-      await db.collection('submissions').doc(s.id).update({
+      const patch={
         wrongNos:(s.wrongNos||[]).map(addP),
         corrections:remap(s.corrections),
         oapOk:remap(s.oapOk),
         oapRedo:remap(s.oapRedo)
-      });
+      };
+      await db.collection('submissions').doc(s.id).update(patch);
+      if(!cachePut('submissions', s.id, patch)) await loadSubmissions();
       cnt++;
     }
-    await loadSubmissions();
     showToast(`${cnt}명 오답 번호 앞에 '${pre}' 추가 완료 ✅`,'success');
     rHomework();
   }catch(e){ showToast('일괄 변경 실패: '+e.message,'error'); }
@@ -4136,11 +4215,11 @@ async function doMarkNotDone(assignmentId, studentId){
     checked:true, byTeacher:true, offline:false, photos:[], evalPct:'0' };
   try{
     const exist=getSubsByAssignment(assignmentId).find(s=>s.studentId===studentId);
-    if(exist) await db.collection('submissions').doc(exist.id).update(base);
-    else await db.collection('submissions').add({ assignmentId, assignmentTitle:a.title||'',
+    if(exist){ await db.collection('submissions').doc(exist.id).update(base); if(!cachePut('submissions', exist.id, base)) await loadSubmissions(); }
+    else{ const doc={ assignmentId, assignmentTitle:a.title||'',
       classId:a.classId||'', className:a.className||'', studentId:st.id, studentName:st.name,
-      submittedAt:'', ts:Date.now(), needsRetry:false, ...base });
-    await loadSubmissions();
+      submittedAt:'', ts:Date.now(), needsRetry:false, ...base };
+      const ref=await db.collection('submissions').add(doc); if(!cacheAdd('submissions', ref.id, doc)) await loadSubmissions(); }
     showToast(st.name+' — 안 함으로 기록 (' + reason + ') ❌','warning');
     if(curSec==='homework') rHomework(); else rDashboard();
   }catch(e){ showToast('기록 실패: '+e.message,'error'); }
@@ -4148,8 +4227,9 @@ async function doMarkNotDone(assignmentId, studentId){
 // 나중에 해왔을 때 — '안 함' 표시를 풀고 평범한 미제출 상태로 되돌립니다
 async function doUnmarkNotDone(subId){
   try{
-    await db.collection('submissions').doc(subId).update({ notDone:false, notDoneReason:'', evalPct:'', checked:false });
-    await loadSubmissions();
+    const patch={ notDone:false, notDoneReason:'', evalPct:'', checked:false };
+    await db.collection('submissions').doc(subId).update(patch);
+    if(!cachePut('submissions', subId, patch)) await loadSubmissions();
     showToast("'안 함' 표시를 풀었어요",'success');
     if(curSec==='homework') rHomework(); else rDashboard();
   }catch(e){ showToast('실패: '+e.message,'error'); }
@@ -4159,18 +4239,19 @@ async function doCheckOffline(assignmentId, studentId){
   const a=getAssignments().find(x=>x.id===assignmentId), st=getStudents().find(s=>s.id===studentId);
   if(!a||!st) return;
   try{
-    await db.collection('submissions').add({
+    const doc={
       assignmentId, assignmentTitle:a.title||'', classId:a.classId||'', className:a.className||'',
       studentId:st.id, studentName:st.name, photos:[], offline:true, byTeacher:true,
       submittedAt:new Date().toLocaleString('ko-KR'), checked:true, needsRetry:false, ts:Date.now()
-    });
-    await loadSubmissions();
+    };
+    const ref=await db.collection('submissions').add(doc);
+    if(!cacheAdd('submissions', ref.id, doc)) await loadSubmissions();
     showToast(`${st.name} 직접 검사 완료로 표시했어요 ✓`,'success'); rHomeworkHub();
   }catch(e){ showToast('처리 실패: '+e.message,'error'); }
 }
 // 직접 확인 취소 — 표시했던 제출을 지워 다시 '미제출'로 되돌림
 async function doUncheckOffline(subId){
-  try{ await db.collection('submissions').doc(subId).delete(); await loadSubmissions(); showToast('직접 확인을 해제했어요 (미제출로 되돌림)','warning'); rHomework(); }
+  try{ await db.collection('submissions').doc(subId).delete(); if(!cacheDel('submissions', subId)) await loadSubmissions(); showToast('직접 확인을 해제했어요 (미제출로 되돌림)','warning'); rHomework(); }
   catch(e){ showToast('해제 실패: '+e.message,'error'); }
 }
 async function doRetry(sid,v){ await updateSub(sid, v?{needsRetry:true,retryResolved:false}:{needsRetry:false,retryDone:false,retryResolved:true,checked:true}); showToast(v?'오답으로 표시했어요. 학생 숙제 카드에 보여요 ✏️':'오답 완료로 확인 처리했어요 👍',v?'warning':'success'); rHomework(); }
@@ -4660,8 +4741,8 @@ function rGrades(){
     `:''}`;
   if(exEditId){ const e=exams.find(x=>x.id===exEditId); const cs=document.getElementById('ex-cls'); if(e&&cs) cs.value=e.classId; }
 }
-async function updateExam(id,d){ await db.collection('exams').doc(id).update(d); await loadExams(); }
-async function deleteExam(id){ await db.collection('exams').doc(id).delete(); await loadExams(); }
+async function updateExam(id,d){ await db.collection('exams').doc(id).update(d); if(!cachePut('exams', id, d)) await loadExams(); }
+async function deleteExam(id){ await db.collection('exams').doc(id).delete(); if(!cacheDel('exams', id)) await loadExams(); }
 async function doSaveExam(){
   const classId=document.getElementById('ex-cls').value,title=document.getElementById('ex-title').value.trim();
   if(!classId||!title){showToast('반과 시험명을 입력해주세요','error');return;}
@@ -4708,9 +4789,9 @@ function renderDirectScores(){
 }
 async function upsertExamScore(exam, student, score, comment){
   const existing=getExamSubs().find(s=>s.examId===exam.id && s.studentId===student.id);
-  if(existing){ await db.collection('examSubs').doc(existing.id).update({score, comment}); }
-  else{ await db.collection('examSubs').add({ examId:exam.id, examTitle:exam.title, classId:exam.classId, className:exam.className, studentId:student.id, studentName:student.name, submittedAt:new Date().toLocaleString('ko-KR'), score, comment, ts:Date.now() }); }
-  await loadExamSubs();
+  if(existing){ const patch={score, comment}; await db.collection('examSubs').doc(existing.id).update(patch); if(!cachePut('examSubs', existing.id, patch)) await loadExamSubs(); }
+  else{ const doc={ examId:exam.id, examTitle:exam.title, classId:exam.classId, className:exam.className, studentId:student.id, studentName:student.name, submittedAt:new Date().toLocaleString('ko-KR'), score, comment, ts:Date.now() };
+    const ref=await db.collection('examSubs').add(doc); if(!cacheAdd('examSubs', ref.id, doc)) await loadExamSubs(); }
 }
 async function doSaveDirect(examId, studentId){
   const exam=getExams().find(e=>e.id===examId), st=getStudents().find(s=>s.id===studentId);
@@ -4781,9 +4862,9 @@ async function doSaveFeedback(){
   if(scoreV!=='') payload.score=parseInt(scoreV);
   try{
     const existing=getExamSubs().find(s=>s.examId===examId&&s.studentId===stId);
-    if(existing){ await db.collection('examSubs').doc(existing.id).update(payload); }
-    else{ await db.collection('examSubs').add({ examId:exam.id, examTitle:exam.title, classId:exam.classId, className:exam.className, studentId:st.id, studentName:st.name, submittedAt:new Date().toLocaleString('ko-KR'), score:scoreV!==''?parseInt(scoreV):null, ts:Date.now(), ...payload }); }
-    await loadExamSubs();
+    if(existing){ await db.collection('examSubs').doc(existing.id).update(payload); if(!cachePut('examSubs', existing.id, payload)) await loadExamSubs(); }
+    else{ const doc={ examId:exam.id, examTitle:exam.title, classId:exam.classId, className:exam.className, studentId:st.id, studentName:st.name, submittedAt:new Date().toLocaleString('ko-KR'), score:scoreV!==''?parseInt(scoreV):null, ts:Date.now(), ...payload };
+      const ref=await db.collection('examSubs').add(doc); if(!cacheAdd('examSubs', ref.id, doc)) await loadExamSubs(); }
     showToast(`${st.name} 성적 리포트 저장 완료 📊`,'success'); renderFeedbackEditor();
   }catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
@@ -5130,7 +5211,7 @@ function getBogang(){ return BOGANG_CACHE; }
 async function doAddBogang(date, label){
   label=(label||'').trim(); if(!date||!label){ showToast('날짜와 보강 이름을 확인해주세요','warning'); return; }
   if(getBogang().some(b=>b.date===date && b.label===label)){ showToast('이미 있는 보강이에요','warning'); return; }
-  try{ await db.collection('bogang').add({date, label, attendees:[], ts:Date.now()}); await loadBogang(); rNaesin(); }
+  try{ const doc={date, label, attendees:[], ts:Date.now()}; const ref=await db.collection('bogang').add(doc); if(!cacheAdd('bogang', ref.id, doc)) await loadBogang(); rNaesin(); }
   catch(e){ showToast('추가 실패: '+e.message,'error'); }
 }
 async function doAddBogangCustom(){
@@ -5139,7 +5220,7 @@ async function doAddBogangCustom(){
 }
 async function doDelBogang(id){
   if(!confirm('이 보강을 삭제할까요? (참석 체크도 같이 지워져요)')) return;
-  try{ await db.collection('bogang').doc(id).delete(); await loadBogang(); rNaesin(); showToast('보강을 삭제했어요','warning'); }
+  try{ await db.collection('bogang').doc(id).delete(); if(!cacheDel('bogang', id)) await loadBogang(); rNaesin(); showToast('보강을 삭제했어요','warning'); }
   catch(e){ showToast('삭제 실패: '+e.message,'error'); }
 }
 async function doToggleBogang(bid, sid){
@@ -5207,14 +5288,15 @@ async function doAutoMakeups(){
   for(const p of plans){
     const dup=getMakeups().some(x=>x.date===p.date && (x.school===p.school || (x.className||'').includes(p.school)));
     if(dup){ skipped++; continue; }
-    await db.collection('makeups').add({
+    const doc={
       date:p.date, className:`${p.school}${p.grade?' '+p.grade:''} 직보`, school:p.school,
       time:p.time, note:`${p.label} 시험 전날 직보 ${p.hadExam?'(그날 시험O→2시)':'(그날 시험X→5시)'}`,
       auto:true, ts:Date.now()
-    });
+    };
+    const ref=await db.collection('makeups').add(doc);
+    if(!cacheAdd('makeups', ref.id, doc)) await loadMakeups();
     created++;
   }
-  await loadMakeups();
   showToast(`🪄 직보 ${created}건 자동 생성!${skipped?` (중복 ${skipped}건 건너뜀)`:''}`,'success'); rNaesin();
 }
 function rSchedule(){
@@ -5489,9 +5571,10 @@ async function doSaveProg(date){
   const content=(document.getElementById('prog-content-'+date)||{}).value||''; const comment=(document.getElementById('prog-comment-'+date)||{}).value||'';
   const id=currClassId+'_'+date, cls=CLASSES.find(c=>c.id===currClassId);
   try{
-    if(!content.trim() && !comment.trim()){ await db.collection('progressLog').doc(id).delete().catch(()=>{}); }
-    else { await db.collection('progressLog').doc(id).set({classId:currClassId, className:cls?.name||'', date, content:content.trim(), comment:comment.trim(), ts:Date.now()},{merge:true}); }
-    await loadProgLog(); showToast(mdLabel(date)+' 진도 저장 ✓','success'); rCurriculum();
+    if(!content.trim() && !comment.trim()){ await db.collection('progressLog').doc(id).delete().catch(()=>{}); if(!cacheDel('progressLog', id)) await loadProgLog(); }
+    else { const doc={classId:currClassId, className:cls?.name||'', date, content:content.trim(), comment:comment.trim(), ts:Date.now()};
+      await db.collection('progressLog').doc(id).set(doc,{merge:true}); if(!cacheMerge('progressLog', id, doc)) await loadProgLog(); }
+    showToast(mdLabel(date)+' 진도 저장 ✓','success'); rCurriculum();
   }catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
 // ⌨️ 진도표 방향키 이동 — 엑셀처럼 ↑↓←→ / Enter(아래) 로 칸 이동
