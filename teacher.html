@@ -1548,12 +1548,13 @@ function rManage(){
 // 숙제 관리 하위탭: 숙제 / 오답 / 복습
 let hwTab='homework';
 function rHomeworkHub(){
-  const tabs=[['homework','📝 숙제'],['wrong','❌ 오답'],['review','🔁 복습'],['check','✅ 검사']];
+  const tabs=[['homework','📝 숙제'],['wrong','❌ 오답'],['review','🔁 복습']];   // '검사'는 대시보드 명단에서 바로 판정하는 방식으로 대체
   const el=document.getElementById('hwTabs'); if(el) el.innerHTML=tabs.map(([k,l])=>`<button class="btn ${hwTab===k?'btn-primary':'btn-outline'} btn-sm" onclick="hwTab='${k}';rHomeworkHub()">${l}</button>`).join('');
   // 활성 하위탭에 맞춰 제목 변경 (오답/복습인데 '숙제 관리'로 남던 문제 해결)
-  const th=document.querySelector('#sec-homework .page-title'); if(th) th.textContent={homework:'숙제 관리',wrong:'오답 관리',review:'복습 관리',check:'숙제 검사'}[hwTab]||'숙제 관리';
-  ['homework','wrong','review','check'].forEach(k=>{ const c=document.getElementById(k+'Content'); if(c) c.style.display=hwTab===k?'':'none'; });
-  ({homework:rHomework,wrong:rWrong,review:rReview,check:rCheck})[hwTab]?.();
+  if(hwTab==='check') hwTab='homework';        // 예전에 검사 탭을 보던 상태면 숙제로
+  const th=document.querySelector('#sec-homework .page-title'); if(th) th.textContent={homework:'숙제 관리',wrong:'오답 관리',review:'복습 관리'}[hwTab]||'숙제 관리';
+  ['homework','wrong','review','check'].forEach(k=>{ const c=document.getElementById(k+'Content'); if(c) c.style.display=hwTab===k?'':'none'; });   // check 영역은 항상 숨김
+  ({homework:rHomework,wrong:rWrong,review:rReview})[hwTab]?.();
 }
 // 대시보드 → 숙제 관리의 특정 하위탭으로 바로 이동
 function goHw(tab){ hwTab=tab||'homework'; navigate('homework'); }
@@ -3313,7 +3314,7 @@ function rCheck(){
         <div style="flex:1"></div>
         <button class="btn btn-sm" style="${checkTodayOnly?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="checkTodayOnly=!checkTodayOnly;rCheck()">${checkTodayOnly?'✓ 오늘 수업 반만':'오늘 수업 반만 보기'}</button>
       </div>
-      <div style="font-size:12px;color:var(--text-muted);margin-top:8px">수업 시간까지 앱에 안 올린 학생을 공책으로 검사할 때 써요. <strong>오답 숙제</strong>는 틀린 번호를 적고, <strong>일반 숙제</strong>는 직접 확인만 누르면 돼요. 이미 제출한 학생은 여기 안 나와요.</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:8px">수업 시간까지 앱에 안 올린 학생을 공책으로 훑어볼 때 써요. <strong>얼마나 해왔는지만 한 번 눌러주면</strong> 끝이에요 — 틀린 번호는 안 적어도 됩니다. (오답 숙제에서 번호까지 남기고 싶을 때만 🔢 번호를 열어요)</div>
     </div>
     ${items.length===0?`<div class="card" style="text-align:center;padding:30px;color:var(--text-muted)">${checkTodayOnly?'오늘 수업 반에 미제출 학생이 없어요 🎉<br><span style="font-size:12px">(다른 날 숙제도 검사하려면 위 ‘오늘 수업 반만’ 토글을 꺼보세요)</span>':'미제출 학생이 없어요 🎉'}</div>`:''}
     ${items.map(x=>{ const a=x.a; const range=(a.probStart&&a.probEnd)?`${a.probStart}~${a.probEnd}번`:(a.probLabel||'');
@@ -3322,12 +3323,23 @@ function rCheck(){
           <div><span class="chip">${a.className}</span><strong style="margin-left:8px">${a.title}</strong> ${x.isOap?`<span class="badge b-primary">🔢 ${range}</span>`:'<span class="badge b-yellow">📷 사진 숙제</span>'}</div>
           <span style="font-size:12px;color:var(--text-muted)">미제출 ${x.missing.length}명 · 마감 ${a.dueDate||'-'}</span>
         </div>
+        ${x.missing.map(st=>`
+          <div style="border-top:1px solid var(--border);padding:9px 2px">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              <strong style="min-width:64px">${st.name}</strong>
+              ${HW_GRADES.map(g=>`<button class="btn ${g[2]} btn-sm" onclick="doQuickCheck('${a.id}','${st.id}','${g[0]}')">${g[1]}</button>`).join('')}
+              ${x.isOap?`<button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="var e=document.getElementById('chkrow-${a.id}-${st.id}');e.style.display=e.style.display==='none'?'flex':'none'" title="틀린 번호까지 적어두고 싶을 때만">🔢 번호</button>`:''}
+            </div>
+            ${x.isOap?`<div id="chkrow-${a.id}-${st.id}" style="display:none;gap:6px;align-items:center;margin-top:7px">
+              <input class="form-input" id="chkwrong-${a.id}-${st.id}" placeholder="틀린 번호 (예: 3, 7, 12-15)" style="flex:1;min-width:150px;padding:6px 9px;font-size:13px" onkeydown="if(event.key==='Enter')doOapTeacherCheck('${a.id}','${st.id}',false)">
+              <button class="btn btn-primary btn-sm" onclick="doOapTeacherCheck('${a.id}','${st.id}',false)">번호 기록</button>
+            </div>`:''}
+          </div>`).join('')}
         ${x.missing.map(st=> x.isOap ? `
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;border-top:1px solid var(--border);padding:9px 2px">
             <strong style="min-width:64px">${st.name}</strong>
             <input class="form-input" id="chkwrong-${a.id}-${st.id}" placeholder="틀린 번호 (예: 3, 7, 12-15)" style="flex:1;min-width:150px;padding:6px 9px;font-size:13px" onkeydown="if(event.key==='Enter')doOapTeacherCheck('${a.id}','${st.id}',false)">
             <button class="btn btn-primary btn-sm" onclick="doOapTeacherCheck('${a.id}','${st.id}',false)">검사 완료</button>
-            <button class="btn btn-green btn-sm" onclick="doOapTeacherCheck('${a.id}','${st.id}',true)">😎 다 맞음</button>
           </div>` : `
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;border-top:1px solid var(--border);padding:9px 2px">
             <strong style="min-width:64px">${st.name}</strong>
@@ -3336,6 +3348,36 @@ function rCheck(){
             <button class="btn btn-red btn-sm" onclick="doMarkNotDone('${a.id}','${st.id}')">❌ 안 함</button>
           </div>`).join('')}
       </div>`; }).join('')}`;
+}
+// 📋 숙제 완성도 — 실제로 애들이 해오는 모양대로 (퍼센트는 제출률 계산용으로만 남김)
+const HW_GRADES=[
+  ['0',  '❌ 안 함',        'btn-red'],
+  ['20', '🤏 진짜 조금',    'btn-orange'],
+  ['50', '🙂 반만',         'btn-outline'],
+  ['90', '👍 거의 다',      'btn-outline'],   // 2장 이하 남음
+  ['100','💯 다 함',        'btn-green']
+];
+function hwGradeLabel(p){ const g=HW_GRADES.find(x=>x[0]===String(p)); if(g) return g[1];
+  const n=parseInt(p,10); if(isNaN(n)) return '';
+  return n>=95?'💯 다 함':(n>=75?'👍 거의 다':(n>=40?'🙂 반만':(n>0?'🤏 진짜 조금':'❌ 안 함'))); }
+// 공책 검사 한 번 탭 — 번호를 일일이 적지 않고 완성도만 남깁니다.
+//   '안 함'은 안 함 기록(notDone)으로도 같이 남겨요.
+async function doQuickCheck(assignmentId, studentId, pct){
+  const a=getAssignments().find(x=>x.id===assignmentId), st=getStudents().find(s=>s.id===studentId);
+  if(!a||!st) return;
+  const notDone = String(pct)==='0';
+  const patch={ evalPct:String(pct), checked:true, byTeacher:true, offline:true,
+    notDone, notDoneReason: notDone?'검사에서 안 함':'', notDoneAt: notDone?new Date().toLocaleString('ko-KR'):'' };
+  try{
+    const exist=getSubsByAssignment(assignmentId).find(s=>s.studentId===studentId);
+    if(exist) await db.collection('submissions').doc(exist.id).update(patch);
+    else await db.collection('submissions').add({ assignmentId, assignmentTitle:a.title||'',
+      classId:a.classId||'', className:a.className||'', studentId:st.id, studentName:st.name,
+      photos:[], submittedAt:new Date().toLocaleString('ko-KR'), ts:Date.now(), needsRetry:false, ...patch });
+    await loadSubmissions();
+    showToast(st.name+' — '+hwGradeLabel(pct),'success');
+    if(curSec==='homework') rHomeworkHub(); else rDashboard();
+  }catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
 // 오답 숙제 — 미제출 학생을 선생님이 직접 검사(틀린 번호 기록 + 확인완료). allCorrect면 '다 맞음'.
 async function doOapTeacherCheck(assignmentId, studentId, allCorrect){
@@ -3490,12 +3532,17 @@ function todayRosterHtml(todayCls, subs){
     const rows=sts.map(st=>{
       const absent=absentSet.has(st.id); if(absent) absN++;
       const sub=a?subs.find(s=>s.studentId===st.id&&s.assignmentId===a.id):null;
+      // 숙제는 '얼마나 해왔나'를 수업 중에 바로 눌러 기록합니다 (나중 업로드로 안 바뀜)
       let hw='';
       if(a){
-        if(!sub) hw='<span style="font-size:11px;color:var(--red);font-weight:700">미제출</span>';
-        else if(sub.offline) hw='<span style="font-size:11px;color:#1E40AF;font-weight:700">✋직접</span>';
-        else if(sub.photos&&sub.photos.length) hw=`<button class="btn btn-outline btn-sm" style="padding:1px 7px" onclick="openSubPhotos('${sub.id}')">📷${sub.photos.length}${sub.checked?' ✓':''}</button>`;
-        else hw='<span style="font-size:11px;color:var(--text-muted)">제출</span>';
+        const pct=sub?(sub.evalPct||''):'';
+        const graded=pct!=='' && pct!=null;
+        const photo=(sub&&sub.photos&&sub.photos.length)?`<button class="btn btn-outline btn-sm" style="padding:1px 6px;font-size:11px" onclick="openSubPhotos('${sub.id}')">📷${sub.photos.length}</button>`:'';
+        hw=`<div style="display:flex;align-items:center;gap:3px;flex-wrap:wrap">
+          ${HW_GRADES.map(g=>`<button class="btn btn-sm" title="${g[1]}" style="padding:2px 7px;font-size:11px;${pct===g[0]?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="doQuickCheck('${a.id}','${st.id}','${g[0]}')">${g[1].split(' ')[0]}</button>`).join('')}
+          ${graded?`<span style="font-size:11px;font-weight:700;color:var(--primary);margin-left:2px">${hwGradeLabel(pct)}</span>`:(sub?'<span style="font-size:11px;color:var(--text-muted);margin-left:2px">제출됨 · 판정 전</span>':'<span style="font-size:11px;color:var(--red);font-weight:700;margin-left:2px">미판정</span>')}
+          ${photo}
+        </div>`;
       }
       return `<div style="display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;${absent?'background:#FEF2F2':''}">
         <strong style="font-size:13px;min-width:58px">${st.name}</strong>
@@ -5255,7 +5302,11 @@ function studentStats(st){
   const mySubs=getSubmissions().filter(s=>s.studentId===st.id);
   const hwRate=myAsgnHw.length?Math.round(myAsgnHw.reduce((sum,a)=>sum+subCompletion(mySubs.find(s=>s.assignmentId===a.id)),0)/myAsgnHw.length)+'%':'-';
   const retrySubs=mySubs.filter(s=>s.needsRetry).length;
-  const retryRate=mySubs.length&&retrySubs?Math.round((1-retrySubs/mySubs.length)*100)+'%':(mySubs.length?'100%':'-');
+  // 오답 완료율 = 틀린 문제 중 확인(oapOk)까지 끝난 비율 — 학생 화면과 같은 기준
+  let oapTotal=0, oapDone=0;
+  mySubs.forEach(sub=>{ if(!Array.isArray(sub.wrongNos)) return;
+    sub.wrongNos.map(String).forEach(n=>{ oapTotal++; if(sub.oapOk && sub.oapOk[n]) oapDone++; }); });
+  const retryRate = oapTotal ? Math.round(oapDone/oapTotal*100)+'%' : '-';
   const attInfo=calcAttendance(myAsgn, absentDatesOf(st.id), new Date().toISOString().slice(0,10));
   const attRate=attInfo.total?attInfo.rate+'%':'-';
   const myScores=getExamSubs().filter(s=>s.studentId===st.id&&s.score!=null).sort((a,b)=>(b.ts||0)-(a.ts||0));

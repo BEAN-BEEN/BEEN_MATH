@@ -887,6 +887,15 @@ function hwPunctuality(asn){
     onTimeRate: total?Math.round(onTime/total*100):0,
     lateRate: total?Math.round(lateN/total*100):0 };
 }
+// 🔶 오답 완료율 — 틀린 문제 중 선생님 확인까지 끝난 비율.
+//    숙제 제출률과 별개 축입니다 (수업 때 판정한 제출률은 나중 업로드로 안 바뀌고,
+//     나중에 올려서 마무리한 건 여기에 반영돼요)
+function oapProgress(asn){
+  let total=0, done=0;
+  asn.forEach(a=>{ if(!a.isOap || !a.oapEntered) return;
+    (a.wrongNos||[]).forEach(n=>{ total++; if(a.oapOk && a.oapOk[n]) done++; }); });
+  return { total, done, rate: total?Math.round(done/total*100):null };
+}
 function getReport(){
   const asn=getAssignments().filter(a=>asnInSeasonS(a, studentSelSeason()));   // 제출률은 선택 시즌 구간 숙제만
   const hwTotal=asn.length, hwSub=asn.filter(a=>a.status==='submitted').length;
@@ -899,7 +908,8 @@ function getReport(){
     homeworkRate: hwPct,
     onTimeRate: punct.onTimeRate,   // 제때(마감 안에) 낸 비율
     lateRate: punct.lateRate,       // 냈지만 마감 뒤에 낸 비율
-    retryRate: 0,
+    retryRate: oapProgress(asn).rate==null?100:oapProgress(asn).rate,   // 오답이 없으면 100%
+    oapStat: oapProgress(asn),
     attendanceRate: att.rate==null?100:att.rate,
     avgScore: scored.length?Math.round(scored.reduce((s,e)=>s+e.score,0)/scored.length):0,
     teacherComment: (S_REPORT && S_REPORT.teacherComment) || REPORT.teacherComment,
@@ -1448,7 +1458,7 @@ function renderHome() {
         ['숙제 제출률', r.homeworkRate+'%', 'var(--primary)', ''],
         ['⏰ 지각 제출률', r.lateRate+'%', 'var(--red)', `제출은 했지만 마감 뒤에 낸 비율 · 지각 ${r.homeworkReport.lateCount}회 · 제때 ${r.homeworkReport.onTime}회`],
         ['출석률', r.attendanceRate+'%', 'var(--green)', ''],
-        ['오답 완료율', r.retryRate+'%', 'var(--orange)', '']
+        ['🔶 오답 완료율', r.retryRate+'%', 'var(--orange)', r.oapStat.total?`틀린 문제 ${r.oapStat.total}개 중 ${r.oapStat.done}개 확인 완료`:'아직 등록된 오답이 없어요']
       ].map(([l,v,c,hint])=>`
         <div style="margin-bottom:12px">
           <div style="display:flex;justify-content:space-between;margin-bottom:4px">
