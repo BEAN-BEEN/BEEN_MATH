@@ -915,18 +915,23 @@ function majorEventsOf(rows){
   return out.slice(0,8);
 }
 // 이미 쪼개져 저장된 시험을 하나로 합칩니다 (같은 학교·같은 시험명 + 사이가 휴일뿐).
+// 쪼개져 저장된 시험 찾기 — 같은 학교에서 사이가 '학교 안 가는 날'뿐인 두 건.
+//   시험명이 서로 달라도(자동 등록 표기가 다를 수 있어서) 짝으로 잡고, 확인창에서 이름을 보여줍니다.
 function splitExamPairs(){
-  const byKey={};
+  const bySchool={};
   getSchoolExams().filter(e=>e.startDate&&e.endDate).forEach(e=>{
-    const k=normSchool(e.school)+'|'+((e.title||'').trim());
-    (byKey[k]=byKey[k]||[]).push(e);
+    const k=normSchool(e.school||'');
+    if(!k) return;
+    (bySchool[k]=bySchool[k]||[]).push(e);
   });
+  const ymd=v=>String(v).replace(/-/g,'');
+  const days=(a,b)=>Math.round((new Date(b+'T00:00:00')-new Date(a+'T00:00:00'))/86400000);
   const pairs=[];
-  Object.values(byKey).forEach(list=>{
+  Object.values(bySchool).forEach(list=>{
     list.sort((a,b)=>a.startDate.localeCompare(b.startDate));
     for(let i=0;i<list.length-1;i++){
       const a=list[i], b=list[i+1];
-      const ymd=v=>String(v).replace(/-/g,'');
+      if(days(a.startDate, b.endDate)>14) continue;          // 너무 길면 다른 시험
       if(b.startDate<=a.endDate || examGapIsOffDaysOnly(ymd(a.endDate), ymd(b.startDate))) pairs.push([a,b]);
     }
   });
@@ -935,7 +940,7 @@ function splitExamPairs(){
 async function doMergeSplitExams(){
   const pairs=splitExamPairs();
   if(!pairs.length){ showToast('쪼개진 시험이 없어요','success'); return; }
-  const lines=pairs.map(([a,b])=>`· ${shortSchool(a.school)} ${a.title||''}: ${a.startDate}~${a.endDate} + ${b.startDate}~${b.endDate} → ${a.startDate}~${b.endDate}`);
+  const lines=pairs.map(([a,b])=>`· ${shortSchool(a.school)} — ${a.startDate}~${a.endDate} "${a.title||'-'}"${String.fromCharCode(10)}    + ${b.startDate}~${b.endDate} "${b.title||'-'}"${String.fromCharCode(10)}    → ${a.startDate}~${b.endDate} "${a.title||b.title||'-'}" 로 합침`);
   const NL=String.fromCharCode(10);
   const msg=['주말·공휴일 때문에 두 토막으로 등록된 시험을 합칠까요?','']
     .concat(lines).concat(['','뒤쪽 기록은 지워지고 앞쪽 기간이 늘어나요.']).join(NL);
@@ -1746,6 +1751,19 @@ function fallbackCopy(txt, done){
   prompt('아래 지시서를 복사하세요', txt);
 }
 // 📋 밖에서 만든 분석 결과를 그대로 가져오기 — 교재 한 권을 미리 정리해 둘 때 편해요.
+// 📁 JSON 파일을 그대로 읽어오기 — 붙여넣기가 길면 파일이 편해요
+function doLoadAnalysisFile(inp){
+  const file=inp&&inp.files&&inp.files[0]; if(!file) return;
+  const r=new FileReader();
+  r.onload=()=>{
+    const ta=document.getElementById('an-paste');
+    if(ta) ta.value=String(r.result||'');
+    doPasteAnalysis();
+    inp.value='';                                  // 같은 파일을 다시 골라도 동작하게
+  };
+  r.onerror=()=>showToast('파일을 읽지 못했어요','error');
+  r.readAsText(file);
+}
 function doPasteAnalysis(){
   const el=document.getElementById('an-paste'); const raw=(el?el.value:'').trim();
   if(!raw){ showToast('붙여넣은 내용이 없어요','error'); return; }
@@ -2150,6 +2168,11 @@ function examAnalysisTabHtml(){
         <summary style="cursor:pointer;font-size:12px;color:var(--text-muted)">📋 다른 곳에서 분석한 결과 붙여넣기 (JSON)</summary>
         <div style="margin-top:8px">
           <textarea class="form-textarea" id="an-paste" style="min-height:90px;font-size:12px;font-family:monospace" placeholder='[{"no":"1","bigUnit":"다항식","smallUnit":"인수분해","ability":"계산","difficulty":"중","intent":"...","solution":"..."}]'></textarea>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px">
+            <input type="file" accept="application/json,.json,.txt" id="an-json" style="display:none" onchange="doLoadAnalysisFile(this)">
+            <button class="btn btn-outline btn-sm" onclick="document.getElementById('an-json').click()">📁 JSON 파일 열기</button>
+            <span style="font-size:11px;color:var(--text-muted)">GPT가 만든 파일을 그대로 올려도 돼요</span>
+          </div>
           <button class="btn btn-primary btn-sm" style="margin-top:6px" onclick="copyAnalysisPrompt()">📄 GPT에 넣을 지시서 복사</button>
           <button class="btn btn-outline btn-sm" style="margin-top:6px" onclick="doPasteAnalysis()">가져오기</button>
           <div style="font-size:11px;color:var(--text-muted);margin-top:5px">지시서를 복사해 GPT에 시험지와 함께 넣고, 나온 JSON을 위에 붙여넣으세요. problems 배열이나 {"problems":[...]} 둘 다 됩니다.</div>
