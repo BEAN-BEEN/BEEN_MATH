@@ -485,7 +485,7 @@ function hwPunctuality(asgns, subs){
     onTimeRate: total?Math.round(onTime/total*100):null,
     lateRate: total?Math.round(lateN/total*100):null };
 }
-async function saveAssignment(d){ d.createdAt=new Date().toISOString().slice(0,10); await db.collection('assignments').add(d); await loadAssignments(); }
+async function saveAssignment(d){ d.createdAt=new Date().toISOString().slice(0,10); const ref=await db.collection('assignments').add(d); await loadAssignments(); return ref.id; }
 async function updateSub(sid,u){ await db.collection('submissions').doc(sid).update(u); await loadSubmissions(); }
 
 // ===== 📚 교재 서랍 = 자주 내는 숙제 프리셋(교재+범위) — 드래그로 반에 뿌리기 =====
@@ -2818,6 +2818,7 @@ function rHomework(){
               <span style="font-size:12px;color:var(--text-muted)">제출 ${subs.length}/${sts.length} · 기간 ${a.startDate||'?'}~${a.dueDate||'-'}</span>
               ${missing>0?`<button class="btn btn-orange btn-sm" onclick="doRemind('${a.classId}','${(a.title||'').replace(/'/g,'')}')">🔔 독촉 알림</button>`:''}
               <button class="btn btn-outline btn-sm" onclick="hwOpenId=hwOpenId==='${a.id}'?null:'${a.id}';rHomework()">${isOpen?'접기':'현황 보기'}</button>
+              <button class="btn ${a.notifiedAt?'btn-outline':'btn-green'} btn-sm" onclick="doNotifyNewHw('${a.id}')" title="${a.notifiedAt?('보낸 시각: '+a.notifiedAt):'학생들에게 새 숙제 알림 보내기'}">${a.notifiedAt?'✓ 알림 보냄':'📨 알림'}</button>
               <button class="btn btn-outline btn-sm" onclick="openHwShot('${a.classId}')" title="이 반 숙제를 캡처용으로 보기">📸</button>
               <button class="btn btn-outline btn-sm" onclick="doDupAsgn('${a.id}')" title="같은 내용으로 새 과제 만들기">📄 복제</button>
               <button class="btn btn-outline btn-sm" onclick="hwEditId='${a.id}';rHomework();window.scrollTo({top:0,behavior:'smooth'})">✏️ 수정</button>
@@ -3348,6 +3349,23 @@ function openQuickHw(){
     <input class="form-input" id="qhw-title" placeholder="예: 쎈 p.50~60" style="margin-bottom:12px">
     <label class="form-label">내용 (선택)</label>
     <input class="form-input" id="qhw-content" placeholder="문제 범위·메모" style="margin-bottom:12px">
+    <div style="background:var(--primary-light);border-radius:10px;padding:11px 12px;margin-bottom:12px">
+      <label class="form-label" style="margin-bottom:5px">🔢 문제 번호 <span style="font-size:11px;color:var(--text-muted);font-weight:400">(적으면 학생이 번호판에서 틀린 것만 고르는 오답 숙제가 돼요)</span></label>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <input class="form-input" id="qhw-pstart" type="number" min="1" style="width:78px;padding:6px 8px" placeholder="시작">
+        <span>~</span>
+        <input class="form-input" id="qhw-pend" type="number" min="1" style="width:78px;padding:6px 8px" placeholder="끝">
+        <span style="font-size:11px;color:var(--text-muted)">번</span>
+      </div>
+      <input class="form-input" id="qhw-plabel" style="margin-top:6px;padding:6px 8px;font-size:12px" placeholder="여러 구간 (예: 17~114 홀수 / 91~136 / 1~15)">
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:7px">
+        <span style="font-size:11px;color:var(--text-muted)">기본</span>
+        ${[['','전체'],['odd','홀수번만'],['even','짝수번만']].map(([v,l])=>`
+          <label style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;border:1px solid var(--border);border-radius:7px;padding:4px 8px;cursor:pointer;background:var(--surface)">
+            <input type="radio" name="qhw-parity" value="${v}" ${v===''?'checked':''}> ${l}
+          </label>`).join('')}
+      </div>
+    </div>
     <label class="form-label">마감일</label>
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
       <button type="button" class="btn btn-outline btn-sm" onclick="qhwDue(1)">내일</button>
@@ -3355,30 +3373,59 @@ function openQuickHw(){
       <button type="button" class="btn btn-outline btn-sm" onclick="qhwDue(7)">+1주</button>
       <input class="form-input" id="qhw-due" type="date" style="flex:1;min-width:150px">
     </div>
-    <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:16px;padding:14px;font-size:15px" onclick="doQuickSaveHw()">저장 + 학생에게 알림 📨</button>
-    <div style="font-size:12px;color:var(--text-muted);margin-top:8px;text-align:center">출제일은 오늘로 자동 설정 · 사진 최대 30장</div>`;
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-outline" style="flex:1;justify-content:center;padding:13px;font-size:14px" onclick="doQuickSaveHw(false)">💾 저장만 (알림 없음)</button>
+      <button class="btn btn-primary" style="flex:1;justify-content:center;padding:13px;font-size:14px" onclick="doQuickSaveHw(true)">📨 저장 + 알림</button>
+    </div>
+    <div style="font-size:12px;color:var(--text-muted);margin-top:8px;text-align:center">출제일은 오늘 · 사진 최대 30장<br>미리 입력해두고, 나중에 숙제 목록에서 <strong>📨 알림</strong>을 눌러 보낼 수 있어요</div>`;
   qhwClassId=null;
   document.getElementById('quickHwModal').style.display='flex';
 }
 function closeQuickHw(){ document.getElementById('quickHwModal').style.display='none'; }
 function qhwPickClass(cid){ qhwClassId=cid; document.querySelectorAll('#qhw-cls-chips [data-cid]').forEach(b=>{ b.className='btn btn-'+(b.dataset.cid===cid?'primary':'outline')+' btn-sm'; }); }
 function qhwDue(days){ const d=new Date(); d.setDate(d.getDate()+days); const p=n=>String(n).padStart(2,'0'); const el=document.getElementById('qhw-due'); if(el) el.value=`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; }
-async function doQuickSaveHw(){
+// notify=true 면 저장하면서 알림까지, false 면 조용히 저장만 (미리 만들어두는 용도)
+async function doQuickSaveHw(notify){
   if(!qhwClassId){ showToast('반을 선택해주세요','error'); return; }
-  const title=document.getElementById('qhw-title').value.trim();
+  const v=id=>{ const el=document.getElementById(id); return el?el.value:''; };
+  const title=v('qhw-title').trim();
   if(!title){ showToast('제목을 입력해주세요','error'); return; }
   const cls=CLASSES.find(c=>c.id===qhwClassId);
   const today=new Date().toISOString().slice(0,10);
-  const data={classId:qhwClassId,className:cls?.name||'',title,content:document.getElementById('qhw-content').value.trim(),textbook:document.getElementById('qhw-textbook').value.trim(),startDate:today,dueDate:document.getElementById('qhw-due').value,maxPhotos:30};
+  const par=document.querySelector('input[name="qhw-parity"]:checked');
+  const parity=(par&&(par.value==='odd'||par.value==='even'))?par.value:'';
+  const data={ classId:qhwClassId, className:cls?cls.name:'', title,
+    content:v('qhw-content').trim(), textbook:v('qhw-textbook').trim(),
+    startDate:today, dueDate:v('qhw-due'), maxPhotos:30,
+    probStart:parseInt(v('qhw-pstart'),10)||null,
+    probEnd:parseInt(v('qhw-pend'),10)||null,
+    probLabel:v('qhw-plabel').trim()||null,
+    probParity:parity,
+    notifiedAt:'' };
   try{
-    await saveAssignment(data);
+    const id=await saveAssignment(data);
     closeQuickHw();
-    showToast(`"${title}" 숙제 등록 완료! 📝`,'success');
+    showToast(notify?`"${title}" 등록 + 알림 보냄 📨`:`"${title}" 저장됨 (알림은 아직 안 보냈어요) 💾`,'success');
     if(curSec==='homework') rHomework(); else if(curSec==='dashboard') rDashboard();
-    fetch('/api/notify',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({tokens:classTokens(qhwClassId), title:'새 숙제가 등록됐어요 📝', body:`${cls?.name||''} · ${title}`})})
-      .then(r=>r.json()).then(j=>{ if(j&&j.sent) showToast(`알림 ${j.sent}명에게 발송 📨`); }).catch(()=>{});
+    if(notify) await doNotifyNewHw(id, true);
   }catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+// 📨 이 숙제를 학생들에게 알리기 — 미리 만들어둔 숙제를 원하는 때에 보냅니다.
+//    (미제출자 독촉인 doRemind 와는 다릅니다. 이건 '새 숙제 나왔어요' 알림)
+async function doNotifyNewHw(aid, silent){
+  const a=getAssignments().find(x=>x.id===aid); if(!a){ showToast('숙제를 찾을 수 없어요','error'); return; }
+  const tokens=classTokens(a.classId);
+  if(!tokens.length){ showToast('이 반에 알림을 켠 학생이 없어요','warning'); return; }
+  if(!silent && a.notifiedAt && !confirm(`이미 ${a.notifiedAt}에 알림을 보냈어요. 한 번 더 보낼까요?`)) return;
+  try{
+    const due=a.dueDate?` · ~${a.dueDate}까지`:'';
+    const r=await fetch('/api/notify',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({tokens, title:'새 숙제가 등록됐어요 📝', body:`${a.className||''} · ${a.title}${due}`})});
+    const j=await r.json().catch(()=>null);
+    try{ await updateAssignment(aid,{ notifiedAt:new Date().toISOString().slice(0,16).replace('T',' ') }); }catch(e){}
+    showToast(j&&j.sent?`알림 ${j.sent}명에게 발송 📨`:'알림 발송 완료','success');
+    if(curSec==='homework') rHomework();
+  }catch(e){ showToast('발송 실패: '+e.message,'error'); }
 }
 async function doCheck(sid){ const s=getSubmissions().find(x=>x.id===sid); const nv=!(s&&s.checked); await updateSub(sid,{checked:nv, ...(nv?{rejected:false}:{})}); showToast(nv?'숙제 확인 완료!':'확인을 취소했어요','success'); rHomework(); }
 // 대시보드에서 바로 확인 처리 (확인 후 대시보드만 새로고침)
@@ -3733,11 +3780,41 @@ async function doUncheckOffline(subId){
 async function doRetry(sid,v){ await updateSub(sid, v?{needsRetry:true,retryResolved:false}:{needsRetry:false,retryDone:false,retryResolved:true,checked:true}); showToast(v?'오답으로 표시했어요. 학생 숙제 카드에 보여요 ✏️':'오답 완료로 확인 처리했어요 👍',v?'warning':'success'); rHomework(); }
 // 제출 사진 보기 (간단 뷰어)
 function showPhotoModal(urls){
-  if(!urls||!urls.length){ showToast('등록된 사진이 없어요'); return; }
+  const list=(urls||[]).filter(Boolean);
+  if(!list.length){ showToast('등록된 사진이 없어요'); return; }
   const ov=document.createElement('div');
-  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:3000;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:12px;padding:24px;overflow:auto;cursor:zoom-out';
-  ov.onclick=()=>ov.remove();
-  ov.innerHTML='<div style="color:#fff;font-size:13px;flex:0 0 auto">사진을 누르면 닫혀요 ✕</div>'+urls.map(u=>`<img src="${u}" style="max-width:92%;max-height:80vh;border-radius:8px">`).join('');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:3000;overflow:auto;padding:16px;cursor:zoom-out';
+  const box=document.createElement('div');
+  box.style.cssText='max-width:860px;margin:0 auto;display:flex;flex-direction:column;gap:14px;align-items:center';
+  const head=document.createElement('div');
+  head.style.cssText='color:#fff;font-size:13px;padding:2px 0';
+  head.textContent='사진 '+list.length+'장 · 빈 곳을 누르면 닫혀요 ✕';
+  box.appendChild(head);
+  list.forEach(function(u,idx){
+    const wrap=document.createElement('div');
+    wrap.style.cssText='width:100%;background:rgba(255,255,255,.06);border-radius:10px;padding:8px;text-align:center;color:#fff;min-height:60px';
+    const img=document.createElement('img');
+    img.loading='lazy'; img.decoding='async';        // 한꺼번에 30장을 받지 않게 (느려지고 일부가 깨져요)
+    img.style.cssText='max-width:100%;max-height:78vh;border-radius:8px;display:block;margin:0 auto';
+    img.onclick=function(e){ e.stopPropagation(); };  // 사진 자체를 눌러도 안 닫히게
+    img.onerror=function(){
+      wrap.innerHTML='';
+      const msg=document.createElement('div');
+      msg.style.cssText='padding:20px 10px;font-size:13px;line-height:1.7';
+      msg.innerHTML=(idx+1)+'번째 사진을 불러오지 못했어요<br><span style="opacity:.7;font-size:11.5px">오래돼서 정리됐거나, 네트워크가 불안정할 수 있어요</span>';
+      const a=document.createElement('a');
+      a.href=u; a.target='_blank'; a.textContent='새 탭에서 열어보기';
+      a.style.cssText='color:#93C5FD;font-size:12px;display:inline-block;margin-top:6px';
+      a.onclick=function(e){ e.stopPropagation(); };
+      msg.appendChild(document.createElement('br')); msg.appendChild(a);
+      wrap.appendChild(msg);
+    };
+    img.src=u;
+    wrap.appendChild(img);
+    box.appendChild(wrap);
+  });
+  ov.appendChild(box);
+  ov.onclick=function(){ ov.remove(); };
   document.body.appendChild(ov);
 }
 function openSubPhotos(subId){
