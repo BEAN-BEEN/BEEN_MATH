@@ -803,15 +803,17 @@ function getAssignments(){
     const oapDone = oapPhotoDone; // 기존 배지 호환(사진 완료 기준)
     // 📷 완료 사진(또는 직접검사) 제출 여부 — 오답 숙제도 '사진 + 번호' 둘 다 받음
     const hasPhoto = !!(sub && ((Array.isArray(sub.photos)&&sub.photos.length) || sub.offline));
+    const notDone = !!(sub && sub.notDone);   // 선생님이 '안 해왔다'고 기록한 것 (나중에 채우면 풀려요)
     let status;
-    if(isOap){
+    if(notDone) status=(a.dueDate && a.dueDate < today) ? 'late' : 'pending';
+    else if(isOap){
       if(sub && sub.rejected) status='rejected';
       else if(oapEntered && hasPhoto) status='submitted';   // 사진 + 틀린번호 둘 다 해야 제출 완료
       else status=(a.dueDate && a.dueDate < today) ? 'late' : 'pending';
     } else if(sub && sub.rejected) status='rejected';
     else if(sub) status='submitted';
     else status=(a.dueDate && a.dueDate < today) ? 'late' : 'pending';
-    return { ...a, status, isOap, wrongNos, corrections, oapOk, oapRedo, oapOffline, oapEntered, oapDone, oapPhotoDone, oapConfirmed, oapNeedsStudent, oapAwaitTeacher, hasPhoto, photos:(sub&&sub.photos)||[], submittedAt:sub?sub.submittedAt:null, teacherChecked:sub?!!sub.checked:false, needsRetry:sub?!!sub.needsRetry:false, offline:sub?!!sub.offline:false, late:sub?!!sub.late:false, retryDone:sub?!!sub.retryDone:false, rejected:sub?!!sub.rejected:false, rejectReason:sub?(sub.rejectReason||''):'', evalPct:sub?(sub.evalPct||''):'', evalTag:sub?(sub.evalTag||''):'', subId:sub?sub.id:null, byTeacher:sub?!!sub.byTeacher:false, subTs:sub?(sub.ts||null):null };
+    return { ...a, status, isOap, wrongNos, corrections, oapOk, oapRedo, oapOffline, oapEntered, oapDone, oapPhotoDone, oapConfirmed, oapNeedsStudent, oapAwaitTeacher, hasPhoto, photos:(sub&&sub.photos)||[], submittedAt:sub?sub.submittedAt:null, teacherChecked:sub?!!sub.checked:false, needsRetry:sub?!!sub.needsRetry:false, offline:sub?!!sub.offline:false, late:sub?!!sub.late:false, retryDone:sub?!!sub.retryDone:false, rejected:sub?!!sub.rejected:false, rejectReason:sub?(sub.rejectReason||''):'', evalPct:sub?(sub.evalPct||''):'', evalTag:sub?(sub.evalTag||''):'', subId:sub?sub.id:null, byTeacher:sub?!!sub.byTeacher:false, subTs:sub?(sub.ts||null):null, notDone, notDoneReason:sub?(sub.notDoneReason||''):'' };
   });
 }
 // 출석률 = 결석 기준. 수업일(=숙제 마감일) 중 선생님이 '결석' 표시한 날만 빠짐. 안 빠지면 100%.
@@ -858,6 +860,7 @@ function seasonBarHtml(renderFn, noun){
 function getQuestions()   { return S_QUESTIONS; }
 // 한 과제의 완성도(%) — 제출+평가됨이면 그 값, 제출만 했으면 100, 미제출/반려는 0
 function asnCompletion(a){
+  if(a.notDone) return 0;                 // ❌ 안 해온 것
   if(a.status!=='submitted') return 0;
   if(a.evalPct===''||a.evalPct==null) return 100;
   return parseInt(a.evalPct,10)||0;
@@ -1870,6 +1873,7 @@ function renderHomework() {
         <div class="hw-title" style="margin-bottom:6px">${a.title}</div>
         ${a.textbook?`<div style="font-size:12px;color:var(--primary);font-weight:600;margin-bottom:4px">📘 ${a.textbook}</div>`:''}
         ${parityLabel(a.probParity)?`<div style="font-size:12px;color:var(--primary);font-weight:700;margin-bottom:4px">🔢 ${parityLabel(a.probParity)} 풀어요</div>`:''}
+        ${a.notDone?`<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:var(--radius-sm);padding:10px 12px;margin:8px 0"><div style="font-size:13px;font-weight:800;color:var(--red)">❌ 안 해온 걸로 기록됐어요${a.notDoneReason?` <span style="font-weight:600">(${a.notDoneReason})</span>`:''}</div><div style="font-size:12px;color:#7F1D1D;margin-top:3px">지금이라도 해서 올리면 선생님이 확인해줘요!</div></div>`:''}
         <div class="hw-body">${a.content}</div>
         <div class="hw-due">📅 ${a.startDate?fmtDateFull(a.startDate)+' ~ ':''}${fmtDateFull(a.dueDate)} 까지 제출</div>
         ${a.rejected?`<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:var(--radius-sm);padding:12px;margin:10px 0">
