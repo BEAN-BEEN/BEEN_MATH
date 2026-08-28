@@ -750,15 +750,73 @@ function getExams(){
     return { ...e, status, score:es?es.score:null, comment:es?es.comment:'', weakAbilities:(es&&es.weakAbilities)||[], perQuestion:(es&&es.perQuestion)||[], wrongNos:(es&&es.wrongNos)||'' };
   });
 }
+// 🅰️ OMR 답안 입력판 — 종이에 표시한 답을 그대로 여기에 찍으면 바로 채점돼요.
+//    선생님이 정답을 넣어둔 시험에만 나옵니다.
+let OMR_DRAFT={};   // {examId:{번호:답}}
+function omrNos(e){
+  const key=(e&&e.answerKey)||{};
+  return Object.keys(key).filter(n=>String(key[n]||'').trim())
+    .sort((a,b)=>(parseFloat(a)-parseFloat(b))||(a>b?1:-1));
+}
+function omrChoices(e){ const n=parseInt(e&&e.choices,10); return (n>=2&&n<=9)?n:5; }
+function omrPick(examId, no, v){
+  const d=OMR_DRAFT[examId]=OMR_DRAFT[examId]||{};
+  d[no] = (d[no]===v ? '' : v);
+  renderGrades();
+}
+function omrPadHtml(e){
+  const nos=omrNos(e);
+  if(!nos.length) return '';
+  const ch=omrChoices(e), circ=['①','②','③','④','⑤','⑥','⑦','⑧','⑨'];
+  const sub=S_EXAMSUBS.find(s=>s.examId===e.id);
+  const saved=(sub&&sub.answers)||{};
+  const d=OMR_DRAFT[e.id]||(OMR_DRAFT[e.id]=Object.assign({},saved));
+  const done=nos.filter(n=>String(d[n]||'').trim()).length;
+  return `<div style="background:var(--bg);border-radius:12px;padding:12px;margin-top:10px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <span style="font-size:14px;font-weight:800">🅰️ 답 찍기</span>
+      <span class="badge ${done===nos.length?'b-green':'b-yellow'}">${done}/${nos.length}</span>
+      <span style="font-size:11px;color:var(--text-muted)">종이에 표시한 대로 눌러주세요</span>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">${nos.map(n=>`
+      <div style="border:1px solid var(--border);border-radius:9px;padding:5px 7px;min-width:56px;text-align:center;background:var(--surface)">
+        <div style="font-size:11px;font-weight:800;color:var(--text-sub);margin-bottom:3px">${n}</div>
+        <div style="display:flex;gap:2px;justify-content:center">${Array.from({length:ch},(_,k)=>{ const v=String(k+1); const on=String(d[n]||'')===v;
+          return `<button type="button" style="border:none;border-radius:6px;padding:2px 5px;font-size:12px;cursor:pointer;font-family:inherit;${on?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="omrPick('${e.id}','${String(n).replace(/'/g,'')}','${v}')">${circ[k]}</button>`;}).join('')}</div>
+      </div>`).join('')}</div>
+  </div>`;
+}
 // 답안지 제출 → Firebase
+// 답을 찍었고 선생님이 정답을 넣어뒀으면 바로 채점해서 점수·틀린 번호까지 같이 저장합니다.
+function gradeOmr(key, ans){
+  key=key||{}; ans=ans||{};
+  const nos=Object.keys(key).filter(n=>String(key[n]||'').trim());
+  nos.sort((a,b)=>(parseFloat(a)-parseFloat(b))||(a>b?1:-1));
+  const wrong=[]; let correct=0;
+  nos.forEach(n=>{ const a=String(ans[n]==null?'':ans[n]).trim();
+    if(a && a===String(key[n]).trim()) correct++; else wrong.push(n); });
+  return { total:nos.length, correct, wrong, rate: nos.length?Math.round(correct/nos.length*100):null };
+}
 async function submitExamAnswer(examId){
   const e = S_EXAMS.find(x=>x.id===examId);
-  await db.collection('examSubs').add({
+  const answers = Object.assign({}, OMR_DRAFT[examId]||{});
+  Object.keys(answers).forEach(k=>{ if(!String(answers[k]||'').trim()) delete answers[k]; });
+  const key=(e&&e.answerKey)||{};
+  const hasKey=Object.keys(key).length>0;
+  const g=hasKey?gradeOmr(key, answers):null;
+  const max=(e&&e.maxScore)||100;
+  const base={
     examId, examTitle:e?e.title:'', classId:e?e.classId:'', className:e?e.className:'',
-    studentId:STUDENT.id, studentName:STUDENT.name,
-    submittedAt:new Date().toLocaleString('ko-KR'), score:null, comment:'', ts:Date.now()
-  });
+    studentId:STUDENT.id, studentName:STUDENT.name, answers,
+    submittedAt:new Date().toLocaleString('ko-KR'), comment:'', ts:Date.now(),
+    score: g ? Math.round(g.correct/g.total*max) : null,
+    wrongNos: g ? g.wrong.join(', ') : ''
+  };
+  const exist=S_EXAMSUBS.find(x=>x.examId===examId);
+  if(exist) await db.collection('examSubs').doc(exist.id).update(base);
+  else await db.collection('examSubs').add(base);
   await refreshMine('exams');
+  return g;
 }
 
 // 반이동 이력 기준: 숙제 출제일 d에 학생이 반 cid 소속이었는지
@@ -2100,9 +2158,9 @@ async function doSubmitRetry(subId, id) {
 }
 async function doSubmitAnswer(examId){
   try{
-    await submitExamAnswer(examId);
+    const g=await submitExamAnswer(examId);
     launchConfetti();
-    showToast('답안지 제출 완료! 채점을 기다려주세요 📝','success');
+    showToast(g ? `제출 완료! ${g.total}문제 중 ${g.correct}개 맞았어요 (${g.rate}점)` : '답안지 제출 완료! 채점을 기다려주세요 📝','success');
     renderGrades();
   }catch(e){ showToast('제출 실패: '+e.message,'error'); }
 }
@@ -2251,8 +2309,9 @@ function renderGrades() {
         <div class="hw-title" style="margin-bottom:4px">${e.title}</div>
         <div class="hw-body">범위: ${e.range} · 만점: ${e.maxScore}점</div>
         <div class="hw-due">📅 시험일: ${fmtDateFull(e.date)}</div>
-        <div class="upload-area" onclick="this.querySelector('input').click()">
-          <div class="u-icon">📷</div><p>답안지 사진을 업로드하세요</p>
+        ${omrPadHtml(e)}
+        <div class="upload-area" onclick="this.querySelector('input').click()" style="margin-top:10px">
+          <div class="u-icon">📷</div><p>답안지 사진도 올릴 수 있어요 (선택)</p>
           <input type="file" accept="image/*" multiple>
         </div>
         <button class="btn btn-orange" onclick="doSubmitAnswer('${e.id}')">답안지 제출하기</button>

@@ -143,6 +143,36 @@ ${isPdf ? '모든 쪽의 문제를 빠짐없이, 번호 순서대로 분석해.'
   return json(parsed);
 }
 
+// 🅰️ OMR 답안지 판독 — 학생이 표시한 답을 번호별로 읽어옵니다.
+//   오독이 있을 수 있어서, 화면에서 반드시 확인·수정하고 저장하게 합니다.
+// ----------------------------------------------------------------
+async function readOmr(request, env) {
+  const { imageBase64, imageMime, nos, choices } = await request.json();
+  if (!imageBase64) return json({ error: '답안지 사진이 필요해요' }, 400);
+  const ch = (choices >= 2 && choices <= 9) ? choices : 5;
+  const list = Array.isArray(nos) && nos.length ? nos.map(String) : null;
+  const prompt =
+`너는 OMR 답안지를 읽는 채점 도우미야. 첨부된 답안지 사진에서 학생이 표시한 답을 읽어줘.
+- 보기는 1~${ch} 번이야. 표시(색칠·동그라미·체크)된 것을 그 번호의 답으로 봐.
+- 아무것도 표시가 없으면 빈 문자열로 둬.
+- 두 개 이상 표시돼 있으면 빈 문자열로 두고 doubt 목록에 그 번호를 넣어.
+- 흐릿해서 확신이 없으면 읽되 doubt 목록에 넣어줘.
+${list ? `- 읽어야 할 문항 번호: ${list.join(', ')}` : '- 답안지에 있는 문항 번호를 그대로 써줘.'}
+반드시 아래 JSON 형식으로만 답해 (설명 없이 JSON만):
+{\"answers\":{\"1\":\"3\",\"2\":\"\"},\"doubt\":[\"2\"]}`;
+  const raw = await callModel(env, prompt, imageBase64, imageMime, true);
+  let parsed;
+  try { parsed = JSON.parse(raw.replace(/```json/gi, '').replace(/```/g, '').trim()); }
+  catch (e) { return json({ answers: {}, doubt: [], note: raw }); }
+  const answers = {};
+  Object.keys(parsed.answers || {}).forEach(k => {
+    const v = String(parsed.answers[k] == null ? '' : parsed.answers[k]).trim();
+    answers[String(k).trim()] = (/^[1-9]$/.test(v) && +v <= ch) ? v : '';   // 보기 범위 밖이면 비움
+  });
+  return json({ answers, doubt: Array.isArray(parsed.doubt) ? parsed.doubt.map(String) : [] });
+}
+
+// ----------------------------------------------------------------
 // ----------------------------------------------------------------
 // 성적 리포트 — 틀린 문항 → 능력·문항별 피드백 (JSON)
 // ----------------------------------------------------------------
