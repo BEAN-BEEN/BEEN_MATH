@@ -1577,6 +1577,51 @@ function classSelect(id='',all=false){
 function fileToBase64(file){ return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]);r.onerror=rej;r.readAsDataURL(file);}); }
 function compressImage(file,maxDim=1280,q=0.72){ return new Promise((resolve,reject)=>{const img=new Image(),url=URL.createObjectURL(file);img.onload=()=>{let w=img.width,h=img.height;if(w>h&&w>maxDim){h=Math.round(h*maxDim/w);w=maxDim;}else if(h>maxDim){w=Math.round(w*maxDim/h);h=maxDim;}const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);let d;try{d=c.toDataURL('image/jpeg',q);}catch(e){URL.revokeObjectURL(url);return reject(e);}URL.revokeObjectURL(url);resolve({base64:d.split(',')[1],mime:'image/jpeg'});};img.onerror=reject;img.src=url;}); }
 let lastAnalysis=null;
+// 📑 브라우저에서 PDF의 일부 페이지만 잘라내기 — 교재 한 권을 회차별로 나눠 넣을 때.
+//   pdf-lib 는 PDF를 고를 때만 불러옵니다(평소 로딩에 영향 없음).
+let _pdfLibP=null;
+function loadPdfLib(){
+  if(window.PDFLib) return Promise.resolve(window.PDFLib);
+  if(_pdfLibP) return _pdfLibP;
+  _pdfLibP=new Promise((res,rej)=>{
+    const s=document.createElement('script');
+    s.src='https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js';
+    s.onload=()=>window.PDFLib?res(window.PDFLib):rej(new Error('PDF 도구를 불러오지 못했어요'));
+    s.onerror=()=>rej(new Error('PDF 도구를 불러오지 못했어요 (인터넷 확인)'));
+    document.head.appendChild(s);
+  });
+  return _pdfLibP;
+}
+// '3-14, 20' 같은 표기를 0부터 시작하는 쪽 번호로
+function parsePageRange(str, total){
+  const out=[];
+  String(str||'').split(',').forEach(part=>{
+    part=part.trim(); if(!part) return;
+    const m=part.match(/^(\d+)\s*[-~]\s*(\d+)$/);
+    if(m){ let a=+m[1], b=+m[2]; if(a>b){ const t=a; a=b; b=t; }
+      for(let i=a;i<=b;i++) if(i>=1&&i<=total) out.push(i-1); }
+    else { const v=parseInt(part,10); if(v>=1&&v<=total) out.push(v-1); }
+  });
+  return out.filter((v,i,arr)=>arr.indexOf(v)===i);
+}
+function bytesToBase64(bytes){
+  let s='';
+  const CH=0x8000;                                   // 한 번에 다 넘기면 스택이 터져요
+  for(let i=0;i<bytes.length;i+=CH) s+=String.fromCharCode.apply(null, bytes.subarray(i, i+CH));
+  return btoa(s);
+}
+async function pdfSlice(file, rangeStr){
+  const Lib=await loadPdfLib();
+  const src=await Lib.PDFDocument.load(await file.arrayBuffer(), { ignoreEncryption:true });
+  const total=src.getPageCount();
+  const idx=parsePageRange(rangeStr, total);
+  if(!idx.length) throw new Error(`페이지 범위를 확인해주세요 (이 PDF는 1~${total}쪽)`);
+  const out=await Lib.PDFDocument.create();
+  const pages=await out.copyPages(src, idx);
+  pages.forEach(p=>out.addPage(p));
+  const bytes=await out.save();
+  return { bytes, count:idx.length, total };
+}
 // 📄 PDF 판별 — 브라우저가 type을 안 채워줄 때가 있어 확장자도 같이 봅니다
 function isPdfFile(f){ return !!f && ((f.type||'').toLowerCase()==='application/pdf' || /\.pdf$/i.test(f.name||'')); }
 async function doAnalyzeExam(){
@@ -1585,13 +1630,29 @@ async function doAnalyzeExam(){
   const file=fi.files[0];
   const out=document.getElementById('an-result');
   const pdf=isPdfFile(file);
-  // PDF는 압축을 못 하니 용량을 미리 막아줍니다 (base64로 커지면 AI가 못 받아요)
-  if(pdf && file.size>14*1024*1024){ out.innerHTML='<div style="color:var(--red)">PDF가 너무 커요 ('+(file.size/1048576).toFixed(1)+'MB). 14MB 이하로 줄이거나 필요한 쪽만 잘라서 올려주세요.</div>'; return; }
+  const pageRange=((document.getElementById('an-pages')||{}).value||'').trim();
   out.innerHTML='<div style="padding:16px;color:var(--text-muted)">🤖 '+(pdf?'PDF 시험지를':'시험지를')+' 분석하는 중이에요... ('+(pdf?'20~40초':'10~20초')+' 걸려요)</div>';
   let img;
   if(pdf){
-    try{ img={base64:await fileToBase64(file), mime:'application/pdf'}; }
-    catch(e){ out.innerHTML='<div style="color:var(--red)">PDF 처리 실패</div>'; return; }
+    let bytes=null, note='';
+    if(pageRange){
+      try{
+        out.innerHTML='<div style="padding:16px;color:var(--text-muted)">📑 '+pageRange+' 쪽만 잘라내는 중…</div>';
+        const r=await pdfSlice(file, pageRange);
+        bytes=r.bytes; note=` (전체 ${r.total}쪽 중 ${r.count}쪽)`;
+      }catch(e){ out.innerHTML='<div style="color:var(--red)">'+e.message+'</div>'; return; }
+    }
+    const size = bytes ? bytes.length : file.size;
+    if(size>14*1024*1024){
+      out.innerHTML='<div style="color:var(--red)">PDF가 너무 커요 ('+(size/1048576).toFixed(1)+'MB'+note+').<br>'
+        +(pageRange?'페이지 범위를 더 좁혀주세요.':'위 <strong>📑 PDF 페이지</strong>에 회차 범위(예: 3-14)를 적으면 그 부분만 분석해요.')+'</div>';
+      return;
+    }
+    out.innerHTML='<div style="padding:16px;color:var(--text-muted)">🤖 PDF 시험지를 분석하는 중이에요'+note+'... (20~40초 걸려요)</div>';
+    try{
+      img = bytes ? { base64: bytesToBase64(bytes), mime:'application/pdf' }
+                  : { base64: await fileToBase64(file), mime:'application/pdf' };
+    }catch(e){ out.innerHTML='<div style="color:var(--red)">PDF 처리 실패: '+e.message+'</div>'; return; }
   } else {
     try{ img=await compressImage(file); }catch(e){ try{ img={base64:await fileToBase64(file),mime:file.type}; }catch(e2){ out.innerHTML='<div style="color:var(--red)">사진 처리 실패</div>'; return; } }
   }
@@ -2004,6 +2065,11 @@ function examAnalysisTabHtml(){
       <div class="upload-area" onclick="this.querySelector('input').click()">
         <div class="u-icon">📄</div><p id="an-label">시험지 사진 또는 PDF를 선택하세요 <span style="opacity:.8;font-size:12px">· PDF는 여러 쪽도 한 번에</span></p>
         <input type="file" accept="image/*,application/pdf,.pdf" id="an-photo" onchange="document.getElementById('an-label').textContent=this.files[0]?('📎 '+this.files[0].name):'시험지 사진 또는 PDF를 선택하세요'">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
+        <span style="font-size:12px;color:var(--text-muted)">📑 PDF 페이지</span>
+        <input class="form-input" id="an-pages" placeholder="예: 3-14 (한 회차만)" style="width:190px;padding:5px 9px;font-size:12px">
+        <span style="font-size:11px;color:var(--text-muted)">한 권짜리 PDF는 <strong>회차 페이지만</strong> 적으면 그 부분만 잘라서 분석해요 (파일을 나눌 필요 없어요)</span>
       </div>
       <button class="btn btn-primary" onclick="doAnalyzeExam()">🤖 분석하기</button>
       <details style="margin-top:10px">
