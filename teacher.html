@@ -1011,9 +1011,36 @@ function doManualExam(school){
 const HOLIDAY_FIXED={'01-01':'신정','03-01':'삼일절','05-05':'어린이날','06-06':'현충일','08-15':'광복절','10-03':'개천절','10-09':'한글날','12-25':'성탄절'};
 const HOLIDAY_YEAR={
   '2026':{'02-16':'설날','02-17':'설날','02-18':'설날','03-02':'대체공휴일','05-24':'부처님오신날','05-25':'대체공휴일',
-          '06-03':'지방선거','08-17':'대체공휴일','09-24':'추석','09-25':'추석','09-26':'추석','10-05':'대체공휴일'}
+          '06-03':'지방선거','08-17':'대체공휴일','09-24':'추석','09-25':'추석','09-26':'추석','10-05':'대체공휴일'},
+  // 2027년 — 설날 2/6(토)·추석 9/15(수). 광복절·개천절은 일요일, 한글날·성탄절은 토요일이라 대체공휴일이 붙어요
+  '2027':{'02-05':'설날','02-06':'설날','02-07':'설날','02-08':'대체공휴일','05-13':'부처님오신날',
+          '08-16':'대체공휴일','09-14':'추석','09-15':'추석','09-16':'추석','10-04':'대체공휴일','10-11':'대체공휴일','12-27':'대체공휴일'}
 };
 function holidayName(ds){ const y=(ds||'').slice(0,4), md=(ds||'').slice(5); return (HOLIDAY_YEAR[y]&&HOLIDAY_YEAR[y][md]) || HOLIDAY_FIXED[md] || ''; }
+// 🗓 미리 채워둘 일정 — 앞으로 6개월 안에 쓸 일정이 비어 있으면 대시보드에서 먼저 알려준다
+//   해가 바뀌기 전에 공휴일·모의고사·시즌을 미리 넣어두려고. 매년 자동으로 걸린다.
+const SCHED_AHEAD_DAYS=183;
+function scheduleGaps(todayStr){
+  const gaps=[], ahead=addDays(todayStr, SCHED_AHEAD_DAYS);
+  for(let y=+todayStr.slice(0,4); y<=+ahead.slice(0,4); y++){
+    if(!HOLIDAY_YEAR[String(y)]) gaps.push({t:y+'년 공휴일', d:'설날·추석·대체공휴일이 아직 없어요. 진도표와 달력이 그날을 평일로 봅니다.'});
+  }
+  if(!getMockExams().some(m=>m.date && m.date>=todayStr && m.date<=ahead))
+    gaps.push({t:'다가오는 모의고사', d:'6개월 안에 등록된 모의고사가 없어요. 학생 홈의 D-day도 비어 있습니다.'});
+  const seasons=getSeasons();
+  if(seasons.length && !seasons.some(s=>!s.endDate || s.endDate>=ahead))
+    gaps.push({t:'다음 시즌', d:'지금 시즌이 6개월 안에 끝나요. 다음 시즌을 미리 만들어두세요.'});
+  return gaps;
+}
+function scheduleGapHtml(){
+  let gaps=[]; try{ gaps=scheduleGaps(new Date().toISOString().slice(0,10)); }catch(e){ return ''; }
+  if(!gaps.length) return '';
+  return `<div class="card" style="margin:0;border-left:4px solid #F59E0B;background:#FFFBEB">
+    <div style="font-size:14px;font-weight:800;color:#92400E;margin-bottom:6px">🗓 미리 채워둘 일정 ${gaps.length}가지</div>
+    <div style="display:flex;flex-direction:column;gap:5px">${gaps.map(g=>`<div style="font-size:12.5px;color:#78350F"><strong>${g.t}</strong> — ${g.d}</div>`).join('')}</div>
+    <div style="font-size:11px;color:#A16207;margin-top:7px">앞으로 6개월치를 미리 봅니다. 다 채우면 이 알림은 사라져요.</div>
+  </div>`;
+}
 // 📕 시험 일정 한눈에 — 달력(어느 학교 시험인지) + 학교별 바(기간) + 시험 범위 수시 입력
 let examCalY=null, examCalM=null;
 function examCalShift(n){ const d=new Date(examCalY, examCalM+n, 1); examCalY=d.getFullYear(); examCalM=d.getMonth(); rNaesin(); }
@@ -2241,6 +2268,7 @@ function rDashboard(){
   document.getElementById('dashboardContent').innerHTML=`
    <div style="display:grid;grid-template-columns:minmax(0,1fr);gap:14px" id="dashGrid">
     <div style="display:flex;flex-direction:column;gap:14px" id="dashLeft">
+      ${scheduleGapHtml()}
       ${monthSummaryHtml()}
       ${dashCalendarHtml()}
       ${myTodosHtml()}
