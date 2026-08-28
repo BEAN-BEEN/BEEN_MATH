@@ -1904,19 +1904,40 @@ function examAnalysisTabHtml(){
 // DASHBOARD
 // ================================================================
 // 📊 이번 달 요약 — 담당 인원 / 신입 / 휴원 / 퇴원
+// 담임 반에 속해 있(었)는 학생인가 — 퇴원생도 classIds 가 남아 있어 그대로 판단됩니다.
+//  담임 반이 하나도 없고 부담임 반만 있으면 '부담임반' 학생.
+function hasHomeroomClass(s){
+  const ids=(s&&s.classIds)||((s&&s.classId)?[s.classId]:[]);
+  return ids.some(id=>{ const c=CLASSES.find(x=>x.id===id); return c && classIsHomeroom(c); });
+}
+// 반 배정이 아예 없는 학생은 어느 쪽도 아니라 따로 셉니다
+function hasAnyClass(s){ const ids=(s&&s.classIds)||((s&&s.classId)?[s.classId]:[]); return ids.length>0; }
+function splitByRole(list){
+  return { 담임: list.filter(hasHomeroomClass),
+           부담임: list.filter(s=>!hasHomeroomClass(s) && hasAnyClass(s)),
+           미배정: list.filter(s=>!hasAnyClass(s)) };
+}
 function monthSummaryHtml(){
   const ym=new Date().toISOString().slice(0,7);
   const all=getStudents();
   const active=all.filter(isActiveStudent).length;
   const newN=all.filter(s=>(s.enrollDate||'').slice(0,7)===ym).length;
   const restN=all.filter(s=>studentStatus(s)==='휴원').length;
-  const outN=all.filter(s=>studentStatus(s)==='퇴원' && (s.statusDate||'').slice(0,7)===ym).length;
+  const outList=all.filter(s=>studentStatus(s)==='퇴원' && (s.statusDate||'').slice(0,7)===ym);
+  const out=splitByRole(outList);
   const cell=(label,val,color)=>`<div style="flex:1;min-width:62px;text-align:center;background:var(--bg);border-radius:10px;padding:8px 4px">
     <div style="font-size:11px;color:var(--text-muted);margin-bottom:2px">${label}</div><div style="font-size:19px;font-weight:800;color:${color}">${val}<span style="font-size:11px;font-weight:600;color:var(--text-muted)">명</span></div></div>`;
   return `<div class="card" style="margin:0">
     <div class="card-title" style="font-size:15px">📊 이번 달 요약</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">
-      ${cell('담당 인원',active,'var(--primary)')}${cell('신입생',newN,'var(--green)')}${cell('휴원생',restN,'var(--orange)')}${cell('퇴원생',outN,'var(--red)')}
+      ${cell('담당 인원',active,'var(--primary)')}${cell('신입생',newN,'var(--green)')}${cell('휴원생',restN,'var(--orange)')}
+      ${cell('퇴원 <span style="font-size:10px">담임반</span>',out.담임.length,'var(--red)')}${cell('퇴원 <span style="font-size:10px">부담임반</span>',out.부담임.length,'var(--orange)')}${out.미배정.length?cell('퇴원 <span style="font-size:10px">반 없음</span>',out.미배정.length,'var(--text-muted)'):''}
+    </div>
+    ${outList.length?`<div style="font-size:11px;color:var(--text-muted);margin-top:7px;line-height:1.6">
+      ${out.담임.length?`<div>🔴 담임반 퇴원: ${out.담임.map(s=>(s.name||'')+' <span style="opacity:.7">'+classNamesOf(s).join('·')+'</span>').join(', ')}</div>`:''}
+      ${out.부담임.length?`<div>🟠 부담임반 퇴원: ${out.부담임.map(s=>(s.name||'')+' <span style="opacity:.7">'+classNamesOf(s).join('·')+'</span>').join(', ')}</div>`:''}
+      ${out.미배정.length?`<div>⚪ 반 없음: ${out.미배정.map(s=>s.name||'').join(', ')}</div>`:''}
+    </div>`:''}
     </div></div>`;
 }
 // ✅ 내 체크리스트 — 선생님 개인 할 일 (settings/myTodos)
@@ -2196,6 +2217,13 @@ function dashCalendarHtml(){
 // STUDENTS
 // ================================================================
 let showAdd=false, stSearch='', editStudentId=null, stStatusFilter='재원', stPushOnly=false;
+// 상태 필터 판정 — 퇴원은 담임반/부담임반으로도 걸러볼 수 있어요
+function matchStatusFilter(s, v){
+  if(v==='전체') return true;
+  if(v==='퇴원-담임')   return studentStatus(s)==='퇴원' && hasHomeroomClass(s);
+  if(v==='퇴원-부담임') return studentStatus(s)==='퇴원' && !hasHomeroomClass(s) && hasAnyClass(s);
+  return studentStatus(s)===v;
+}
 function pushOn(s){ return Array.isArray(s.fcmTokens) && s.fcmTokens.length>0; }
 // 반 이동일 칸은 실제로 반 체크를 바꿨을 때만 나타납니다 (평소엔 숨겨서 폼이 안 복잡하게)
 let esOrigIds=[];
@@ -2331,7 +2359,7 @@ function rStudents(){
         <button class="btn btn-primary" onclick="showAdd=!showAdd;rStudents()">➕ 학생 추가</button>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center">
-        ${[['재원','재원생'],['휴원','휴원'],['퇴원','퇴원'],['전체','전체']].map(([v,lbl])=>{const cnt=v==='전체'?STUDENTS_CACHE.length:STUDENTS_CACHE.filter(s=>studentStatus(s)===v).length;return `<button class="btn btn-sm" style="${stStatusFilter===v?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="stStatusFilter='${v}';rStudents()">${lbl} ${cnt}</button>`;}).join('')}
+        ${[['재원','재원생'],['휴원','휴원'],['퇴원','퇴원 전체'],['퇴원-담임','퇴원·담임반'],['퇴원-부담임','퇴원·부담임반'],['전체','전체']].map(([v,lbl])=>{const cnt=STUDENTS_CACHE.filter(x=>matchStatusFilter(x,v)).length;return `<button class="btn btn-sm" style="${stStatusFilter===v?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="stStatusFilter='${v}';rStudents()">${lbl} ${cnt}</button>`;}).join('')}
         <span style="width:1px;height:20px;background:var(--border);margin:0 4px"></span>
         <button class="btn btn-sm" style="${stPushOnly?'background:var(--green);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="stPushOnly=!stPushOnly;rStudents()">🔔 알림 켠 학생 ${STUDENTS_CACHE.filter(s=>studentStatus(s)==='재원'&&pushOn(s)).length}</button>
       </div>
@@ -2372,7 +2400,7 @@ function rStudents(){
 function statusBadge(v){ const m={'재원':'b-green','휴원':'b-yellow','퇴원':'b-red'}; return `<span class="badge ${m[v]||'b-gray'}">${v}</span>`; }
 function renderStudentRows(){
   const q=(stSearch||'').trim();
-  const sts=getStudents().filter(s=> (stStatusFilter==='전체'||studentStatus(s)===stStatusFilter) && (!stPushOnly||pushOn(s)) && (!q || (s.name||'').includes(q)));
+  const sts=getStudents().filter(s=> matchStatusFilter(s, stStatusFilter) && (!stPushOnly||pushOn(s)) && (!q || (s.name||'').includes(q)));
   const el=document.getElementById('studentList'); if(!el) return;
   el.innerHTML = sts.length===0
     ? `<div style="text-align:center;padding:40px;color:var(--text-muted)">${stPushOnly?'🔔 알림 켠 학생이 없어요 (학생이 앱에서 직접 켜야 해요)':(q?'🔍 검색 결과가 없어요':(stStatusFilter==='재원'?'재원생이 없어요. 위 필터로 휴원·퇴원도 볼 수 있어요.':'해당 상태의 학생이 없어요'))}</div>`
