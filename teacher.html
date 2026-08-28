@@ -1629,56 +1629,6 @@ async function pdfSlice(file, rangeStr){
 }
 // 📄 PDF 판별 — 브라우저가 type을 안 채워줄 때가 있어 확장자도 같이 봅니다
 function isPdfFile(f){ return !!f && ((f.type||'').toLowerCase()==='application/pdf' || /\.pdf$/i.test(f.name||'')); }
-async function doAnalyzeExam(){
-  const fi=document.getElementById('an-photo');
-  if(!fi||!fi.files||!fi.files[0]){ showToast('시험지 사진 또는 PDF를 선택해주세요','error'); return; }
-  const file=fi.files[0];
-  const out=document.getElementById('an-result');
-  const pdf=isPdfFile(file);
-  const pageRange=((document.getElementById('an-pages')||{}).value||'').trim();
-  out.innerHTML='<div style="padding:16px;color:var(--text-muted)">🤖 '+(pdf?'PDF 시험지를':'시험지를')+' 분석하는 중이에요... ('+(pdf?'20~40초':'10~20초')+' 걸려요)</div>';
-  let img;
-  if(pdf){
-    let bytes=null, note='';
-    if(pageRange){
-      try{
-        out.innerHTML='<div style="padding:16px;color:var(--text-muted)">📑 '+pageRange+' 쪽만 잘라내는 중…</div>';
-        const r=await pdfSlice(file, pageRange);
-        bytes=r.bytes; note=` (전체 ${r.total}쪽 중 ${r.count}쪽)`;
-      }catch(e){ out.innerHTML='<div style="color:var(--red)">'+e.message+'</div>'; return; }
-    }
-    const size = bytes ? bytes.length : file.size;
-    if(size>14*1024*1024){
-      out.innerHTML='<div style="color:var(--red)">PDF가 너무 커요 ('+(size/1048576).toFixed(1)+'MB'+note+').<br>'
-        +(pageRange?'페이지 범위를 더 좁혀주세요.':'위 <strong>📑 PDF 페이지</strong>에 회차 범위(예: 3-14)를 적으면 그 부분만 분석해요.')+'</div>';
-      return;
-    }
-    out.innerHTML='<div style="padding:16px;color:var(--text-muted)">🤖 PDF 시험지를 분석하는 중이에요'+note+'... (20~40초 걸려요)</div>';
-    try{
-      img = bytes ? { base64: bytesToBase64(bytes), mime:'application/pdf' }
-                  : { base64: await fileToBase64(file), mime:'application/pdf' };
-    }catch(e){ out.innerHTML='<div style="color:var(--red)">PDF 처리 실패: '+e.message+'</div>'; return; }
-  } else {
-    try{ img=await compressImage(file); }catch(e){ try{ img={base64:await fileToBase64(file),mime:file.type}; }catch(e2){ out.innerHTML='<div style="color:var(--red)">사진 처리 실패</div>'; return; } }
-  }
-  try{
-    const res=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-      imageBase64:img.base64, imageMime:img.mime, examKind:anKind,
-      title:((document.getElementById('an-title')||{}).value||'').trim(),
-      range:((document.getElementById('an-range')||{}).value||'').trim()
-    })});
-    const data=await res.json();
-    if(!res.ok) throw new Error(data.error||'오류');
-    lastAnalysis=data;
-    renderAnalysis(data);
-  }catch(e){
-    const msg=(e&&e.message)||'';
-    const fr = /quota|exhausted|resource|rate.?limit|billing/i.test(msg) ? 'AI 무료 사용량을 잠깐 초과했어요. 30초~1분 후 다시 시도해주세요.'
-             : /demand|overload|503|UNAVAILABLE|try again/i.test(msg) ? 'AI가 잠시 바빠요. 잠시 후 다시 시도해주세요.'
-             : ('분석 실패: '+msg);
-    out.innerHTML='<div style="color:var(--text-muted)">⚠️ '+fr+'</div>';
-  }
-}
 function renderAnalysis(data){
   const out=document.getElementById('an-result');
   const probs=(data&&data.problems)||[];
@@ -2163,7 +2113,10 @@ function examAnalysisTabHtml(){
         <input class="form-input" id="an-pages" placeholder="예: 3-14 (한 회차만)" style="width:190px;padding:5px 9px;font-size:12px">
         <span style="font-size:11px;color:var(--text-muted)">한 권짜리 PDF는 <strong>회차 페이지만</strong> 적으면 그 부분만 잘라서 분석해요 (파일을 나눌 필요 없어요)</span>
       </div>
-      <button class="btn btn-primary" onclick="doAnalyzeExam()">🤖 분석하기</button>
+      <div style="background:#FEF9C3;border:1px solid #FDE047;border-radius:10px;padding:11px 13px;margin-top:4px">
+        <div style="font-size:12.5px;font-weight:800;color:#854D0E;margin-bottom:3px">🤖 사이트 자동 분석은 꺼져 있어요</div>
+        <div style="font-size:11.5px;color:#713F12;line-height:1.6">아래 <strong>📄 지시서 복사</strong>를 눌러 GPT에 시험지와 함께 넣고, 받은 JSON을 <strong>📁 JSON 파일 열기</strong>나 붙여넣기로 가져오세요.</div>
+      </div>
       <details style="margin-top:10px">
         <summary style="cursor:pointer;font-size:12px;color:var(--text-muted)">📋 다른 곳에서 분석한 결과 붙여넣기 (JSON)</summary>
         <div style="margin-top:8px">
@@ -4777,7 +4730,6 @@ function renderFeedbackEditor(){
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
       <div style="flex:0 0 110px"><label class="form-label">점수 (만점 ${exam.maxScore||100})</label><input class="form-input" id="fb-score" type="number" value="${sub&&sub.score!=null?sub.score:''}" placeholder="0~${exam.maxScore||100}"></div>
       <div style="flex:1;min-width:150px"><label class="form-label">틀린 문항 번호</label><input class="form-input" id="fb-wrong" value="${wrong}" placeholder="예: 3, 7, 12"></div>
-      <button class="btn btn-primary" onclick="doGenFeedback()">🤖 AI 피드백 생성</button>
       <button class="btn btn-outline" onclick="buildPerqRows()">문항칸 만들기</button>
     </div>
     <div class="form-group"><label class="form-label">부족했던 능력 <span style="font-size:11px;color:var(--text-muted)">(쉼표로 구분)</span></label><input class="form-input" id="fb-weak" value="${weak}" placeholder="예: 계산, 그래프활용"></div>
@@ -4785,22 +4737,6 @@ function renderFeedbackEditor(){
     <label class="form-label">문항별 피드백</label>
     <div id="fb-perq">${perqRowsHtml(wrong, perq)}</div>
     <button class="btn btn-green" style="margin-top:12px" onclick="doSaveFeedback()">💾 성적 리포트 저장</button>`;
-}
-async function doGenFeedback(){
-  const exam=getExams().find(e=>e.id===document.getElementById('fb-exam').value);
-  const wrong=document.getElementById('fb-wrong').value.trim();
-  if(!exam){ showToast('시험을 선택하세요','error'); return; }
-  if(!wrong){ showToast('틀린 문항 번호를 입력해주세요','error'); return; }
-  showToast('AI가 피드백을 만드는 중...');
-  try{
-    const r=await fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({examTitle:exam.title,range:exam.range||'',maxScore:exam.maxScore||100,wrongNos:wrong})});
-    const j=await r.json();
-    if(j.error){ showToast('AI 오류: '+j.error,'error'); return; }
-    if(Array.isArray(j.weakAbilities)) document.getElementById('fb-weak').value=j.weakAbilities.join(', ');
-    if(j.summary) document.getElementById('fb-summary').value=j.summary;
-    document.getElementById('fb-perq').innerHTML=perqRowsHtml(wrong, (j.perQuestion||[]).map(p=>({no:p.no, text:p.feedback||p.advice||p.reason||p.text})));
-    showToast('AI 초안 완성! 다듬어서 저장하세요 ✍️','success');
-  }catch(e){ showToast('생성 실패: '+e.message,'error'); }
 }
 async function doSaveFeedback(){
   const examId=document.getElementById('fb-exam').value, stId=document.getElementById('fb-student').value;

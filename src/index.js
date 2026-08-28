@@ -1,7 +1,5 @@
 // ================================================================
 // BEEN MATH — Cloudflare Worker
-//  /api/ai      : AI 단계별 힌트 (텍스트/이미지)
-//  /api/analyze : 시험지 분석 (이미지 → JSON)
 //  /api/notify  : FCM 푸시 발송 (firebase-admin 없이 Web Crypto)
 //  /api/login   : 로그인 검증 + 역할이 박힌 Firebase 커스텀 토큰 발급
 //  그 외 경로   : 정적 파일(HTML 등) 서빙
@@ -12,9 +10,6 @@ export default {
     const url = new URL(request.url);
     try {
       if (url.pathname === '/api/login' && request.method === 'POST')     return await login(request, env);
-      if (url.pathname === '/api/ai' && request.method === 'POST')       return await aiHint(request, env);
-      if (url.pathname === '/api/analyze' && request.method === 'POST')  return await analyzeExam(request, env);
-      if (url.pathname === '/api/feedback' && request.method === 'POST') return await examFeedback(request, env);
       if (url.pathname === '/api/notify' && request.method === 'POST')   return await notify(request, env);
       if (url.pathname === '/api/school')                                return await schoolApi(url, env);
     } catch (e) {
@@ -75,164 +70,14 @@ function json(obj, status = 200) {
 // ----------------------------------------------------------------
 // AI 단계별 힌트
 // ----------------------------------------------------------------
-async function aiHint(request, env) {
-  const { textbook, page, number, note, imageBase64, imageMime, level } = await request.json();
-  const lv = Number(level) || 1;
-  const levelRule = lv === 1
-    ? "지금은 '1단계 힌트'야. 이 문제를 풀려면 어떤 단원의 어떤 개념·공식이 필요한지 구체적으로 콕 집어서 알려줘 (예: '미분법 단원, 접선의 기울기 = f′(a)를 이용'). '어떤 개념이 떠오르니?' 같은 막연한 말은 절대 하지 마. 정답과 전체 풀이는 주지 말고, 필요한 개념과 첫 접근 방향까지만 3~4문장으로."
-    : lv === 2
-    ? "지금은 '2단계 힌트'야. 필요한 개념을 적용해서 어떤 식을 세우고 어떻게 전개하는지 풀이의 중간 과정까지 구체적으로 보여줘. 단, 최종 정답은 남겨두고 학생이 마무리하게 해줘."
-    : "지금은 '3단계(전체 풀이)'야. 전체 풀이를 단계별로 자세히 보여주고 최종 정답까지 알려줘.";
-  const prompt =
-`너는 고등학교 수학 선생님이야. 학생이 아래 문제를 질문했어.
-
-- 교재: ${textbook || '(미입력)'}
-- 페이지: ${page || '-'}
-- 문제 번호: ${number || '-'}
-- 학생이 어려워하는 점: ${note || '(없음)'}
-
-${levelRule}
-인사말이나 이름 부르기 없이 바로 핵심부터. 한국어로, 중·고등학생 눈높이로.
-${imageBase64 ? '첨부된 문제 사진 속 실제 문제를 보고, 정확한 단원·개념을 짚어줘.' : '문제 사진이 없어서 정확한 내용을 모르니, 일반적인 방향을 주되 마지막에 "정확한 힌트를 원하면 문제 사진을 첨부해줘" 한 줄을 꼭 덧붙여.'}`;
-
-  const hint = await callModel(env, prompt, imageBase64, imageMime, false);
-  return json({ hint, provider: (env.AI_PROVIDER || 'gemini') });
-}
 
 // ----------------------------------------------------------------
 // 시험지 분석
 // ----------------------------------------------------------------
-async function analyzeExam(request, env) {
-  const { imageBase64, imageMime, examKind, title, range } = await request.json();
-  if (!imageBase64) return json({ error: '시험지 사진 또는 PDF가 필요해요' }, 400);
-  const isPdf = (imageMime || '') === 'application/pdf';
-  const kind = (examKind || '').trim();
-  // 시험 종류에 따라 보는 눈이 달라요 — 내신은 학교 시험 범위, 데일리 테스트는 그날 배운 것
-  const kindHint =
-      kind === '내신'   ? '이건 학교 내신 시험지야. 학교 시험 범위 안에서 단원을 잡아줘.'
-    : kind === '데일리' ? '이건 학원 데일리 테스트(그날 배운 내용 확인용 소테스트)야. 한두 단원에 몰려 있을 수 있어.'
-    : kind === '모의'   ? '이건 모의고사(학력평가)야. 여러 단원이 고루 섞여 있어.'
-    : '';
-  const prompt =
-`너는 고등학교 수학 시험 분석 전문가야. 첨부된 시험지 ${isPdf ? 'PDF(여러 쪽일 수 있어)를 처음부터 끝까지 보고' : '사진을 보고'} 각 문제를 분석해줘.
-${kindHint}${title ? `\n- 시험명: ${title}` : ''}${range ? `\n- 출제 범위: ${range}` : ''}
-
-문제마다 다음을 채워줘:
-- no: 문제 번호 (시험지에 적힌 그대로)
-- bigUnit: 대단원 (예: 다항식, 방정식과 부등식, 도형의 방정식, 함수와 그래프, 수열, 미분법, 적분법, 확률과 통계)
-- smallUnit: 중단원 (예: 이차함수의 최대·최소, 등차수열의 합, 접선의 방정식)
-- ability: 출제 의도 — 이 문제로 무엇을 보려는지, 다음 중 하나로만 → "단순계산" / "공식이용" / "추론" / "그래프해석" / "개념이해" / "문제해석"
-- difficulty: 난이도 — "상" / "중" / "하"
-- solution: 푸는 핵심 방법. 공식을 써야 하면 공식 이름과 식을 함께 적어줘 (예: "근과 계수의 관계 α+β=-b/a 를 써서 …"). 1~2문장.
-
-${isPdf ? '모든 쪽의 문제를 빠짐없이, 번호 순서대로 분석해.' : '사진에서 읽을 수 있는 문제만 분석해.'} 한국어로.
-반드시 아래 JSON 형식으로만 답해 (설명 문장 없이 JSON만):
-{"problems":[{"no":"1","bigUnit":"함수와 그래프","smallUnit":"이차함수의 최대·최소","ability":"공식이용","difficulty":"중","solution":"완전제곱식으로 변형해 꼭짓점을 찾고, 주어진 구간의 양 끝값과 비교해요."}],"summary":"이 시험의 단원·능력별 구성과 특징을 2~3문장으로"}`;
-  const raw = await callModel(env, prompt, imageBase64, imageMime, true);
-  let parsed;
-  try { parsed = JSON.parse(raw.replace(/```json/gi, '').replace(/```/g, '').trim()); }
-  catch (e) { return json({ problems: [], summary: raw }); }
-  // 예전 화면(unit 하나만 쓰던 곳)이 깨지지 않게 unit 을 채워둡니다
-  if (Array.isArray(parsed.problems)) {
-    parsed.problems = parsed.problems.map(p => ({
-      ...p,
-      unit: p.unit || [p.bigUnit, p.smallUnit].filter(Boolean).join(' > ') || ''
-    }));
-  }
-  return json(parsed);
-}
 
 // 🅰️ OMR 답안지 판독 — 학생이 표시한 답을 번호별로 읽어옵니다.
 //   오독이 있을 수 있어서, 화면에서 반드시 확인·수정하고 저장하게 합니다.
 // ----------------------------------------------------------------
-async function readOmr(request, env) {
-  const { imageBase64, imageMime, nos, choices } = await request.json();
-  if (!imageBase64) return json({ error: '답안지 사진이 필요해요' }, 400);
-  const ch = (choices >= 2 && choices <= 9) ? choices : 5;
-  const list = Array.isArray(nos) && nos.length ? nos.map(String) : null;
-  const prompt =
-`너는 OMR 답안지를 읽는 채점 도우미야. 첨부된 답안지 사진에서 학생이 표시한 답을 읽어줘.
-- 보기는 1~${ch} 번이야. 표시(색칠·동그라미·체크)된 것을 그 번호의 답으로 봐.
-- 아무것도 표시가 없으면 빈 문자열로 둬.
-- 두 개 이상 표시돼 있으면 빈 문자열로 두고 doubt 목록에 그 번호를 넣어.
-- 흐릿해서 확신이 없으면 읽되 doubt 목록에 넣어줘.
-${list ? `- 읽어야 할 문항 번호: ${list.join(', ')}` : '- 답안지에 있는 문항 번호를 그대로 써줘.'}
-반드시 아래 JSON 형식으로만 답해 (설명 없이 JSON만):
-{\"answers\":{\"1\":\"3\",\"2\":\"\"},\"doubt\":[\"2\"]}`;
-  const raw = await callModel(env, prompt, imageBase64, imageMime, true);
-  let parsed;
-  try { parsed = JSON.parse(raw.replace(/```json/gi, '').replace(/```/g, '').trim()); }
-  catch (e) { return json({ answers: {}, doubt: [], note: raw }); }
-  const answers = {};
-  Object.keys(parsed.answers || {}).forEach(k => {
-    const v = String(parsed.answers[k] == null ? '' : parsed.answers[k]).trim();
-    answers[String(k).trim()] = (/^[1-9]$/.test(v) && +v <= ch) ? v : '';   // 보기 범위 밖이면 비움
-  });
-  return json({ answers, doubt: Array.isArray(parsed.doubt) ? parsed.doubt.map(String) : [] });
-}
-
-// ----------------------------------------------------------------
-// ----------------------------------------------------------------
-// 성적 리포트 — 틀린 문항 → 능력·문항별 피드백 (JSON)
-// ----------------------------------------------------------------
-async function examFeedback(request, env) {
-  const { examTitle, range, maxScore, wrongNos, imageBase64, imageMime } = await request.json();
-  if (!wrongNos && !imageBase64) return json({ error: '틀린 문항 번호 또는 시험지 사진이 필요해요' }, 400);
-  const prompt =
-`너는 고등학교 수학 선생님이야. 한 학생의 시험 결과를 보고 학생에게 줄 피드백을 작성해줘.
-- 시험명: ${examTitle || '(미입력)'}
-- 출제 범위: ${range || '(미입력)'}
-- 만점: ${maxScore || 100}
-- 학생이 틀린 문항 번호: ${wrongNos || '(사진 참고)'}
-
-각 틀린 문항에 대해 "왜 틀렸을 가능성이 높은지(개념/계산 등) + 무엇을 더 연습해야 하는지"를 1~2문장으로 구체적으로 써줘.
-그리고 틀린 문항들을 종합해 이 학생이 보완해야 할 '요구 능력'을 다음 중에서 골라줘 → "추론" / "계산" / "그래프활용" / "개념이해" / "문제해석".
-중·고등학생 눈높이의 한국어로, 따뜻하지만 핵심을 콕 집어서.
-반드시 아래 JSON 형식으로만 답해 (설명 문장 없이 JSON만):
-{"weakAbilities":["계산","그래프활용"],"perQuestion":[{"no":"3","feedback":"이차함수 최댓값을 구할 때 꼭짓점 공식을 헷갈렸어요. 완전제곱식 변형을 5문제 더 연습해요."}],"summary":"전반적으로 계산 실수가 많아요. 검산 습관과 그래프 해석 연습이 필요해요."}`;
-  const raw = await callModel(env, prompt, imageBase64, imageMime, true);
-  let parsed;
-  try { parsed = JSON.parse(raw.replace(/```json/gi, '').replace(/```/g, '').trim()); }
-  catch (e) { return json({ weakAbilities: [], perQuestion: [], summary: raw }); }
-  return json(parsed);
-}
-
-// ----------------------------------------------------------------
-// 모델 호출 (Gemini 기본, OpenAI 옵션) — 과부하 시 1회 재시도
-// ----------------------------------------------------------------
-async function callModel(env, prompt, imageBase64, imageMime, jsonMode) {
-  const provider = (env.AI_PROVIDER || 'gemini').toLowerCase();
-  if (provider === 'openai') {
-    // OpenAI의 image_url 은 PDF를 못 받습니다 (Gemini만 PDF 지원)
-    if ((imageMime || '') === 'application/pdf') throw new Error('PDF 분석은 Gemini에서만 돼요. 사진으로 올려주세요.');
-    const content = [{ type: 'text', text: prompt }];
-    if (imageBase64) content.push({ type: 'image_url', image_url: { url: `data:${imageMime || 'image/jpeg'};base64,${imageBase64}` } });
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${env.OPENAI_API_KEY}` },
-      body: JSON.stringify({
-        model: env.OPENAI_MODEL || 'gpt-4o-mini',
-        ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
-        messages: [{ role: 'user', content }]
-      })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error?.message || 'OpenAI 오류');
-    return (data.choices?.[0]?.message?.content || '').trim();
-  }
-  // Gemini
-  if (!env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY 환경변수가 없어요');
-  const model = env.GEMINI_MODEL || 'gemini-2.5-flash';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
-  const parts = [{ text: prompt }];
-  if (imageBase64) parts.push({ inline_data: { mime_type: imageMime || 'image/jpeg', data: imageBase64 } });
-  const reqBody = { contents: [{ parts }] };
-  if (jsonMode) reqBody.generationConfig = { responseMimeType: 'application/json' };
-  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(reqBody) });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error?.message || ('Gemini 오류 ' + res.status));
-  return (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
-}
 
 // ----------------------------------------------------------------
 // FCM 푸시 (Web Crypto로 서비스계정 JWT 서명 → OAuth → FCM v1)
