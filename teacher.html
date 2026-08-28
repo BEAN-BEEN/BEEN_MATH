@@ -1800,8 +1800,9 @@ async function doRegisterAnalyzedExam(){
 let anKind='내신';                      // 분석할 시험 종류
 let anRepExamId='', anRepStId='';       // 분석서 대상 시험 · 학생
 let anOX=null;                          // 문항별 정오 {번호:true(맞음)|false(틀림)}
-// [값, 버튼 라벨, 분석서 제목]
-const AN_KINDS=[['내신','🏫 내신 시험','내신 시험지'],['데일리','📅 데일리 테스트','데일리 테스트'],['모의','📝 모의고사','모의고사'],['단원','📗 단원평가','단원평가']];
+// [값, 버튼 라벨, 분석서 제목] — 큰 이벤트(내신·모의) 먼저, 그다음 수업 내 테스트(데일리), 교재 기출(기출)
+//   '기출' = 기출편 교재의 과년도 기출 회차. 옛 '단원' 값이 남아 있어도 제목이 '시험지'로 안전하게 폴백된다.
+const AN_KINDS=[['내신','🏫 내신 시험','내신 시험지'],['모의','📝 모의고사','모의고사'],['데일리','📅 데일리 테스트','데일리 테스트'],['기출','📚 과년도 기출','과년도 기출']];
 function anKindTitle(k){ const f=AN_KINDS.find(x=>x[0]===k); return f?f[2]:'시험지'; }
 // 반 이름은 저장된 풀네임(예: 고1T A1) 뒤에 '반'만 붙여 부릅니다 (학생 포털과 동일)
 function anClsLabel(n){ n=String(n==null?'':n).trim(); if(!n) return ''; return /반$/.test(n)?n:n+'반'; }
@@ -4577,7 +4578,7 @@ function rGrades(){
       <div class="card-title">${editE?'✏️ 시험 수정':'📝 시험 만들기'}</div>
       <div class="form-row-2">
         <div class="form-group"><label class="form-label">반</label>${classSelect('ex-cls')}</div>
-        <div class="form-group"><label class="form-label">시험명 *</label><input class="form-input" id="ex-title" placeholder="예: 6월 단원평가" value="${editE?(editE.title||'').replace(/"/g,'&quot;'):''}"></div>
+        <div class="form-group"><label class="form-label">시험명 *</label><input class="form-input" id="ex-title" placeholder="예: 기출편 3회 / 6월 데일리" value="${editE?(editE.title||'').replace(/"/g,'&quot;'):''}"></div>
       </div>
       <div class="form-row-3">
         <div class="form-group"><label class="form-label">출제 범위</label><input class="form-input" id="ex-range" placeholder="예: 수학Ⅱ 1~3단원" value="${editE?(editE.range||'').replace(/"/g,'&quot;'):''}"></div>
