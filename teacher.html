@@ -1765,6 +1765,15 @@ function analysisPromptText(){
     '           (예: 근과 계수의 관계 α+β=-b/a 를 이용해 …) 1~2문장.',
     '- answer: 정답. 객관식이면 번호(1~5), 주관식이면 값. 모르면 빈 문자열.',
     '',
+    '시험 전체에 대해 두 가지를 더 적는다:',
+    '- examTitle: 시험 이름. 시험지에 이름이 적혀 있으면 그대로(예: 2학기 중간고사).',
+    '           없으면 교재와 회차로(예: 기출편 3회).',
+    '- examRange: 출제 범위. 대단원이 아니라 <중단원>으로 끝을 적는다.',
+    '           예를 들어 대단원 집합 안에 중단원이 집합의 포함관계, 집합의 연산 순서로 있는데',
+    '           포함관계까지만 출제됐다면 "집합 > 집합의 포함관계까지" 라고 쓴다.',
+    '           그냥 "집합"이라고 쓰면 연산까지 나온 것처럼 보여 틀린 범위가 된다.',
+    '           여러 대단원에 걸치면 " · "로 잇는다.',
+    '',
     '규칙:',
     '- 모든 쪽의 문제를 빠짐없이, 번호 순서대로.',
     '- 추측이 어려우면 비워두되 항목 자체는 빠뜨리지 않는다.',
@@ -1772,7 +1781,7 @@ function analysisPromptText(){
     '- 설명 문장 없이 JSON만 출력한다.',
     '',
     '출력 형식:',
-    '{"problems":[{"no":"1","bigUnit":"함수와 그래프","smallUnit":"이차함수의 최대·최소","ability":"공식이용","difficulty":"중","solution":"완전제곱식으로 변형해 꼭짓점을 찾고 구간의 양 끝값과 비교한다.","answer":"3"}],"summary":"이 시험의 단원·출제의도별 구성과 특징을 2~3문장"}'
+    '{"examTitle":"2학기 중간고사","examRange":"집합 > 집합의 포함관계까지","problems":[{"no":"1","bigUnit":"함수와 그래프","smallUnit":"이차함수의 최대·최소","ability":"공식이용","difficulty":"중","solution":"완전제곱식으로 변형해 꼭짓점을 찾고 구간의 양 끝값과 비교한다.","answer":"3"}],"summary":"이 시험의 단원·출제의도별 구성과 특징을 2~3문장"}'
   ].join(NL);
 }
 function copyAnalysisPrompt(){
@@ -1823,8 +1832,16 @@ function doPasteAnalysis(){
   const gotKey={}; rows.forEach(p=>{ if(p.answer) gotKey[p.no]=p.answer; });
   if(Object.keys(gotKey).length){ akDraft=Object.assign({}, akDraft||{}, gotKey); }
   renderAnalysis(lastAnalysis);
+  // 시험명·범위 자동 채우기 — GPT가 준 값이 있으면 그걸, 없으면 단원에서 뽑는다.
+  // 이미 적어둔 값은 덮어쓰지 않는다.
+  const filled=[];
+  const tEl=document.getElementById('an-title'), rEl=document.getElementById('an-range');
+  const gTitle=String((data&&data.examTitle)||'').trim(), gRange=String((data&&data.examRange)||'').trim();
+  if(tEl && !tEl.value.trim()){ const v=gTitle||anTitleFrom(rows); if(v){ tEl.value=v; anTitleDraft=v; filled.push('시험명'); } }
+  if(rEl && !rEl.value.trim()){ const v=gRange||anRangeFrom(rows); if(v){ rEl.value=v; anRangeDraft=v; filled.push('범위'); } }
   const nKey=rows.filter(p=>p.answer).length;
-  showToast(`${rows.length}문항 가져왔어요${nKey?` (정답 ${nKey}개 포함)`:''} — 표에서 확인·수정하세요 📋`,'success');
+  const extra=[nKey?`정답 ${nKey}개`:'', filled.length?filled.join('·')+' 자동':''].filter(Boolean).join(', ');
+  showToast(`${rows.length}문항 가져왔어요${extra?` (${extra})`:''} — 표에서 확인·수정하세요 📋`,'success');
 }
 // 표에서 고친 값을 다시 모읍니다 (AI가 틀리게 읽은 걸 선생님이 바로잡을 수 있게)
 function collectAnalysis(){
@@ -1848,6 +1865,7 @@ async function doRegisterAnalyzedExam(){
   try{
     const id=await saveExam({ classId, className:cls?.name||'', title, kind:anKind, range:range.trim(), maxScore, date:new Date().toISOString().slice(0,10), analysis:probs, analysisSummary:(lastAnalysis&&lastAnalysis.summary)||'' });
     showToast(`"${title}" 등록 완료! 이제 학생별 정오표를 찍으면 분석서가 나와요 📋`,'success');
+    anTitleDraft=''; anRangeDraft='';           // 다음 회차를 이어서 넣도록 폼을 비운다
     anRepExamId=id||''; anRepStId=''; anOX=null;
     rGrades();
   }catch(e){ showToast('등록 실패: '+e.message,'error'); }
@@ -1859,6 +1877,7 @@ async function doRegisterAnalyzedExam(){
 //   → ③ 학생 고르고 틀린 문제만 X로 → ④ 분석서(정오표+단원·능력·난이도별 정답률+풀이) 출력
 // ================================================================
 let anKind='내신';                      // 분석할 시험 종류
+let anTitleDraft='', anRangeDraft='', anMaxDraft='100';   // 등록 폼에 쓴 값 (다시 그려도 유지)
 let anRepExamId='', anRepStId='';       // 분석서 대상 시험 · 학생
 let anOX=null;                          // 문항별 정오 {번호:true(맞음)|false(틀림)}
 // [값, 버튼 라벨, 분석서 제목] — 큰 이벤트(내신·모의) 먼저, 그다음 수업 내 테스트(데일리), 교재 기출(기출)
@@ -1874,6 +1893,40 @@ function anEsc(s){ return String(s==null?'':s).replace(/</g,'&lt;'); }
 function anParseNos(v){ if(Array.isArray(v)) return v.map(String); return String(v||'').split(/[,\s]+/).map(s=>s.trim()).filter(Boolean); }
 function anProbs(exam){ return (exam && Array.isArray(exam.analysis)) ? exam.analysis : []; }
 // 예전 분석(unit 한 칸)도 '대단원 > 중단원'으로 나눠 읽습니다
+// 📐 분석 결과에서 출제 범위를 뽑는다 — 끝을 <중단원>으로 적는 게 핵심.
+//   '집합'이라고만 쓰면 그 대단원의 '집합의 연산'까지 나온 것처럼 보인다.
+//   '집합 > 집합의 포함관계까지'라고 써야 실제 범위와 맞는다.
+//   순서는 문제에 나온 순서(=보통 교육과정 순서)를 따른다. 내신처럼 순서가 섞인 시험은
+//   GPT가 준 examRange를 우선 쓰고, 없을 때만 이 함수로 뽑는다.
+function anUnitGroups(rows){
+  const groups=[];
+  (rows||[]).forEach(p=>{
+    const big=anBig(p)||'', small=anSmall(p)||'';
+    if(!big && !small) return;
+    let g=groups.find(x=>x.big===big);
+    if(!g){ g={big:big, smalls:[]}; groups.push(g); }
+    if(small && g.smalls.indexOf(small)<0) g.smalls.push(small);
+  });
+  return groups;
+}
+function anRangeFrom(rows){
+  const groups=anUnitGroups(rows).filter(g=>g.big!=='기타' || g.smalls.length);
+  if(!groups.length) return '';
+  const parts=groups.map(g=>{
+    if(!g.smalls.length) return g.big;
+    const head=g.smalls[0], tail=g.smalls[g.smalls.length-1];
+    const span=(head===tail)?head:(head+' ~ '+tail);
+    return g.big?(g.big+' > '+span):span;
+  });
+  return parts.join(' · ')+'까지';
+}
+// 시험명은 GPT가 준 게 없을 때 쓸 기본값 — 종류 + 대단원
+function anTitleFrom(rows){
+  const bigs=anUnitGroups(rows).map(g=>g.big).filter(b=>b && b!=='기타');
+  const kind=anKindTitle(anKind);
+  if(!bigs.length) return kind;
+  return kind+' - '+bigs.slice(0,2).join('·')+(bigs.length>2?' 외':'');
+}
 function anBig(p){ if(p.bigUnit) return String(p.bigUnit).trim(); const u=String(p.unit||'').split('>')[0]; return u.trim()||'기타'; }
 function anSmall(p){ if(p.smallUnit) return String(p.smallUnit).trim(); const parts=String(p.unit||'').split('>'); return parts.length>1?parts[1].trim():''; }
 function anExamsWithAnalysis(){ return getExams().filter(e=>anProbs(e).length); }
@@ -2189,9 +2242,9 @@ function examAnalysisTabHtml(){
         ${AN_KINDS.map(([k,l])=>`<button class="btn ${anKind===k?'btn-primary':'btn-outline'} btn-sm" onclick="anKind='${k}';rGrades()">${l}</button>`).join('')}
       </div>
       <div class="form-row-3">
-        <div class="form-group"><label class="form-label">시험명</label><input class="form-input" id="an-title" placeholder="예: 2학기 중간고사 / 9월 3주 데일리"></div>
-        <div class="form-group"><label class="form-label">출제 범위 (선택)</label><input class="form-input" id="an-range" placeholder="예: 공통수학2 1~3단원"></div>
-        <div class="form-group"><label class="form-label">만점</label><input class="form-input" id="an-max" type="number" value="100"></div>
+        <div class="form-group"><label class="form-label">시험명</label><input class="form-input" id="an-title" value="${anEsc(anTitleDraft).replace(/"/g,'&quot;')}" oninput="anTitleDraft=this.value" placeholder="예: 2학기 중간고사 / 기출편 3회"></div>
+        <div class="form-group"><label class="form-label">출제 범위 <span style="font-weight:400;color:var(--text-muted);font-size:11px">(중단원까지)</span></label><input class="form-input" id="an-range" value="${anEsc(anRangeDraft).replace(/"/g,'&quot;')}" oninput="anRangeDraft=this.value" placeholder="예: 집합 &gt; 집합의 포함관계까지"></div>
+        <div class="form-group"><label class="form-label">만점</label><input class="form-input" id="an-max" type="number" value="${anMaxDraft||100}" oninput="anMaxDraft=this.value"></div>
       </div>
       <div class="upload-area" onclick="this.querySelector('input').click()">
         <div class="u-icon">📄</div><p id="an-label">시험지 사진 또는 PDF를 선택하세요 <span style="opacity:.8;font-size:12px">· PDF는 여러 쪽도 한 번에</span></p>
