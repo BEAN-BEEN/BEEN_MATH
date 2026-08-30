@@ -84,21 +84,41 @@ function json(obj, status = 200) {
 // ----------------------------------------------------------------
 async function notify(request, env) {
   const { tokens, title, body } = await request.json();
-  if (!env.FIREBASE_SERVICE_ACCOUNT) return json({ error: 'FIREBASE_SERVICE_ACCOUNT 환경변수가 없어요' }, 500);
-  if (!Array.isArray(tokens) || !tokens.length) return json({ sent: 0, note: '알림 켠 학생이 없어요' });
+  if (!env.FIREBASE_SERVICE_ACCOUNT) return json({ error: 'FIREBASE_SERVICE_ACCOUNT 환경변수가 없어요', sent: 0, failed: 0, total: 0 }, 500);
+  if (!Array.isArray(tokens) || !tokens.length) return json({ sent: 0, failed: 0, total: 0, note: '알림 켠 학생이 없어요' });
 
   const sa = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT);
-  const accessToken = await getAccessToken(sa);
+  let accessToken;
+  try { accessToken = await getAccessToken(sa); }
+  catch (e) { return json({ error: '푸시 인증 실패: ' + (e.message || e), sent: 0, failed: tokens.length, total: tokens.length }, 500); }
+
+  // 왜 실패했는지를 버리지 않는다. 예전엔 r.ok만 세어서 '한 명도 안 갔다'는 사실조차 안 보였다.
   let sent = 0;
+  const invalid = [];   // FCM이 '없는 토큰'이라고 한 것 — 지워야 다음에도 안 걸린다
+  const errors = [];
   for (const t of tokens) {
-    const r = await fetch(`https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`, {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: { token: t, notification: { title: title || 'BEEN MATH', body: body || '' } } })
-    });
-    if (r.ok) sent++;
+    let r, txt = '';
+    try {
+      r = await fetch(`https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: { token: t, notification: { title: title || 'BEEN MATH', body: body || '' } } })
+      });
+      txt = await r.text();
+    } catch (e) { errors.push({ code: 'NETWORK', msg: String((e && e.message) || e) }); continue; }
+    if (r.ok) { sent++; continue; }
+    let code = 'UNKNOWN';
+    try {
+      const j = JSON.parse(txt);
+      code = (j.error && (j.error.status || j.error.message)) || code;
+      const det = (j.error && j.error.details) || [];
+      const fcm = det.find(d => String(d['@type'] || '').includes('FcmError'));
+      if (fcm && fcm.errorCode) code = fcm.errorCode;
+    } catch (e) {}
+    if (r.status === 404 || code === 'UNREGISTERED' || code === 'INVALID_ARGUMENT') invalid.push(t);
+    errors.push({ code, status: r.status });
   }
-  return json({ sent });
+  return json({ sent, failed: tokens.length - sent, total: tokens.length, invalid, errors: errors.slice(0, 10) });
 }
 
 async function getAccessToken(sa, scope) {

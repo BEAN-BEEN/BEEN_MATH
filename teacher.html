@@ -2930,6 +2930,7 @@ function rStudents(){
         <span style="width:1px;height:20px;background:var(--border);margin:0 4px"></span>
         <button class="btn btn-sm" style="${stPushOnly?'background:var(--green);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="stPushOnly=!stPushOnly;rStudents()">🔔 알림 켠 학생 ${STUDENTS_CACHE.filter(s=>studentStatus(s)==='재원'&&pushOn(s)).length}</button>
       </div>
+      ${stClassChipsHtml()}
     </div>
     ${showAdd?`
       <div class="card" id="addCard">
@@ -2960,22 +2961,120 @@ function rStudents(){
         <div style="margin-top:10px;padding:10px;background:var(--green-light);border-radius:var(--radius-sm);font-size:12px;color:var(--green)">✅ 등록하면 학생은 <strong>이름 + 핸드폰 뒤 4자리</strong>로 바로 로그인할 수 있어요. (회원가입·이메일 필요 없음)</div>
       </div>`:``}
     ${editStudentId?renderEditCard():''}
-    <div class="card"><div id="studentList"></div></div>
+    <div class="card"><div id="stBulkBar"></div><div id="studentList"></div></div>
     <div id="stDetailArea"></div>`;
   renderStudentRows();
+}
+// 🏫 반별 보기 — 선생님은 반을 '인원수'로 기억하는 경우가 많아 칩에 인원을 크게 보여준다.
+let stClassFilter='';           // '' = 전체, 그 외는 반 id
+let stChecked={};               // 일괄 반 이동용으로 고른 학생
+function stClassIdsOf(s){ return s.classIds || (s.classId?[s.classId]:[]); }
+function matchClassFilter(s){ return !stClassFilter || stClassIdsOf(s).indexOf(stClassFilter)>=0; }
+// 지금 필터(상태·검색·알림)에서 보이는 학생들 — 반 칩의 인원수도 이 기준으로 센다
+function stVisible(ignoreClass){
+  const q=(stSearch||'').trim();
+  return getStudents().filter(s=> matchStatusFilter(s, stStatusFilter) && (!stPushOnly||pushOn(s))
+    && (!q || (s.name||'').includes(q)) && (ignoreClass || matchClassFilter(s)));
+}
+function stCheckedIds(){ return Object.keys(stChecked).filter(k=>stChecked[k]); }
+function stToggleChk(id, on){ if(on) stChecked[id]=1; else delete stChecked[id]; renderBulkBar(); }
+function stCheckAllVisible(on){
+  stVisible().forEach(s=>{ if(on) stChecked[s.id]=1; else delete stChecked[s.id]; });
+  renderStudentRows();
+}
+function stClearChecked(){ stChecked={}; renderStudentRows(); }
+function stPickClass(cid){ stClassFilter=(stClassFilter===cid?'':cid); renderStudentRows(); }
+// 반 칩 — 이 반에 몇 명인지 (지금 상태 필터 기준)
+function stClassChipsHtml(){
+  const pool=stVisible(true);
+  const cnt={}; pool.forEach(s=>stClassIdsOf(s).forEach(id=>{ cnt[id]=(cnt[id]||0)+1; }));
+  const noneN=pool.filter(s=>!stClassIdsOf(s).length).length;
+  const chip=(id,label,c,on)=>`<button class="btn btn-sm" style="${on?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="stPickClass('${id}')">${label} <strong style="font-size:13px">${c}</strong></button>`;
+  return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center">
+    <span style="font-size:11px;color:var(--text-muted);font-weight:700">🏫 반별</span>
+    ${chip('', '전체', pool.length, !stClassFilter)}
+    ${CLASSES.map(c=>chip(c.id, anEsc(c.name), cnt[c.id]||0, stClassFilter===c.id)).join('')}
+    ${noneN?`<span style="font-size:11px;color:var(--text-muted)">· 반 없음 ${noneN}명</span>`:''}
+  </div>`;
+}
+// 여러 명 한꺼번에 반 이동 — 반 개편할 때 한 명씩 고치지 않아도 되게
+function renderBulkBar(){
+  const el=document.getElementById('stBulkBar'); if(!el) return;
+  const ids=stCheckedIds();
+  if(!ids.length){ el.innerHTML=''; return; }
+  const names=ids.map(id=>(getStudents().find(x=>x.id===id)||{}).name).filter(Boolean);
+  el.innerHTML=`<div style="background:var(--primary-light);border:1px solid var(--primary);border-radius:10px;padding:11px 13px;margin-bottom:10px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <strong style="font-size:13px;color:var(--primary-dark)">✅ ${ids.length}명 선택됨</strong>
+      <span style="font-size:11px;color:var(--text-muted)">${anEsc(names.slice(0,6).join(', '))}${names.length>6?` 외 ${names.length-6}명`:''}</span>
+      <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px" onclick="stClearChecked()">선택 해제</button>
+    </div>
+    <div style="font-size:11px;color:var(--text-muted);font-weight:700;margin-bottom:4px">옮길 반 고르기</div>
+    <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px">
+      ${CLASSES.map(c=>`<label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;border:1.5px solid var(--border);border-radius:7px;padding:5px 8px;cursor:pointer;background:var(--surface)"><input type="checkbox" class="bulk-cls-chk" value="${c.id}"> ${anEsc(c.name)}</label>`).join('')}
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <label style="font-size:11px;color:var(--text-muted)">언제부터</label>
+      <input class="form-input" id="bulk-movedate" type="date" value="${new Date().toISOString().slice(0,10)}" style="max-width:160px;padding:5px 8px;font-size:12px">
+      <button class="btn btn-primary btn-sm" onclick="doBulkMove('replace')">🔀 이 반으로 이동</button>
+      <button class="btn btn-outline btn-sm" onclick="doBulkMove('add')">➕ 이 반 추가</button>
+    </div>
+    <div style="font-size:11px;color:var(--text-muted);margin-top:6px">‘이동’은 기존 반을 빼고 고른 반으로 바꿔요. ‘추가’는 기존 반을 그대로 두고 더해요. 미래 날짜면 그날 자동으로 바뀝니다.</div>
+  </div>`;
+}
+async function doBulkMove(mode){
+  const ids=stCheckedIds();
+  if(!ids.length){ showToast('학생을 먼저 고르세요','warning'); return; }
+  const targetIds=[].slice.call(document.querySelectorAll('.bulk-cls-chk')).filter(x=>x.checked).map(x=>x.value);
+  if(!targetIds.length){ showToast('옮길 반을 고르세요','warning'); return; }
+  const todayStr=new Date().toISOString().slice(0,10);
+  const dEl=document.getElementById('bulk-movedate');
+  const moveDate=(dEl&&/^\d{4}-\d{2}-\d{2}$/.test(dEl.value))?dEl.value:todayStr;
+  const nameOf=id=>{ const c=CLASSES.find(x=>x.id===id); return c?c.name:id; };
+  const names=ids.map(id=>(getStudents().find(x=>x.id===id)||{}).name).filter(Boolean);
+  const verb = mode==='add' ? '반에 추가' : '반으로 이동 (기존 반은 빠져요)';
+  if(!confirm(`학생 ${ids.length}명을 ${targetIds.map(nameOf).join(', ')} ${verb}\n\n${names.slice(0,10).join(', ')}${names.length>10?` 외 ${names.length-10}명`:''}\n\n적용일: ${moveDate}${moveDate>todayStr?' (그날 자동 이동 예약)':''}\n· ${moveDate} 이전 숙제 → 이전 반 것으로 남아요\n· ${moveDate}부터 → 새 반 숙제가 보여요\n\n이대로 진행할까요?`)) return;
+  let done=0, skipped=0, failed=0;
+  for(const sid of ids){
+    const st=getStudents().find(x=>x.id===sid); if(!st){ failed++; continue; }
+    const oldIds=stClassIdsOf(st);
+    const newIds = mode==='add' ? oldIds.concat(targetIds.filter(id=>oldIds.indexOf(id)<0)) : targetIds.slice();
+    const removed=oldIds.filter(id=>newIds.indexOf(id)<0);
+    const added=newIds.filter(id=>oldIds.indexOf(id)<0);
+    if(!removed.length && !added.length){ skipped++; continue; }   // 이미 그 반이면 건드리지 않는다
+    const patch={};
+    if(moveDate>todayStr){
+      // 🔜 예약 — 지금은 그대로 두고 그날 applyPendingMoves가 바꾼다
+      patch.classIds=oldIds; patch.classNames=oldIds.map(nameOf);
+      patch.pendingMove={ date:moveDate, classIds:newIds, classNames:newIds.map(nameOf), createdAt:todayStr };
+    } else {
+      patch.classIds=newIds; patch.classNames=newIds.map(nameOf);
+      // 이력은 한 명씩 고칠 때와 같은 규칙 — from 포함, to 미포함
+      const hist=Array.isArray(st.classHistory)?st.classHistory.map(h=>Object.assign({},h)):[];
+      removed.forEach(cid=>{ const open=hist.find(h=>h.classId===cid&&!h.to); if(open) open.to=moveDate; else hist.push({classId:cid,from:'',to:moveDate}); });
+      added.forEach(cid=>{ if(!hist.some(h=>h.classId===cid&&!h.to)) hist.push({classId:cid,from:moveDate,to:''}); });
+      patch.classHistory=hist; patch.pendingMove=null;
+    }
+    try{ await updateStudentFS(sid, patch); done++; }catch(e){ failed++; }
+  }
+  stChecked={};
+  const tail=[skipped?`${skipped}명은 이미 그 반`:'', failed?`${failed}명 실패`:''].filter(Boolean).join(' · ');
+  showToast(`${done}명 ${moveDate>todayStr?'이동 예약 완료 🔜':'반 이동 완료 🔀'}${tail?' ('+tail+')':''}`, failed?'warning':'success');
+  rStudents();
 }
 function statusBadge(v){ const m={'재원':'b-green','휴원':'b-yellow','퇴원':'b-red'}; return `<span class="badge ${m[v]||'b-gray'}">${v}</span>`; }
 function renderStudentRows(){
   const q=(stSearch||'').trim();
-  const sts=getStudents().filter(s=> matchStatusFilter(s, stStatusFilter) && (!stPushOnly||pushOn(s)) && (!q || (s.name||'').includes(q)));
+  const sts=stVisible();
   const el=document.getElementById('studentList'); if(!el) return;
   el.innerHTML = sts.length===0
     ? `<div style="text-align:center;padding:40px;color:var(--text-muted)">${stPushOnly?'🔔 알림 켠 학생이 없어요 (학생이 앱에서 직접 켜야 해요)':(q?'🔍 검색 결과가 없어요':(stStatusFilter==='재원'?'재원생이 없어요. 위 필터로 휴원·퇴원도 볼 수 있어요.':'해당 상태의 학생이 없어요'))}</div>`
-    : `<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">총 ${sts.length}명${stPushOnly?' · 🔔 알림 켠 학생만':''}</div>
+    : `<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">총 ${sts.length}명${stClassFilter?` · 🏫 ${anEsc((CLASSES.find(c=>c.id===stClassFilter)||{}).name||'')}`:''}${stPushOnly?' · 🔔 알림 켠 학생만':''}</div>
       <div class="table-wrap"><table>
-        <thead><tr><th>이름</th><th>알림</th><th>상태</th><th>반</th><th>연락처</th><th>학부모 연락처</th><th>로그인 번호</th><th>관리</th></tr></thead>
+        <thead><tr><th style="width:32px"><input type="checkbox" title="보이는 학생 전체 선택" ${sts.length&&sts.every(x=>stChecked[x.id])?'checked':''} onchange="stCheckAllVisible(this.checked)"></th><th>이름</th><th>알림</th><th>상태</th><th>반</th><th>연락처</th><th>학부모 연락처</th><th>로그인 번호</th><th>관리</th></tr></thead>
         <tbody>${sts.map(s=>{const st=studentStatus(s);return `
           <tr${st!=='재원'?' style="opacity:.62"':''}>
+            <td><input type="checkbox" class="st-chk" value="${s.id}" ${stChecked[s.id]?'checked':''} onchange="stToggleChk('${s.id}', this.checked)"></td>
             <td><strong>${s.name}</strong>${s.memo?' <span title="메모 있음">📝</span>':''}</td>
             <td>${pushOn(s)?'<span class="badge b-green">🔔 켬</span>':'<span class="badge b-gray" title="학생이 앱에서 알림 켜기를 눌러야 해요">🔕 꺼짐</span>'}</td>
             <td>${statusBadge(st)}${st!=='재원'&&s.statusMemo?`<div style="font-size:11px;color:var(--text-muted);margin-top:2px">${s.statusMemo}</div>`:''}</td>
@@ -2990,6 +3089,7 @@ function renderStudentRows(){
           </tr>`;}).join('')}
         </tbody>
       </table></div>`;
+  renderBulkBar();
 }
 async function doAddSt(){
   const name=document.getElementById('ns-name').value.trim();
@@ -3619,9 +3719,7 @@ async function doSaveAsgn(){
     }else{
       await saveAssignment(data);
       showToast(`"${title}" 과제 등록 완료! 학생들이 바로 볼 수 있어요 📝`,'success'); rHomework();
-      fetch('/api/notify',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({tokens:classTokens(classId), title:'새 숙제가 등록됐어요 📝', body:`${cls?.name||''} · ${title}`})})
-        .then(r=>r.json()).then(j=>{ if(j&&j.sent) showToast(`알림 ${j.sent}명에게 발송 📨`); }).catch(()=>{});
+      sendPush(classTokens(classId), '새 숙제가 등록됐어요 📝', `${cls?.name||''} · ${title}`);
     }
   }catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
@@ -3718,9 +3816,7 @@ async function doSaveReview(){
     }else{
       await saveReview(data);
       showToast(`"${title}" 복습 등록 완료! 학생들이 바로 볼 수 있어요 🔁`,'success'); rReview();
-      fetch('/api/notify',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({tokens:classTokens(classId), title:'새 복습이 등록됐어요 🔁', body:`${cls?.name||''} · ${title}`})})
-        .then(r=>r.json()).then(j=>{ if(j&&j.sent) showToast(`알림 ${j.sent}명에게 발송 📨`); }).catch(()=>{});
+      sendPush(classTokens(classId), '새 복습이 등록됐어요 🔁', `${cls?.name||''} · ${title}`);
     }
   }catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
@@ -4065,11 +4161,9 @@ async function doNotifyNewHw(aid, silent){
   if(!silent && a.notifiedAt && !confirm(`이미 ${a.notifiedAt}에 알림을 보냈어요. 한 번 더 보낼까요?`)) return;
   try{
     const due=a.dueDate?` · ~${a.dueDate}까지`:'';
-    const r=await fetch('/api/notify',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({tokens, title:'새 숙제가 등록됐어요 📝', body:`${a.className||''} · ${a.title}${due}`})});
-    const j=await r.json().catch(()=>null);
-    try{ await updateAssignment(aid,{ notifiedAt:new Date().toISOString().slice(0,16).replace('T',' ') }); }catch(e){}
-    showToast(j&&j.sent?`알림 ${j.sent}명에게 발송 📨`:'알림 발송 완료','success');
+    const j=await sendPush(tokens, '새 숙제가 등록됐어요 📝', `${a.className||''} · ${a.title}${due}`);
+    // 한 명이라도 받았을 때만 '보냄'으로 표시한다. 아무도 못 받았는데 ✓가 뜨면 안 보낸 걸 보냈다고 착각한다.
+    if(j && j.sent) { try{ await updateAssignment(aid,{ notifiedAt:new Date().toISOString().slice(0,16).replace('T',' ') }); }catch(e){} }
     if(curSec==='homework') rHomework();
   }catch(e){ showToast('발송 실패: '+e.message,'error'); }
 }
@@ -4369,9 +4463,7 @@ async function doRemindToday(){
   tokens=[...new Set(tokens)];
   if(!tokens.length){ showToast('알림을 켠 학생이 없어요','warning'); return; }
   try{
-    const r=await fetch('/api/notify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tokens, title:'BEEN MATH 알림 🔔', body:msg.trim()})});
-    const j=await r.json().catch(()=>null);
-    showToast(j&&j.sent?`알림 ${j.sent}명에게 발송 📨`:'알림 발송 완료','success');
+    await sendPush(tokens, 'BEEN MATH 알림 🔔', msg.trim());
   }catch(e){ showToast('발송 실패: '+e.message,'error'); }
 }
 // 숙제 평가(완성도·비고) 저장 — 학생 숙제 카드에 표시됨
@@ -4528,14 +4620,63 @@ function classTokens(classId){
   getStudents().forEach(s=>{ if(!isActiveStudent(s)) return; const ids=s.classIds||(s.classId?[s.classId]:[]); if(ids.includes(classId)&&Array.isArray(s.fcmTokens)) s.fcmTokens.forEach(t=>{ if(t&&!tk.includes(t)) tk.push(t); }); });
   return tk;
 }
+// 📨 알림 결과를 있는 그대로 알려준다.
+//   예전엔 한 명도 안 갔는데 '알림 발송 완료'라고 떠서 원인을 알 길이 없었다.
+const PUSH_WHY={
+  UNREGISTERED:'학생 기기에서 알림이 꺼졌거나 앱을 지웠어요 (다시 켜야 해요)',
+  INVALID_ARGUMENT:'토큰이 만료됐어요 (학생이 알림을 다시 켜야 해요)',
+  SENDER_ID_MISMATCH:'다른 프로젝트의 토큰이에요',
+  QUOTA_EXCEEDED:'잠시 후 다시 시도해주세요',
+  UNAVAILABLE:'FCM이 잠시 불안정해요. 다시 시도해주세요',
+  THIRD_PARTY_AUTH_ERROR:'푸시 인증 설정을 확인해주세요',
+  NETWORK:'알림 서버에 연결하지 못했어요'
+};
+function pushWhy(j){ const c=(j&&j.errors&&j.errors[0]&&j.errors[0].code)||''; return PUSH_WHY[c]||c||'원인 불명'; }
+function pushMsg(j, total){
+  if(!j) return ['알림 서버에 연결하지 못했어요','error'];
+  if(j.error) return ['알림 실패 — '+j.error,'error'];
+  const sent=j.sent||0, failed=j.failed||0;
+  if(!total) return ['이 반은 알림을 켠 학생이 없어요 — 학생이 앱에서 🔔 알림 켜기를 눌러야 해요','warning'];
+  if(sent && !failed) return [`알림 ${sent}명에게 발송 📨`,'success'];
+  if(sent && failed) return [`알림 ${sent}명 발송 · ${failed}명 실패 (${pushWhy(j)})`,'warning'];
+  return [`한 명도 못 받았어요 (${total}명 시도) — ${pushWhy(j)}`,'error'];
+}
+// FCM이 '없는 토큰'이라고 한 건 지운다. 안 지우면 다음에도 계속 실패한다.
+async function dropDeadTokens(invalid){
+  if(!Array.isArray(invalid) || !invalid.length) return 0;
+  const dead={}; invalid.forEach(t=>{ dead[t]=1; });
+  let cleaned=0;
+  for(const s of getStudents()){
+    const tk=Array.isArray(s.fcmTokens)?s.fcmTokens:[];
+    if(!tk.some(t=>dead[t])) continue;
+    const left=tk.filter(t=>!dead[t]);
+    try{ await db.collection('students').doc(s.id).update({fcmTokens:left});
+      if(!cachePut('students', s.id, {fcmTokens:left})) await loadStudents(); cleaned++; }catch(e){}
+  }
+  return cleaned;
+}
+// 알림 한 번 보내기 — 결과 안내와 죽은 토큰 정리를 한곳에서 처리한다
+async function sendPush(tokens, title, body){
+  const total=(tokens||[]).length;
+  let j=null;
+  try{
+    const r=await fetch('/api/notify',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({tokens:tokens||[], title:title, body:body})});
+    j=await r.json().catch(()=>null);
+  }catch(e){ j=null; }
+  const [msg,type]=pushMsg(j,total);
+  showToast(msg,type);
+  if(j && j.invalid && j.invalid.length){
+    const c=await dropDeadTokens(j.invalid);
+    if(c) setTimeout(()=>showToast(`알림이 끊긴 학생 ${c}명을 정리했어요 — 다시 켜달라고 알려주세요`,'warning'), 600);
+  }
+  return j;
+}
 // 미제출 독촉 푸시
-function doRemind(classId,title){
+async function doRemind(classId,title){
   const cls=CLASSES.find(c=>c.id===classId);
   showToast('독촉 알림 보내는 중...');
-  fetch('/api/notify',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({tokens:classTokens(classId), title:'숙제 제출 알림 ⏰', body:`${cls?.name||''} · "${title}" 아직 제출 안 했어요!`})})
-    .then(r=>r.json()).then(j=>{ showToast(j&&j.sent?`독촉 알림 ${j.sent}명 발송 📨`:'알림 켠 학생이 없어요','success'); })
-    .catch(()=>showToast('알림 발송 실패','warning'));
+  await sendPush(classTokens(classId), '숙제 제출 알림 ⏰', `${cls?.name||''} · "${title}" 아직 제출 안 했어요!`);
 }
 
 // ================================================================
