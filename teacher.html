@@ -19,6 +19,7 @@
       --green:#10B981; --green-light:#ECFDF5;
       --red:#F43F5E; --red-light:#FFF1F2;
       --yellow:#F59E0B; --yellow-light:#FFFBEB;
+      --purple:#8B5CF6; --purple-light:#F5F3FF;   /* 쓰이고 있었는데 선언이 없어 색이 안 나오던 것 */
       --bg:#F4F6FB; --surface:#FFFFFF;
       --text:#0F172A; --text-sub:#334155; --text-muted:#64748B;
       --border:#E8EDF4; --sidebar-w:250px;
@@ -2507,25 +2508,97 @@ function monthSummaryHtml(){
   </div>`;
 }
 // ✅ 내 체크리스트 — 선생님 개인 할 일 (settings/myTodos)
-let MYTODOS=[];
-async function loadMyTodos(){ try{ const d=await db.collection('settings').doc('myTodos').get(); MYTODOS=(d.exists&&Array.isArray(d.data().items))?d.data().items:[]; }catch(e){ MYTODOS=[]; } }
-async function saveMyTodos(){ try{ await db.collection('settings').doc('myTodos').set({items:MYTODOS, ts:Date.now()},{merge:true}); }catch(e){ showToast('저장 실패: '+e.message,'error'); } }
-async function doAddTodo(){ const el=document.getElementById('todo-new'); const t=(el?el.value:'').trim(); if(!t) return; MYTODOS.push({id:'t'+Date.now(), text:t, done:false}); if(el) el.value=''; await saveMyTodos(); rDashboard(); }
-async function doToggleTodo(id){ const t=MYTODOS.find(x=>x.id===id); if(t) t.done=!t.done; await saveMyTodos(); rDashboard(); }
-async function doDelTodo(id){ MYTODOS=MYTODOS.filter(x=>x.id!==id); await saveMyTodos(); rDashboard(); }
+// ✅ 체크리스트 — 개인 할 일과 내신 대비를 같은 코드로 굴린다.
+//   내용은 여러 줄로 쓸 수 있다(Enter=추가, Shift+Enter=줄바꿈, 보여줄 때 pre-wrap).
+let MYTODOS=[], NAESIN_TODOS=[];
+let todoEditId=null;                     // 지금 고쳐 쓰고 있는 항목
+const NAESIN_BOOKS=['마스터교재','기출편','유형편'];   // 내신 대비 기간에 한 권씩 끝내는 교재
+let naesinBook=NAESIN_BOOKS[0];
+const TODO_LISTS={
+  my:     { doc:'myTodos',     get:()=>MYTODOS,      set:v=>{ MYTODOS=v; } },
+  naesin: { doc:'naesinTodos', get:()=>NAESIN_TODOS, set:v=>{ NAESIN_TODOS=v; } }
+};
+async function loadTodoList(key){
+  const d=TODO_LISTS[key]; if(!d) return;
+  try{ const doc=await db.collection('settings').doc(d.doc).get();
+    d.set((doc.exists&&Array.isArray(doc.data().items))?doc.data().items:[]); }catch(e){ d.set([]); }
+}
+async function loadMyTodos(){ await loadTodoList('my'); }
+async function loadNaesinTodos(){ await loadTodoList('naesin'); }
+async function saveTodos(key){
+  const d=TODO_LISTS[key]; if(!d) return;
+  try{ await db.collection('settings').doc(d.doc).set({items:d.get(), ts:Date.now()},{merge:true}); }
+  catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+async function doAddTodo(key){
+  const d=TODO_LISTS[key]; if(!d) return;
+  const el=document.getElementById('todo-new-'+key);
+  const t=(el?el.value:'').replace(/\s+$/,'');   // 뒤쪽 빈 줄만 정리하고 줄바꿈은 살린다
+  if(!t.trim()) return;
+  const item={id:'t'+Date.now(), text:t, done:false};
+  if(key==='naesin') item.book=naesinBook;
+  d.get().push(item);
+  if(el) el.value='';
+  await saveTodos(key); rDashboard();
+}
+async function doToggleTodo(key,id){ const t=TODO_LISTS[key].get().find(x=>x.id===id); if(t) t.done=!t.done; await saveTodos(key); rDashboard(); }
+async function doDelTodo(key,id){ const d=TODO_LISTS[key]; d.set(d.get().filter(x=>x.id!==id)); await saveTodos(key); rDashboard(); }
+async function doSaveTodoEdit(key,id){
+  const el=document.getElementById('todo-edit');
+  const t=TODO_LISTS[key].get().find(x=>x.id===id);
+  if(t && el){ const v=el.value.replace(/\s+$/,''); if(!v.trim()){ showToast('내용을 비울 수 없어요','warning'); return; } t.text=v; }
+  todoEditId=null; await saveTodos(key); rDashboard();
+}
+function todoEsc(v){ return String(v==null?'':v).replace(/</g,'&lt;'); }
+// 항목 한 줄 — 여러 줄 내용도 그대로 보이게 pre-wrap, 체크는 위에 붙여 정렬
+function todoItemHtml(key, t){
+  if(todoEditId===t.id) return `<div style="padding:6px 0;border-top:1px solid var(--border)">
+    <textarea class="form-input" id="todo-edit" rows="3" style="width:100%;font-size:13px;padding:6px 9px;resize:vertical">${todoEsc(t.text)}</textarea>
+    <div style="display:flex;gap:6px;margin-top:5px">
+      <button class="btn btn-primary btn-sm" onclick="doSaveTodoEdit('${key}','${t.id}')">저장</button>
+      <button class="btn btn-outline btn-sm" onclick="todoEditId=null;rDashboard()">취소</button>
+    </div></div>`;
+  return `<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-top:1px solid var(--border)">
+    <button class="btn btn-sm" style="padding:1px 7px;flex-shrink:0;${t.done?'background:var(--green);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="doToggleTodo('${key}','${t.id}')">${t.done?'✓':'○'}</button>
+    <span style="flex:1;font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word;${t.done?'text-decoration:line-through;color:var(--text-muted)':''}">${todoEsc(t.text)}</span>
+    <button class="btn btn-sm" title="고치기" style="padding:1px 5px;background:transparent;color:var(--text-muted);flex-shrink:0" onclick="todoEditId='${t.id}';rDashboard()">✏️</button>
+    <button class="btn btn-sm" style="padding:1px 6px;background:transparent;color:var(--text-muted);flex-shrink:0" onclick="doDelTodo('${key}','${t.id}')">✕</button>
+  </div>`;
+}
+function todoInputHtml(key, ph){
+  return `<div style="display:flex;gap:6px;margin-bottom:8px;align-items:flex-start">
+    <textarea class="form-input" id="todo-new-${key}" rows="2" placeholder="${ph}" style="flex:1;padding:6px 9px;font-size:12px;resize:vertical;line-height:1.5"
+      onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();doAddTodo('${key}');}"></textarea>
+    <button class="btn btn-primary btn-sm" style="flex-shrink:0" onclick="doAddTodo('${key}')">추가</button>
+  </div>
+  <div style="font-size:10.5px;color:var(--text-muted);margin:-4px 0 8px">Enter 추가 · Shift+Enter 줄바꿈</div>`;
+}
+// 📕 내신 대비 기간 체크리스트 — 교재를 한 권씩 끝까지 보기 위한 것.
+//   교재별로 몇 개 중 몇 개 했는지가 칩에 바로 보인다.
+function naesinTodosHtml(){
+  const of=b=>NAESIN_TODOS.filter(t=>(t.book||NAESIN_BOOKS[0])===b);
+  const chips=NAESIN_BOOKS.map(b=>{
+    const items=of(b), done=items.filter(t=>t.done).length;
+    const on=naesinBook===b;
+    return `<button class="btn btn-sm" style="${on?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="naesinBook='${b}';todoEditId=null;rDashboard()">${b} <strong>${done}/${items.length}</strong></button>`;
+  }).join('');
+  const items=of(naesinBook);
+  const done=items.filter(t=>t.done).length;
+  const pct=items.length?Math.round(done/items.length*100):0;
+  return `<div class="card" style="margin:0;border-left:4px solid var(--purple)">
+    <div class="card-title" style="font-size:15px">📕 내신 대비 체크리스트 <span style="font-size:11px;color:var(--text-muted);font-weight:400">(교재 한 권씩 끝내기)</span></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${chips}</div>
+    ${items.length?`<div style="height:7px;background:var(--bg);border-radius:4px;overflow:hidden;margin-bottom:9px"><div style="height:100%;width:${pct}%;background:var(--purple);border-radius:4px"></div></div>`:''}
+    ${todoInputHtml('naesin', naesinBook+'에서 할 것 추가')}
+    ${items.length?items.map(t=>todoItemHtml('naesin',t)).join(''):`<div style="font-size:12px;color:var(--text-muted);padding:6px 0">${naesinBook}에서 볼 범위를 적어보세요</div>`}
+  </div>`;
+}
 function myTodosHtml(){
-  const esc=s=>(s||'').replace(/</g,'&lt;');
+  const done=MYTODOS.filter(t=>t.done).length;
   return `<div class="card" style="margin:0">
-    <div class="card-title" style="font-size:15px">✅ 내 체크리스트 <span style="font-size:11px;color:var(--text-muted);font-weight:400">(오늘 처리할 내 업무)</span></div>
-    <div style="display:flex;gap:6px;margin-bottom:8px">
-      <input class="form-input" id="todo-new" placeholder="할 일 추가" style="flex:1;padding:6px 9px;font-size:12px" onkeydown="if(event.key==='Enter')doAddTodo()">
-      <button class="btn btn-primary btn-sm" onclick="doAddTodo()">추가</button>
-    </div>
-    ${MYTODOS.length?MYTODOS.map(t=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border)">
-      <button class="btn btn-sm" style="padding:1px 7px;${t.done?'background:var(--green);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="doToggleTodo('${t.id}')">${t.done?'✓':'○'}</button>
-      <span style="flex:1;font-size:13px;${t.done?'text-decoration:line-through;color:var(--text-muted)':''}">${esc(t.text)}</span>
-      <button class="btn btn-sm" style="padding:1px 6px;background:transparent;color:var(--text-muted)" onclick="doDelTodo('${t.id}')">✕</button>
-    </div>`).join(''):'<div style="font-size:12px;color:var(--text-muted);padding:6px 0">할 일을 추가해보세요</div>'}
+    <div class="card-title" style="font-size:15px">✅ 내 체크리스트 <span style="font-size:11px;color:var(--text-muted);font-weight:400">(오늘 처리할 내 업무)${MYTODOS.length?` · ${done}/${MYTODOS.length}`:''}</span></div>
+    ${todoInputHtml('my', '할 일 추가')}
+    ${MYTODOS.length?MYTODOS.map(t=>todoItemHtml('my',t)).join(''):'<div style="font-size:12px;color:var(--text-muted);padding:6px 0">할 일을 추가해보세요</div>'}
   </div>`;
 }
 function rDashboard(){
@@ -2557,6 +2630,7 @@ function rDashboard(){
       ${monthSummaryHtml()}
       ${dashCalendarHtml()}
       ${myTodosHtml()}
+      ${naesinTodosHtml()}
       <div class="card" style="border-left:4px solid var(--yellow);margin:0">
         <div class="card-title" style="font-size:15px">📢 공지사항 <span style="font-size:11px;color:var(--text-muted);font-weight:400">(학생 홈에 표시)</span></div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
@@ -6142,6 +6216,7 @@ async function init(){
     loadCurrTerm(),      // 진도표 학기(시작일·주수)
     loadClassChecks(),   // 반별 오답 마무리 체크·데일리테스트 기록
     loadMyTodos(),       // 내 체크리스트(개인 할 일)
+    loadNaesinTodos(),   // 내신 대비 체크리스트(교재별)
     loadSchoolBooks(),   // 학교별 교재·출판사
     loadHiddenTextbooks(), // 숨긴 교재 칩
     loadVideoViews()     // 영상 시청 기록
