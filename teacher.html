@@ -2510,13 +2510,10 @@ function monthSummaryHtml(){
 // ✅ 내 체크리스트 — 선생님 개인 할 일 (settings/myTodos)
 // ✅ 체크리스트 — 개인 할 일과 내신 대비를 같은 코드로 굴린다.
 //   내용은 여러 줄로 쓸 수 있다(Enter=추가, Shift+Enter=줄바꿈, 보여줄 때 pre-wrap).
-let MYTODOS=[], NAESIN_TODOS=[];
+let MYTODOS=[];
 let todoEditId=null;                     // 지금 고쳐 쓰고 있는 항목
-const NAESIN_BOOKS=['마스터교재','기출편','유형편'];   // 내신 대비 기간에 한 권씩 끝내는 교재
-let naesinBook=NAESIN_BOOKS[0];
 const TODO_LISTS={
-  my:     { doc:'myTodos',     get:()=>MYTODOS,      set:v=>{ MYTODOS=v; } },
-  naesin: { doc:'naesinTodos', get:()=>NAESIN_TODOS, set:v=>{ NAESIN_TODOS=v; } }
+  my: { doc:'myTodos', get:()=>MYTODOS, set:v=>{ MYTODOS=v; } }
 };
 async function loadTodoList(key){
   const d=TODO_LISTS[key]; if(!d) return;
@@ -2524,7 +2521,6 @@ async function loadTodoList(key){
     d.set((doc.exists&&Array.isArray(doc.data().items))?doc.data().items:[]); }catch(e){ d.set([]); }
 }
 async function loadMyTodos(){ await loadTodoList('my'); }
-async function loadNaesinTodos(){ await loadTodoList('naesin'); }
 async function saveTodos(key){
   const d=TODO_LISTS[key]; if(!d) return;
   try{ await db.collection('settings').doc(d.doc).set({items:d.get(), ts:Date.now()},{merge:true}); }
@@ -2536,7 +2532,6 @@ async function doAddTodo(key){
   const t=(el?el.value:'').replace(/\s+$/,'');   // 뒤쪽 빈 줄만 정리하고 줄바꿈은 살린다
   if(!t.trim()) return;
   const item={id:'t'+Date.now(), text:t, done:false};
-  if(key==='naesin') item.book=naesinBook;
   d.get().push(item);
   if(el) el.value='';
   await saveTodos(key); rDashboard();
@@ -2572,26 +2567,6 @@ function todoInputHtml(key, ph){
     <button class="btn btn-primary btn-sm" style="flex-shrink:0" onclick="doAddTodo('${key}')">추가</button>
   </div>
   <div style="font-size:10.5px;color:var(--text-muted);margin:-4px 0 8px">Enter 추가 · Shift+Enter 줄바꿈</div>`;
-}
-// 📕 내신 대비 기간 체크리스트 — 교재를 한 권씩 끝까지 보기 위한 것.
-//   교재별로 몇 개 중 몇 개 했는지가 칩에 바로 보인다.
-function naesinTodosHtml(){
-  const of=b=>NAESIN_TODOS.filter(t=>(t.book||NAESIN_BOOKS[0])===b);
-  const chips=NAESIN_BOOKS.map(b=>{
-    const items=of(b), done=items.filter(t=>t.done).length;
-    const on=naesinBook===b;
-    return `<button class="btn btn-sm" style="${on?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="naesinBook='${b}';todoEditId=null;rDashboard()">${b} <strong>${done}/${items.length}</strong></button>`;
-  }).join('');
-  const items=of(naesinBook);
-  const done=items.filter(t=>t.done).length;
-  const pct=items.length?Math.round(done/items.length*100):0;
-  return `<div class="card" style="margin:0;border-left:4px solid var(--purple)">
-    <div class="card-title" style="font-size:15px">📕 내신 대비 체크리스트 <span style="font-size:11px;color:var(--text-muted);font-weight:400">(교재 한 권씩 끝내기)</span></div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${chips}</div>
-    ${items.length?`<div style="height:7px;background:var(--bg);border-radius:4px;overflow:hidden;margin-bottom:9px"><div style="height:100%;width:${pct}%;background:var(--purple);border-radius:4px"></div></div>`:''}
-    ${todoInputHtml('naesin', naesinBook+'에서 할 것 추가')}
-    ${items.length?items.map(t=>todoItemHtml('naesin',t)).join(''):`<div style="font-size:12px;color:var(--text-muted);padding:6px 0">${naesinBook}에서 볼 범위를 적어보세요</div>`}
-  </div>`;
 }
 function myTodosHtml(){
   const done=MYTODOS.filter(t=>t.done).length;
@@ -2630,7 +2605,6 @@ function rDashboard(){
       ${monthSummaryHtml()}
       ${dashCalendarHtml()}
       ${myTodosHtml()}
-      ${naesinTodosHtml()}
       <div class="card" style="border-left:4px solid var(--yellow);margin:0">
         <div class="card-title" style="font-size:15px">📢 공지사항 <span style="font-size:11px;color:var(--text-muted);font-weight:400">(학생 홈에 표시)</span></div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
@@ -4390,22 +4364,40 @@ function classCheckBoardHtml(){
   }
   const c=list.find(x=>x.id===ckBoardClassId);
   const sts=getStudentsByClass(c.id);
-  const units=classUnits(c.id);
-  const done={}; units.forEach(u=>{ done[u.id]=sts.filter(s=>unitMarked(c.id,u.id,s.id)).length; });
   const el=s=>(s||'').replace(/</g,'&lt;');
+  const allCols=ckColumns(c.id);
+  const cols=ckGroup?allCols.filter(x=>x.group===ckGroup):allCols;
+  const units=classUnits(c.id);                       // 다른 반 복사는 방학 단원 기준
+  const done={}; cols.forEach(u=>{ done[u.id]=sts.filter(s=>ckMarked(c.id,u,s.id)).length; });
+  // 묶음 칩 — 방학 단원 / 교재 3종. 각 칩에 열 수와 체크 진행이 보인다.
+  const groupChip=(g)=>{
+    const gi=allCols.filter(x=>x.group===g);
+    const cells=gi.length*sts.length;
+    const okN=gi.reduce((a,u)=>a+sts.filter(s=>ckMarked(c.id,u,s.id)).length,0);
+    const on=ckGroup===g;
+    const color=g===CK_VACATION?'var(--primary)':'var(--purple)';
+    return `<button class="btn btn-sm" style="${on?`background:${color};color:#fff`:'background:var(--bg);color:var(--text-muted)'}" onclick="ckGroup='${g}';rDashboard()">${el(g)} <strong>${gi.length}</strong>${cells?` <span style="font-size:10px;opacity:.8">${okN}/${cells}</span>`:''}</button>`;
+  };
+  const groupBar=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;align-items:center">
+    <button class="btn btn-sm" style="${!ckGroup?'background:var(--text-sub);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="ckGroup='';rDashboard()">전체 <strong>${allCols.length}</strong></button>
+    <span style="width:1px;height:18px;background:var(--border)"></span>
+    ${ckGroups().map(groupChip).join('')}
+  </div>`;
+  const addLabel = (!ckGroup||ckGroup===CK_VACATION) ? '＋ 단원 추가' : '＋ 주차 추가';
   return `<div class="card" style="margin:0">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-      <div class="card-title" style="margin:0">📋 반별 체크리스트 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(단원별로 누가 마무리했는지)</span></div>
+      <div class="card-title" style="margin:0">📋 반별 체크리스트 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(방학 단원 · 내신 대비 교재)</span></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
-        ${units.length&&list.length>1?`<button class="btn btn-outline btn-sm" onclick="toggleCkCopy()">📋 다른 반에 복사</button>`:''}
-        <button class="btn btn-primary btn-sm" onclick="doAddUnit('${c.id}')">＋ 단원 추가</button>
+        ${units.length&&list.length>1&&(!ckGroup||ckGroup===CK_VACATION)?`<button class="btn btn-outline btn-sm" onclick="toggleCkCopy()">📋 단원 다른 반에 복사</button>`:''}
+        <button class="btn btn-primary btn-sm" onclick="doAddCkItem('${c.id}')">${addLabel}</button>
       </div>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 10px">
       ${list.map(x=>`<button class="btn btn-sm" style="${x.id===c.id?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="setCkBoardClass('${x.id}')">${el(x.name)}<span style="font-size:9px;opacity:.75"> ${clsDayLabel(x)}</span></button>`).join('')}
     </div>
+    ${groupBar}
     ${(ckCopyOpen&&units.length&&list.length>1)?`<div style="background:var(--bg);border-radius:10px;padding:11px 13px;margin-bottom:10px">
-      <div style="font-size:12.5px;font-weight:800;margin-bottom:2px">📋 <span style="color:var(--primary)">${el(c.name)}</span>의 단원을 다른 반에도 만들기</div>
+      <div style="font-size:12.5px;font-weight:800;margin-bottom:2px">📋 <span style="color:var(--primary)">${el(c.name)}</span>의 방학 단원을 다른 반에도 만들기</div>
       <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">복사할 단원: ${units.map(u=>el(u.name)).join(' · ')}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:9px">
         ${list.filter(x=>x.id!==c.id).map(x=>{
@@ -4423,19 +4415,80 @@ function classCheckBoardHtml(){
       <div style="font-size:11px;color:var(--text-muted);margin-top:7px">단원 이름만 복사돼요. 이미 같은 이름이 있으면 건너뛰고, 학생 체크 표시는 건드리지 않아요.</div>
     </div>`:''}
     ${!sts.length?'<div style="color:var(--text-muted);padding:12px">이 반에 배정된 학생이 없어요</div>'
-      : !units.length?`<div style="text-align:center;padding:22px;color:var(--text-muted)">아직 단원이 없어요.<br><span style="font-size:12px">위 <strong>＋ 단원 추가</strong>를 눌러 "1단원"처럼 만들어보세요.</span></div>`
+      : !cols.length?`<div style="text-align:center;padding:22px;color:var(--text-muted)">${ckGroup?`${el(ckGroup)}에 아직 항목이 없어요.`:'아직 항목이 없어요.'}<br><span style="font-size:12px">위 <strong>${addLabel}</strong>를 눌러 만들어보세요.</span></div>`
       : `<div class="table-wrap"><table style="font-size:13px;width:100%">
         <thead><tr>
           <th style="text-align:left;min-width:70px;position:sticky;left:0;background:var(--bg)">학생</th>
-          ${units.map(u=>`<th style="text-align:center;white-space:nowrap;min-width:78px">${el(u.name)}<div style="font-size:10px;font-weight:400;color:${done[u.id]===sts.length?'var(--green)':'var(--text-muted)'}">${done[u.id]}/${sts.length} <span onclick="doDelUnit('${c.id}','${u.id}')" title="단원 삭제" style="cursor:pointer">✕</span></div></th>`).join('')}
+          ${cols.map(u=>`<th style="text-align:center;white-space:nowrap;min-width:78px">
+            ${!ckGroup?`<div style="font-size:9px;font-weight:700;color:${u.kind==='unit'?'var(--primary)':'var(--purple)'};letter-spacing:-.2px">${el(u.group)}</div>`:''}
+            ${el(u.name)}
+            <div style="font-size:10px;font-weight:400;color:${done[u.id]===sts.length?'var(--green)':'var(--text-muted)'}">${done[u.id]}/${sts.length} <span onclick="ckDelCol('${c.id}','${u.kind}','${u.id}')" title="열 삭제" style="cursor:pointer">✕</span></div></th>`).join('')}
         </tr></thead>
         <tbody>${sts.map(st=>`<tr>
           <td style="position:sticky;left:0;background:var(--surface)"><strong>${el(st.name)}</strong></td>
-          ${units.map(u=>{ const on=unitMarked(c.id,u.id,st.id);
-            return `<td style="text-align:center;padding:3px"><button class="btn btn-sm" style="padding:3px 12px;font-size:13px;${on?'background:var(--green);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="doToggleUnit('${c.id}','${u.id}','${st.id}')">${on?'✓':'○'}</button></td>`; }).join('')}
+          ${cols.map(u=>{ const on=ckMarked(c.id,u,st.id); const color=u.kind==='unit'?'var(--green)':'var(--purple)';
+            return `<td style="text-align:center;padding:3px"><button class="btn btn-sm" style="padding:3px 12px;font-size:13px;${on?`background:${color};color:#fff`:'background:var(--bg);color:var(--text-muted)'}" onclick="ckToggle('${c.id}','${u.kind}','${u.id}','${st.id}')">${on?'✓':'○'}</button></td>`; }).join('')}
         </tr>`).join('')}</tbody>
       </table></div>`}
   </div>`;
+}
+// 📕 내신 대비 교재 칸 — 기존 units(방학 때 끝낼 단원)와 별개로,
+//   내신 대비 기간에 교재를 한 권씩 보며 '1주차, 2주차…'를 체크한다.
+//   같은 classCheck 문서에 naesinItems / naesinMarks 로 붙여 저장한다(컬렉션을 늘리지 않는다).
+const NAESIN_BOOKS=['마스터교재','기출편','유형편'];
+const CK_VACATION='방학 단원';
+let ckGroup='';                        // '' = 전체 보기, 그 외는 그 묶음만
+function naesinAllItems(classId){ const c=getClassCheck(classId); return Array.isArray(c.naesinItems)?c.naesinItems:[]; }
+function naesinMarked(classId, itemId, sid){ const c=getClassCheck(classId); const m=(c.naesinMarks&&c.naesinMarks[itemId])||{}; return !!m[sid]; }
+// 방학 단원 + 교재별 주차를 한 줄로 세운다. 표시·체크·삭제 모두 이 목록으로 한다.
+function ckColumns(classId){
+  const cols=[];
+  classUnits(classId).forEach(u=>cols.push({kind:'unit', group:CK_VACATION, id:u.id, name:u.name}));
+  naesinAllItems(classId).forEach(u=>cols.push({kind:'naesin', group:(u.book||NAESIN_BOOKS[0]), id:u.id, name:u.name}));
+  return cols;
+}
+function ckGroups(){ return [CK_VACATION].concat(NAESIN_BOOKS); }
+function ckMarked(classId, col, sid){ return col.kind==='unit' ? unitMarked(classId,col.id,sid) : naesinMarked(classId,col.id,sid); }
+function ckToggle(classId, kind, id, sid){ return kind==='unit' ? doToggleUnit(classId,id,sid) : doToggleNaesin(classId,id,sid); }
+function ckDelCol(classId, kind, id){ return kind==='unit' ? doDelUnit(classId,id) : doDelNaesinItem(classId,id); }
+async function saveNaesinBoard(classId, patch){
+  const cur=getClassCheck(classId);
+  CLASSCHECK_CACHE[classId]=Object.assign({units:[],marks:{},testLog:{}}, cur, {id:classId}, patch);
+  try{ await db.collection('classCheck').doc(classId).set(Object.assign({ts:Date.now()}, patch),{merge:true}); rDashboard(); }
+  catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+// ＋ 버튼 — 지금 보고 있는 묶음에 항목을 넣는다. 전체 보기일 땐 어디에 넣을지 먼저 고른다.
+async function doAddCkItem(classId){
+  let g=ckGroup;
+  if(!g){
+    const opts=ckGroups();
+    const pick=(prompt('어디에 추가할까요?\n'+opts.map((x,i)=>`${i+1}. ${x}`).join('\n'), '1')||'').trim();
+    const i=parseInt(pick,10);
+    g = (i>=1 && i<=opts.length) ? opts[i-1] : (opts.indexOf(pick)>=0 ? pick : '');
+    if(!g) return;
+  }
+  if(g===CK_VACATION) return doAddUnit(classId);
+  const all=naesinAllItems(classId).slice();
+  const nextN=all.filter(x=>(x.book||NAESIN_BOOKS[0])===g).length+1;
+  const name=(prompt(`${g} — 추가할 항목 이름`, nextN+'주차')||'').trim();
+  if(!name) return;
+  all.push({id:'n'+Date.now().toString(36), name, book:g});
+  await saveNaesinBoard(classId, {naesinItems:all});
+}
+async function doDelNaesinItem(classId, itemId){
+  const all=naesinAllItems(classId), it=all.find(x=>x.id===itemId);
+  if(!confirm(`'${it?it.name:'이 항목'}' 열을 삭제할까요? (체크 기록도 사라져요)`)) return;
+  const cur=getClassCheck(classId);
+  const marks=Object.assign({}, cur.naesinMarks||{}); delete marks[itemId];
+  await saveNaesinBoard(classId, {naesinItems:all.filter(x=>x.id!==itemId), naesinMarks:marks});
+}
+async function doToggleNaesin(classId, itemId, studentId){
+  const cur=getClassCheck(classId);
+  const marks=Object.assign({}, cur.naesinMarks||{});
+  const m=Object.assign({}, marks[itemId]||{});
+  if(m[studentId]) delete m[studentId]; else m[studentId]=true;
+  marks[itemId]=m;
+  await saveNaesinBoard(classId, {naesinMarks:marks});
 }
 // 📋 반별 단원 체크리스트 — classCheck 문서 {units:[{id,name}], marks:{unitId:{sid:true}}, testLog:{date:true}}
 let CLASSCHECK_CACHE={};
@@ -6216,7 +6269,6 @@ async function init(){
     loadCurrTerm(),      // 진도표 학기(시작일·주수)
     loadClassChecks(),   // 반별 오답 마무리 체크·데일리테스트 기록
     loadMyTodos(),       // 내 체크리스트(개인 할 일)
-    loadNaesinTodos(),   // 내신 대비 체크리스트(교재별)
     loadSchoolBooks(),   // 학교별 교재·출판사
     loadHiddenTextbooks(), // 숨긴 교재 칩
     loadVideoViews()     // 영상 시청 기록
