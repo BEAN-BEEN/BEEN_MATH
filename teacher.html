@@ -4320,36 +4320,52 @@ function todayRosterHtml(todayCls, subs){
 let ckBoardClassId='', ckCopyOpen=false;
 function setCkBoardClass(id){ ckBoardClassId=id; rDashboard(); }
 function toggleCkCopy(){ ckCopyOpen=!ckCopyOpen; rDashboard(); }
-// 📋 단원 이름만 다른 반으로 복사 — 같은 구성으로 수업하는 반들을 매번 손으로 만들지 않게.
-//   체크 표시(marks)는 학생별 기록이라 복사하지 않고, 이름이 겹치는 단원은 건너뜁니다.
+// 📋 지금 보고 있는 묶음을 그대로 다른 반에도 만들기 — 반마다 손으로 다시 만들지 않게.
+//   내신 대비 교재는 반들이 똑같이 쓰므로 주차도 한꺼번에 복사한다.
+//   체크 표시(marks)는 학생별 기록이라 복사하지 않고, 이름이 겹치는 항목은 건너뛴다.
+function ckCopySrc(fromId){
+  const cols=ckColumns(fromId);
+  return ckGroup ? cols.filter(x=>x.group===ckGroup) : cols;
+}
 function ckCopyPlan(fromId, targetIds){
-  const units=classUnits(fromId);
+  const src=ckCopySrc(fromId);
   return targetIds.map(tid=>{
     const t=CLASSES.find(c=>c.id===tid);
-    const have=new Set(classUnits(tid).map(u=>(u.name||'').trim()));
-    return { tid, name:t?t.name:'', add:units.filter(u=>!have.has((u.name||'').trim())) };
+    const haveU=new Set(classUnits(tid).map(u=>(u.name||'').trim()));
+    // 교재는 '교재|이름'으로 봐야 기출편 1주차와 마스터 1주차를 다른 것으로 센다
+    const haveN=new Set(naesinAllItems(tid).map(u=>((u.book||NAESIN_BOOKS[0])+'|'+(u.name||'').trim())));
+    const add=src.filter(u=> u.kind==='unit'
+      ? !haveU.has((u.name||'').trim())
+      : !haveN.has(u.group+'|'+(u.name||'').trim()));
+    return { tid, name:t?t.name:'', add };
   }).filter(p=>p.add.length);
 }
+function ckCopyAllTargets(on){
+  [].slice.call(document.querySelectorAll('.ck-copy-chk')).forEach(x=>{ if(!x.disabled) x.checked=on; });
+}
 async function doCopyUnits(fromId){
-  const units=classUnits(fromId);
-  if(!units.length){ showToast('복사할 단원이 없어요','warning'); return; }
-  const targets=[...document.querySelectorAll('.ck-copy-chk:checked')].map(x=>x.value);
+  const src=ckCopySrc(fromId);
+  if(!src.length){ showToast('복사할 항목이 없어요','warning'); return; }
+  const targets=[].slice.call(document.querySelectorAll('.ck-copy-chk')).filter(x=>x.checked).map(x=>x.value);
   if(!targets.length){ showToast('복사할 반을 골라주세요','warning'); return; }
   const plan=ckCopyPlan(fromId, targets);
-  if(!plan.length){ showToast('고른 반에 이미 같은 단원이 다 있어요','warning'); return; }
-  const msg='아래 반에 단원을 추가할까요?\n(단원 이름만 추가되고, 학생 체크 표시는 그대로예요)\n\n'
+  if(!plan.length){ showToast('고른 반에 이미 다 있어요','warning'); return; }
+  const msg='아래 반에 항목을 추가할까요?\n(이름만 추가되고, 학생 체크 표시는 그대로예요)\n\n'
     + plan.map(p=>`· ${p.name}: ${p.add.map(u=>u.name).join(', ')}`).join('\n');
   if(!confirm(msg)) return;
   try{
     for(const p of plan){
       const cur=getClassCheck(p.tid);
-      const stamp=Date.now().toString(36);
-      const units2=classUnits(p.tid).concat(p.add.map((u,i)=>({ id:'u'+stamp+i, name:u.name })));
-      CLASSCHECK_CACHE[p.tid]=Object.assign({units:[],marks:{},testLog:{}}, cur, {id:p.tid, units:units2});
-      await db.collection('classCheck').doc(p.tid).set({units:units2, ts:Date.now()},{merge:true});
+      const stamp=Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+      const addU=p.add.filter(u=>u.kind==='unit'), addN=p.add.filter(u=>u.kind==='naesin');
+      const patch={};
+      if(addU.length) patch.units=classUnits(p.tid).concat(addU.map((u,i)=>({ id:'u'+stamp+i, name:u.name })));
+      if(addN.length) patch.naesinItems=naesinAllItems(p.tid).concat(addN.map((u,i)=>({ id:'n'+stamp+i, name:u.name, book:u.group })));
+      CLASSCHECK_CACHE[p.tid]=Object.assign({units:[],marks:{},testLog:{}}, cur, {id:p.tid}, patch);
+      await db.collection('classCheck').doc(p.tid).set(Object.assign({ts:Date.now()}, patch),{merge:true});
     }
     ckCopyOpen=false;
-    showToast(`${plan.length}개 반에 단원 ${plan.reduce((n,p)=>n+p.add.length,0)}개 복사 완료 📋`,'success');
+    showToast(`${plan.length}개 반에 ${plan.reduce((n,p)=>n+p.add.length,0)}개 복사 완료 📋`,'success');
     rDashboard();
   }catch(e){ showToast('복사 실패: '+e.message,'error'); }
 }
@@ -4388,7 +4404,7 @@ function classCheckBoardHtml(){
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
       <div class="card-title" style="margin:0">📋 반별 체크리스트 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(방학 단원 · 내신 대비 교재)</span></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
-        ${units.length&&list.length>1&&(!ckGroup||ckGroup===CK_VACATION)?`<button class="btn btn-outline btn-sm" onclick="toggleCkCopy()">📋 단원 다른 반에 복사</button>`:''}
+        ${cols.length&&list.length>1?`<button class="btn btn-outline btn-sm" onclick="toggleCkCopy()">📋 다른 반에 복사</button>`:''}
         <button class="btn btn-primary btn-sm" onclick="doAddCkItem('${c.id}')">${addLabel}</button>
       </div>
     </div>
@@ -4396,24 +4412,32 @@ function classCheckBoardHtml(){
       ${list.map(x=>`<button class="btn btn-sm" style="${x.id===c.id?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="setCkBoardClass('${x.id}')">${el(x.name)}<span style="font-size:9px;opacity:.75"> ${clsDayLabel(x)}</span></button>`).join('')}
     </div>
     ${groupBar}
-    ${(ckCopyOpen&&units.length&&list.length>1)?`<div style="background:var(--bg);border-radius:10px;padding:11px 13px;margin-bottom:10px">
-      <div style="font-size:12.5px;font-weight:800;margin-bottom:2px">📋 <span style="color:var(--primary)">${el(c.name)}</span>의 방학 단원을 다른 반에도 만들기</div>
-      <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">복사할 단원: ${units.map(u=>el(u.name)).join(' · ')}</div>
+    ${(ckCopyOpen&&cols.length&&list.length>1)?(function(){
+      const srcCols=ckCopySrc(c.id);
+      const label=ckGroup?el(ckGroup):'전체 항목';
+      const others=list.filter(x=>x.id!==c.id);
+      const newsOf=x=>{ const p=ckCopyPlan(c.id,[x.id]); return p.length?p[0].add.length:0; };
+      return `<div style="background:var(--bg);border-radius:10px;padding:11px 13px;margin-bottom:10px">
+      <div style="font-size:12.5px;font-weight:800;margin-bottom:2px">📋 <span style="color:var(--primary)">${el(c.name)}</span>의 <span style="color:var(--purple)">${label}</span>을 다른 반에도 만들기</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">복사할 항목: ${srcCols.map(u=>el(u.name)+(ckGroup?'':`<span style="opacity:.6">(${el(u.group)})</span>`)).join(' · ')}</div>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:7px">
+        <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px" onclick="ckCopyAllTargets(true)">모든 반 선택</button>
+        <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px" onclick="ckCopyAllTargets(false)">해제</button>
+        <span style="font-size:11px;color:var(--text-muted)">교재는 반들이 똑같이 쓰니 전부 골라도 돼요</span>
+      </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:9px">
-        ${list.filter(x=>x.id!==c.id).map(x=>{
-          const have=new Set(classUnits(x.id).map(u=>(u.name||'').trim()));
-          const news=units.filter(u=>!have.has((u.name||'').trim())).length;
+        ${others.map(x=>{ const news=newsOf(x);
           return `<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;border:1.5px solid var(--border);border-radius:8px;padding:5px 9px;cursor:pointer;background:var(--surface)">
             <input type="checkbox" class="ck-copy-chk" value="${x.id}" ${news?'':'disabled'}> ${el(x.name)}
             <span style="color:${news?'var(--green)':'var(--text-muted)'};font-size:11px">${news?'+'+news+'개':'이미 있음'}</span>
           </label>`; }).join('')}
       </div>
       <div class="btn-row">
-        <button class="btn btn-green btn-sm" onclick="doCopyUnits('${c.id}')">이 반들에 단원 만들기</button>
+        <button class="btn btn-green btn-sm" onclick="doCopyUnits('${c.id}')">이 반들에 만들기</button>
         <button class="btn btn-outline btn-sm" onclick="toggleCkCopy()">닫기</button>
       </div>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:7px">단원 이름만 복사돼요. 이미 같은 이름이 있으면 건너뛰고, 학생 체크 표시는 건드리지 않아요.</div>
-    </div>`:''}
+      <div style="font-size:11px;color:var(--text-muted);margin-top:7px">이름만 복사돼요. 이미 같은 이름이 있으면 건너뛰고, 학생 체크 표시는 건드리지 않아요.</div>
+    </div>`; })():''}
     ${!sts.length?'<div style="color:var(--text-muted);padding:12px">이 반에 배정된 학생이 없어요</div>'
       : !cols.length?`<div style="text-align:center;padding:22px;color:var(--text-muted)">${ckGroup?`${el(ckGroup)}에 아직 항목이 없어요.`:'아직 항목이 없어요.'}<br><span style="font-size:12px">위 <strong>${addLabel}</strong>를 눌러 만들어보세요.</span></div>`
       : `<div class="table-wrap"><table style="font-size:13px;width:100%">
