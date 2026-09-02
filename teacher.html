@@ -1724,9 +1724,10 @@ function anPickFileExam(i){
   const ex=anFileExams[i]; if(!ex) return;
   anFileIdx=i;
   lastAnalysis={ problems:ex.problems, summary:ex.summary||'' };
-  anTitleDraft=ex.title||''; anRangeDraft=ex.range||anRangeFrom(ex.problems)||'';
+  anTitleDraft=ex.title||''; anRangeDraft=ex.range||anRangeFrom(ex.problems)||''; anSourceDraft=ex.source||'';
   const t=document.getElementById('an-title'), r=document.getElementById('an-range');
-  if(t) t.value=anTitleDraft; if(r) r.value=anRangeDraft;
+  const sc=document.getElementById('an-source');
+  if(t) t.value=anTitleDraft; if(r) r.value=anRangeDraft; if(sc) sc.value=anSourceDraft;
   renderAnalysis(lastAnalysis);
 }
 function anFileExamsHtml(){
@@ -1853,6 +1854,7 @@ function analysisPromptText(){
     '           포함관계까지만 출제됐다면 "집합 > 집합의 포함관계까지" 라고 쓴다.',
     '           그냥 "집합"이라고 쓰면 연산까지 나온 것처럼 보여 틀린 범위가 된다.',
     '           여러 대단원에 걸치면 " · "로 잇는다.',
+    '- source: 어느 학교 몇 년도 어떤 시험인지 (예: 2024 평촌고 1-2-1). 시험지에 없으면 빈 문자열.',
     '- summary: 단원·출제의도·난이도 구성과 특징 2~3문장',
     '',
     '[검수]',
@@ -1865,7 +1867,7 @@ function analysisPromptText(){
     '설명이나 마크다운 없이 유효한 JSON만 출력한다. 시험이 여러 회차면 exams 배열에 나란히 담는다.',
     '',
     '출력 형식:',
-    '{"revision":"v4-출제의도-최고인지행동-재분류","exams":[{"title":"1회 평촌고 2024-1-2-1 공통수학2","examRange":"도형의 방정식 > 원의 방정식 ~ 원과 접선까지","problems":[{"no":"17","bigUnit":"도형의 방정식","smallUnit":"원과 접선 및 넓이의 최댓값","ability":"문제해결","abilityStage":4,"abilityDetail":"복합 모델링·최적화","abilityReason":"교점과 접점을 좌표화하고 접선 조건과 넓이 최댓값을 하나의 모델로 설계해야 하므로 문제해결이다.","difficulty":"최상","predictedCorrectRate":12,"predictedCorrectRateRange":"0~19","actualCorrectRate":null,"difficultyBasis":"predicted_rubric","isKiller":true,"solution":"직선과 원의 교점에서 P의 좌표를 구하고 수평 접선 조건으로 매개변수 관계를 얻은 뒤, 중심에서 직선까지의 거리로 넓이 최댓값을 구한다.","answer":"2"}],"summary":"이 시험의 단원·출제의도·난이도 구성과 특징을 2~3문장"}]}'
+    '{"revision":"v4-출제의도-최고인지행동-재분류","exams":[{"title":"1회 평촌고 2024-1-2-1 공통수학2","source":"2024 평촌고 1-2-1","examRange":"도형의 방정식 > 원의 방정식 ~ 원과 접선까지","problems":[{"no":"17","bigUnit":"도형의 방정식","smallUnit":"원과 접선 및 넓이의 최댓값","ability":"문제해결","abilityStage":4,"abilityDetail":"복합 모델링·최적화","abilityReason":"교점과 접점을 좌표화하고 접선 조건과 넓이 최댓값을 하나의 모델로 설계해야 하므로 문제해결이다.","difficulty":"최상","predictedCorrectRate":12,"predictedCorrectRateRange":"0~19","actualCorrectRate":null,"difficultyBasis":"predicted_rubric","isKiller":true,"solution":"직선과 원의 교점에서 P의 좌표를 구하고 수평 접선 조건으로 매개변수 관계를 얻은 뒤, 중심에서 직선까지의 거리로 넓이 최댓값을 구한다.","answer":"2"}],"summary":"이 시험의 단원·출제의도·난이도 구성과 특징을 2~3문장"}]}'
   ].join(NL);
 }
 function copyAnalysisPrompt(){
@@ -1921,11 +1923,11 @@ function doPasteAnalysis(){
   }));
   // v4는 exams 배열로 온다. 배열만 오거나 problems만 오는 예전 형태도 그대로 받는다.
   let fileExams=[];
-  if(Array.isArray(data)) fileExams=[{title:'', range:'', problems:mkRows(data), summary:''}];
+  if(Array.isArray(data)) fileExams=[{title:'', range:'', source:'', problems:mkRows(data), summary:''}];
   else if(data && Array.isArray(data.exams))
-    fileExams=data.exams.filter(e=>e&&Array.isArray(e.problems)).map(e=>({title:e.title||e.examTitle||'', range:e.examRange||e.range||'', problems:mkRows(e.problems), summary:e.summary||''}));
+    fileExams=data.exams.filter(e=>e&&Array.isArray(e.problems)).map(e=>({title:e.title||e.examTitle||'', range:e.examRange||e.range||'', source:e.source||e.examSource||'', problems:mkRows(e.problems), summary:e.summary||''}));
   else if(data && Array.isArray(data.problems))
-    fileExams=[{title:data.examTitle||'', range:data.examRange||'', problems:mkRows(data.problems), summary:data.summary||''}];
+    fileExams=[{title:data.examTitle||'', range:data.examRange||'', source:data.source||data.examSource||'', problems:mkRows(data.problems), summary:data.summary||''}];
   if(!fileExams.length || !fileExams[0].problems.length){ showToast('problems 배열을 찾지 못했어요','error'); return; }
   anFileExams=fileExams; anFileIdx=0;
   const rows=fileExams[0].problems;
@@ -1941,6 +1943,9 @@ function doPasteAnalysis(){
   const gTitle=String(fileExams[0].title||'').trim(), gRange=String(fileExams[0].range||'').trim();
   if(tEl && !tEl.value.trim()){ const v=gTitle||anTitleFrom(rows); if(v){ tEl.value=v; anTitleDraft=v; filled.push('시험명'); } }
   if(rEl && !rEl.value.trim()){ const v=gRange||anRangeFrom(rows); if(v){ rEl.value=v; anRangeDraft=v; filled.push('범위'); } }
+  const sEl=document.getElementById('an-source');
+  const gSource=String(fileExams[0].source||'').trim();
+  if(sEl && !sEl.value.trim() && gSource){ sEl.value=gSource; anSourceDraft=gSource; filled.push('출처'); }
   const nKey=rows.filter(p=>p.answer).length;
   const errs=anValidate(rows);
   const extra=[fileExams.length>1?`시험 ${fileExams.length}개`:'', nKey?`정답 ${nKey}개`:'', filled.length?filled.join('·')+' 자동':''].filter(Boolean).join(', ');
@@ -1979,6 +1984,7 @@ async function doRegisterAnalyzedExam(){
   }
   const range=(document.getElementById('an-range')||{}).value||'';
   const maxScore=parseInt((document.getElementById('an-max')||{}).value,10)||100;
+  const source=((document.getElementById('an-source')||{}).value||'').trim();
   try{
     // 고른 반마다 한 건씩 등록한다 (반별로 정오표·분석서가 따로 나와야 하므로)
     const today=new Date().toISOString().slice(0,10);
@@ -1986,13 +1992,13 @@ async function doRegisterAnalyzedExam(){
     let firstId='';
     for(const cid of classIds){
       const cls=CLASSES.find(c=>c.id===cid);
-      const id=await saveExam({ classId:cid, className:cls?.name||'', title, kind:anKind, range:range.trim(), maxScore, date:today, analysis:probs, analysisSummary:summary });
+      const id=await saveExam({ classId:cid, className:cls?.name||'', title, kind:anKind, range:range.trim(), source, maxScore, date:today, analysis:probs, analysisSummary:summary });
       if(!firstId) firstId=id||'';
     }
     showToast(classIds.length>1
       ? `"${title}" ${classIds.length}개 반에 등록 완료! 반별로 정오표를 찍으면 분석서가 나와요 📋`
       : `"${title}" 등록 완료! 이제 학생별 정오표를 찍으면 분석서가 나와요 📋`, 'success');
-    anTitleDraft=''; anRangeDraft='';           // 다음 회차를 이어서 넣도록 폼을 비운다
+    anTitleDraft=''; anRangeDraft=''; anSourceDraft='';   // 다음 회차를 이어서 넣도록 폼을 비운다
     anRepExamId=firstId; anRepStId=''; anOX=null;
     rGrades();
   }catch(e){ showToast('등록 실패: '+e.message,'error'); }
@@ -2004,7 +2010,7 @@ async function doRegisterAnalyzedExam(){
 //   → ③ 학생 고르고 틀린 문제만 X로 → ④ 분석서(정오표+단원·능력·난이도별 정답률+풀이) 출력
 // ================================================================
 let anKind='내신';                      // 분석할 시험 종류
-let anTitleDraft='', anRangeDraft='', anMaxDraft='100';   // 등록 폼에 쓴 값 (다시 그려도 유지)
+let anTitleDraft='', anRangeDraft='', anMaxDraft='100', anSourceDraft='';   // 등록 폼에 쓴 값 (다시 그려도 유지)
 let anRepExamId='', anRepStId='';       // 분석서 대상 시험 · 학생
 let anOX=null;                          // 문항별 정오 {번호:true(맞음)|false(틀림)}
 // [값, 버튼 라벨, 분석서 제목] — 큰 이벤트(내신·모의) 먼저, 그다음 수업 내 테스트(데일리), 교재 기출(기출)
@@ -2201,7 +2207,8 @@ function anReportHtml(){
     <div style="border-bottom:3px solid ${AN_C.pri};padding-bottom:10px;margin-bottom:14px">
       <div style="font-size:12px;color:${AN_C.pri};font-weight:800">${kindLbl} 분석서</div>
       <div style="font-size:21px;font-weight:800;margin-top:3px">${anEsc(exam.title)}</div>
-      <div style="font-size:12px;color:${AN_C.muted};margin-top:3px">${anEsc(st.name)} 학생 · ${anEsc(anClsLabel(exam.className))}${exam.range?' · 범위 '+anEsc(exam.range):''} · ${anEsc(exam.date||'')}</div>
+      ${exam.source?`<div style="font-size:13px;font-weight:700;color:${AN_C.pri};margin-top:2px">${anEsc(exam.source)}</div>`:''}
+      <div style="font-size:12px;color:${AN_C.muted};margin-top:3px">${anEsc(st.name)} 학생 · ${anEsc(anClsLabel(exam.className))}${exam.range?' · 범위 '+anEsc(exam.range):''}</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
       ${cell('점수', score+'점', AN_C.pri)}${cell('정답률', rate+'%', rate>=80?AN_C.green:(rate>=50?AN_C.orange:AN_C.red))}
@@ -2417,6 +2424,8 @@ function examAnalysisTabHtml(){
         <div class="form-group"><label class="form-label">출제 범위 <span style="font-weight:400;color:var(--text-muted);font-size:11px">(중단원까지)</span></label><input class="form-input" id="an-range" value="${anEsc(anRangeDraft).replace(/"/g,'&quot;')}" oninput="anRangeDraft=this.value" placeholder="예: 집합 &gt; 집합의 포함관계까지"></div>
         <div class="form-group"><label class="form-label">만점</label><input class="form-input" id="an-max" type="number" value="${anMaxDraft||100}" oninput="anMaxDraft=this.value"></div>
       </div>
+      <div class="form-group"><label class="form-label">출처 <span style="font-weight:400;color:var(--text-muted);font-size:11px">(선택 · 어느 학교 몇 년도 시험인지 — 분석서에 같이 찍혀요)</span></label>
+        <input class="form-input" id="an-source" value="${anEsc(anSourceDraft).replace(/"/g,'&quot;')}" oninput="anSourceDraft=this.value" placeholder="예: 2024 평촌고 1-2-1"></div>
       <div class="upload-area" onclick="this.querySelector('input').click()">
         <div class="u-icon">📄</div><p id="an-label">시험지 사진 또는 PDF를 선택하세요 <span style="opacity:.8;font-size:12px">· PDF는 여러 쪽도 한 번에</span></p>
         <input type="file" accept="image/*,application/pdf,.pdf" id="an-photo" onchange="document.getElementById('an-label').textContent=this.files[0]?('📎 '+this.files[0].name):'시험지 사진 또는 PDF를 선택하세요'">
