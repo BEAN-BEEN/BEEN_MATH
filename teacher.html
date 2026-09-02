@@ -5766,20 +5766,29 @@ async function doAutoMakeups(){
   });
   if(!plans.length){ showToast('자동 생성할 다가오는 수학 시험이 없어요','warning'); return; }
   if(!confirm(`다가오는 수학시험 기준으로 직보 ${plans.length}일을 자동 생성할까요?\n· 토·일·공휴일 → 12시\n· 금요일 → 3시\n· 그 밖의 평일 → 2시\n(수학 직전의 쉬는 날들과 그 앞 하루를 잡아요)\n(같은 학교·같은 날짜가 이미 있으면 건너뜀)`)) return;
-  let created=0, skipped=0;
+  let created=0, fixed=0, skipped=0;
   for(const p of plans){
-    const dup=getMakeups().some(x=>x.date===p.date && (x.school===p.school || (x.className||'').includes(p.school)));
-    if(dup){ skipped++; continue; }
+    const note=`수학시험 직보 (${p.why})`;
+    const ex=getMakeups().find(x=>x.date===p.date && (x.school===p.school || (x.className||'').includes(p.school)));
+    if(ex){
+      // 자동으로 만든 건 지금 규칙에 맞게 시간을 고쳐준다(예전 규칙으로 만들어진 게 그대로 남지 않게).
+      // 손으로 만든 보강은 선생님이 정한 시간이므로 건드리지 않는다.
+      if(ex.auto && (ex.time!==p.time || ex.note!==note)){
+        try{ await updateMakeupFS(ex.id, {time:p.time, note}); fixed++; }catch(e){ skipped++; }
+      } else skipped++;
+      continue;
+    }
     const doc={
       date:p.date, className:`${p.school}${p.grade?' '+p.grade:''} 직보`, school:p.school,
-      time:p.time, note:`수학시험 직보 (${p.why})`,
+      time:p.time, note,
       auto:true, ts:Date.now()
     };
     const ref=await db.collection('makeups').add(doc);
     if(!cacheAdd('makeups', ref.id, doc)) await loadMakeups();
     created++;
   }
-  showToast(`🪄 직보 ${created}건 자동 생성!${skipped?` (중복 ${skipped}건 건너뜀)`:''}`,'success'); rNaesin();
+  const tail=[fixed?`${fixed}건 고침(시간·메모)`:'', skipped?`${skipped}건 그대로`:''].filter(Boolean).join(' · ');
+  showToast(`🪄 직보 ${created}건 생성${tail?` (${tail})`:''}`,'success'); rNaesin();
 }
 function rSchedule(){
   const days=['mon','tue','wed','thu','fri','sat','sun'];
