@@ -1776,7 +1776,8 @@ function renderAnalysis(data){
       <tbody>${probs.map((p,i)=>`<tr>
         <td><input class="form-input an-f" data-i="${i}" data-k="no" value="${anEsc(p.no||'').replace(/"/g,'&quot;')}" style="width:40px;padding:3px 5px;font-size:12px;text-align:center;font-weight:700"></td>
         <td><input class="form-input an-f" data-i="${i}" data-k="bigUnit" value="${anEsc(anBig(p)).replace(/"/g,'&quot;')}" style="width:100%;padding:3px 6px;font-size:12px"></td>
-        <td><input class="form-input an-f" data-i="${i}" data-k="smallUnit" value="${anEsc(anSmall(p)).replace(/"/g,'&quot;')}" style="width:100%;padding:3px 6px;font-size:12px"></td>
+        <td><input class="form-input an-f" data-i="${i}" data-k="smallUnit" list="anu-${i}" value="${anEsc(anSmall(p)).replace(/"/g,'&quot;')}" style="width:100%;padding:3px 6px;font-size:12px" placeholder="중단원">
+          ${(function(){ const u=anUnitsOf(anBig(p)); return u.length?`<datalist id="anu-${i}">${u.map(x=>`<option value="${anEsc(x)}">`).join('')}</datalist>`:''; })()}</td>
         <td title="${anEsc(p.abilityReason||'').replace(/"/g,'&quot;')}"><select class="form-select an-f" data-i="${i}" data-k="ability" style="width:100%;padding:3px 4px;font-size:12px">${anOptions(AN_ABILITIES, p.ability)}</select>${p.isKiller?'<div style="font-size:10px;color:var(--red);font-weight:800;margin-top:2px">⚡ 킬러</div>':''}</td>
         <td><input class="form-input an-f" data-i="${i}" data-k="abilityDetail" value="${anEsc(p.abilityDetail||'').replace(/"/g,'&quot;')}" style="width:100%;padding:3px 6px;font-size:11.5px" placeholder="세부 유형"></td>
         <td><select class="form-select an-f" data-i="${i}" data-k="difficulty" style="width:100%;padding:3px 4px;font-size:12px">${anOptions(AN_DIFFS, p.difficulty)}</select></td>
@@ -1844,7 +1845,16 @@ function analysisPromptText(){
     '[문항 필드]',
     '- no: 시험지의 문제 번호 문자열',
     '- bigUnit: 대단원',
-    '- smallUnit: 중단원 또는 핵심 유형',
+    '- smallUnit: 교과서 <중단원>. 문제 유형이 아니다.',
+    '           아래 목록에서 고른다. 목록에 없으면 가장 가까운 중단원 이름을 쓴다.',
+    '             다항식: 다항식의 연산 / 항등식과 나머지정리 / 인수분해',
+    '             방정식과 부등식: 복소수 / 이차방정식 / 이차방정식과 이차함수 / 여러 가지 방정식 / 여러 가지 부등식',
+    '             경우의 수: 경우의 수와 순열 / 조합       행렬: 행렬과 그 연산',
+    '             도형의 방정식: 평면좌표 / 직선의 방정식 / 원의 방정식 / 도형의 이동',
+    '             집합과 명제: 집합의 뜻과 포함관계 / 집합의 연산 / 명제 / 절대부등식',
+    '             함수와 그래프: 함수의 뜻과 그래프 / 합성함수와 역함수 / 유리함수 / 무리함수',
+    '           "삼각형의 무게중심", "무게중심과 점-직선 거리" 같은 문제 유형은 쓰지 않는다.',
+    '           그런 세부 유형은 solution에 녹여 쓴다.',
     '- ability: 계산 | 이해 | 추론 | 문제해결',
     '- abilityStage: 계산=1, 이해=2, 추론=3, 문제해결=4',
     '- abilityDetail: 실제로 요구되는 세부 인지 행동 (예: 좌표 설정·관계 도출, 복합 모델링·최적화)',
@@ -1859,13 +1869,15 @@ function analysisPromptText(){
     '- answer: 객관식은 1~5의 번호 문자열, 주관식은 값 문자열',
     '',
     '[시험 필드]',
-    '- title: 시험 이름. 시험지에 적혀 있으면 그대로, 없으면 교재와 회차로(예: 기출편 3회).',
+    '- title: 시험 이름. <연도> <학교> <학년-학기-차수> <종류> 순서로 짧게 적는다.',
+    '         예: 2024 평촌고 1-2-1 기출 / 2025 신성고 1-1-2 기출',
+    '         (1-2-1 = 1학년 2학기 1차 지필. 시험지에서 알 수 없으면 아는 만큼만 적는다)',
     '- examRange: 출제 범위. 대단원이 아니라 <중단원>으로 끝을 적는다.',
     '           대단원 집합 안에 중단원이 집합의 포함관계, 집합의 연산 순서로 있는데',
     '           포함관계까지만 출제됐다면 "집합 > 집합의 포함관계까지" 라고 쓴다.',
     '           그냥 "집합"이라고 쓰면 연산까지 나온 것처럼 보여 틀린 범위가 된다.',
     '           여러 대단원에 걸치면 " · "로 잇는다.',
-    '- source: 어느 학교 몇 년도 어떤 시험인지 (예: 2024 평촌고 1-2-1). 시험지에 없으면 빈 문자열.',
+    '- source: 위 title에서 종류만 뺀 것 (예: 2024 평촌고 1-2-1). 시험지에 없으면 빈 문자열.',
     '- summary: 단원·출제의도·난이도 구성과 특징 2~3문장',
     '',
     '[검수]',
@@ -1878,7 +1890,7 @@ function analysisPromptText(){
     '설명이나 마크다운 없이 유효한 JSON만 출력한다. 시험이 여러 회차면 exams 배열에 나란히 담는다.',
     '',
     '출력 형식:',
-    '{"revision":"v4-출제의도-최고인지행동-재분류","exams":[{"title":"1회 평촌고 2024-1-2-1 공통수학2","source":"2024 평촌고 1-2-1","examRange":"도형의 방정식 > 원의 방정식 ~ 원과 접선까지","problems":[{"no":"17","bigUnit":"도형의 방정식","smallUnit":"원과 접선 및 넓이의 최댓값","ability":"문제해결","abilityStage":4,"abilityDetail":"복합 모델링·최적화","abilityReason":"교점과 접점을 좌표화하고 접선 조건과 넓이 최댓값을 하나의 모델로 설계해야 하므로 문제해결이다.","difficulty":"최상","predictedCorrectRate":12,"predictedCorrectRateRange":"0~19","actualCorrectRate":null,"difficultyBasis":"predicted_rubric","isKiller":true,"solution":"직선과 원의 교점에서 P의 좌표를 구하고 수평 접선 조건으로 매개변수 관계를 얻은 뒤, 중심에서 직선까지의 거리로 넓이 최댓값을 구한다.","answer":"2"}],"summary":"이 시험의 단원·출제의도·난이도 구성과 특징을 2~3문장"}]}'
+    '{"revision":"v4-출제의도-최고인지행동-재분류","exams":[{"title":"2024 평촌고 1-2-1 기출","source":"2024 평촌고 1-2-1","examRange":"도형의 방정식 > 평면좌표 ~ 원의 방정식까지","problems":[{"no":"17","bigUnit":"도형의 방정식","smallUnit":"원의 방정식","ability":"문제해결","abilityStage":4,"abilityDetail":"복합 모델링·최적화","abilityReason":"교점과 접점을 좌표화하고 접선 조건과 넓이 최댓값을 하나의 모델로 설계해야 하므로 문제해결이다.","difficulty":"최상","predictedCorrectRate":12,"predictedCorrectRateRange":"0~19","actualCorrectRate":null,"difficultyBasis":"predicted_rubric","isKiller":true,"solution":"직선과 원의 교점에서 P의 좌표를 구하고 수평 접선 조건으로 매개변수 관계를 얻은 뒤, 중심에서 직선까지의 거리로 넓이 최댓값을 구한다.","answer":"2"}],"summary":"이 시험의 단원·출제의도·난이도 구성과 특징을 2~3문장"}]}'
   ].join(NL);
 }
 function copyAnalysisPrompt(){
@@ -1958,13 +1970,14 @@ function doPasteAnalysis(){
   // 시험명·범위 자동 채우기 — GPT가 준 값이 있으면 그걸, 없으면 단원에서 뽑는다.
   // 이미 적어둔 값은 덮어쓰지 않는다.
   const filled=[];
-  const tEl=document.getElementById('an-title'), rEl=document.getElementById('an-range');
+  const tEl=document.getElementById('an-title'), rEl=document.getElementById('an-range'), sEl=document.getElementById('an-source');
   const gTitle=String(fileExams[0].title||'').trim(), gRange=String(fileExams[0].range||'').trim();
-  if(tEl && !tEl.value.trim()){ const v=gTitle||anTitleFrom(rows); if(v){ tEl.value=v; anTitleDraft=v; filled.push('시험명'); } }
-  if(rEl && !rEl.value.trim()){ const v=gRange||anRangeFrom(rows); if(v){ rEl.value=v; anRangeDraft=v; filled.push('범위'); } }
-  const sEl=document.getElementById('an-source');
   const gSource=String(fileExams[0].source||'').trim();
+  // 출처를 먼저 채운다 — 시험명 기본값이 출처를 쓰기 때문
   if(sEl && !sEl.value.trim() && gSource){ sEl.value=gSource; anSourceDraft=gSource; filled.push('출처'); }
+  const srcNow=sEl?sEl.value.trim():anSourceDraft;
+  if(tEl && !tEl.value.trim()){ const v=gTitle||anTitleFrom(rows, srcNow); if(v){ tEl.value=v; anTitleDraft=v; filled.push('시험명'); } }
+  if(rEl && !rEl.value.trim()){ const v=gRange||anRangeFrom(rows); if(v){ rEl.value=v; anRangeDraft=v; filled.push('범위'); } }
   const nKey=rows.filter(p=>p.answer).length;
   const errs=anValidate(rows);
   const extra=[fileExams.length>1?`시험 ${fileExams.length}개`:'', nKey?`정답 ${nKey}개`:'', filled.length?filled.join('·')+' 자동':''].filter(Boolean).join(', ');
@@ -2042,6 +2055,21 @@ function anClsLabel(n){ n=String(n==null?'':n).trim(); if(!n) return ''; return 
 // 출제 의도 4단계 — 정답에 도달하는 데 '반드시 필요한 가장 높은 인지 행동'으로 판정한다.
 //   공식을 썼다는 이유만으로 계산이 아니다. 좌표·미지수·보조점을 스스로 두거나 조건을 식으로
 //   옮겨야 하면 최소 추론이고, 모델을 세우거나 경우를 나눠야 하면 문제해결이다.
+// 📘 교과서 중단원 — 범위는 이 수준으로 적는다.
+//   '삼각형의 무게중심' 같은 문제 유형이 아니라 '평면좌표'처럼 교재 목차의 중단원.
+const AN_UNITS={
+  '다항식':['다항식의 연산','항등식과 나머지정리','인수분해'],
+  '방정식과 부등식':['복소수','이차방정식','이차방정식과 이차함수','여러 가지 방정식','여러 가지 부등식'],
+  '경우의 수':['경우의 수와 순열','조합'],
+  '행렬':['행렬과 그 연산'],
+  '도형의 방정식':['평면좌표','직선의 방정식','원의 방정식','도형의 이동'],
+  '집합과 명제':['집합의 뜻과 포함관계','집합의 연산','명제','절대부등식'],
+  '집합':['집합의 뜻과 포함관계','집합의 연산'],
+  '명제':['명제','절대부등식'],
+  '함수와 그래프':['함수의 뜻과 그래프','합성함수와 역함수','유리함수','무리함수'],
+  '함수':['함수의 뜻과 그래프','합성함수와 역함수']
+};
+function anUnitsOf(big){ return AN_UNITS[String(big||'').trim()] || []; }
 const AN_ABILITY_STAGE={'계산':1,'이해':2,'추론':3,'문제해결':4};
 const AN_ABILITIES=Object.keys(AN_ABILITY_STAGE);
 // 난이도 6단계 — 출제 의도와는 다른 축이다(추론이어도 조건 연결이 짧으면 중하일 수 있다).
@@ -2108,10 +2136,12 @@ function anRangeFrom(rows){
   });
   return parts.join(' · ')+'까지';
 }
-// 시험명은 GPT가 준 게 없을 때 쓸 기본값 — 종류 + 대단원
-function anTitleFrom(rows){
-  const bigs=anUnitGroups(rows).map(g=>g.big).filter(b=>b && b!=='기타');
+// 시험명 기본값 — 출처를 알면 '2024 평촌고 1-2-1 기출'처럼, 모르면 종류 + 대단원
+function anTitleFrom(rows, source){
   const kind=anKindTitle(anKind);
+  const src=String(source==null?'':source).trim();
+  if(src) return src+' '+(anKind==='기출'?'기출':kind);
+  const bigs=anUnitGroups(rows).map(g=>g.big).filter(b=>b && b!=='기타');
   if(!bigs.length) return kind;
   return kind+' - '+bigs.slice(0,2).join('·')+(bigs.length>2?' 외':'');
 }
