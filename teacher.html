@@ -1526,6 +1526,17 @@ function doRecalcMockGrades(mockId){
   showToast('등급컷으로 전체 등급을 다시 계산했어요 ⚡','success');
 }
 // ✍️ 선생님 모의고사 점수 입력 로스터 (재원 학생 명단에 점수+등급)
+// 담임 반은 진하게, 부담임 반은 흐리게 보여준다.
+//   부담임 반만 다니는 학생은 애초에 명단에 없으므로, 흐린 칩만 있는 줄은 나올 수 없다.
+function mockClassChipsHtml(st){
+  const ids=(st&&st.classIds)||((st&&st.classId)?[st.classId]:[]);
+  return ids.map(id=>{
+    const c=CLASSES.find(x=>x.id===id); if(!c) return '';
+    const hr=classIsHomeroom(c);
+    const nm=(c.name||'').replace(/</g,'&lt;');
+    return `<span title="${hr?'담임':'부담임'} 반" style="font-size:10px;padding:1px 5px;border-radius:5px;margin:1px 2px 1px 0;display:inline-block;${hr?'background:var(--primary-light);color:var(--primary-dark);font-weight:700':'background:var(--bg);color:var(--text-muted)'}">${nm}</span>`;
+  }).filter(Boolean).join('') || '<span style="font-size:11px;color:var(--text-muted)">-</span>';
+}
 function mockScoreRosterHtml(mockId){
   const m=getMockExams().find(x=>x.id===mockId); if(!m) return '';
   const byStu={}; getMockSubs().filter(s=>s.mockId===mockId).forEach(s=>{ byStu[s.studentId]=s; });
@@ -1548,9 +1559,10 @@ function mockScoreRosterHtml(mockId){
       <div style="font-size:11px;color:var(--text-muted);margin-top:5px">비워두면 등급을 자동으로 붙이지 않아요. 직접 적은 등급은 덮어쓰지 않습니다(‘전체 다시 계산’은 덮어써요).</div>
     </div>
     <div class="table-wrap"><table>
-      <thead><tr><th>학생</th><th>학교</th><th>점수</th><th>등급</th></tr></thead>
+      <thead><tr><th>학생</th><th>반 <span style="font-size:9px;font-weight:400;color:var(--text-muted)">(진한 =담임)</span></th><th>학교</th><th>점수</th><th>등급</th></tr></thead>
       <tbody>${sts.map(s=>{ const ex=byStu[s.id]||{}; return `<tr>
         <td><strong>${s.name}</strong></td>
+        <td style="max-width:200px">${mockClassChipsHtml(s)}</td>
         <td style="color:var(--text-muted);font-size:12px">${s.school||''}</td>
         <td><input class="form-input mscore-${mockId}" data-sid="${s.id}" data-name="${esc(s.name)}" type="number" value="${ex.score!=null?ex.score:''}" oninput="mockAutoGrade('${mockId}','${s.id}')" style="width:80px;padding:5px 8px"></td>
         <td><input class="form-input msgrade-${mockId}" data-sid="${s.id}" value="${esc(ex.grade||'')}" oninput="this.dataset.auto=''" placeholder="예: 2등급" style="width:96px;padding:5px 8px"></td>
@@ -2783,6 +2795,7 @@ function rDashboard(){
           <span style="font-size:13px"><strong>알림 켠 학생 ${pushOn}명</strong> <span style="color:var(--text-muted)">/ ${sts.length}명</span></span>
         </div>
         <div style="font-size:11px;color:var(--text-muted);margin-top:5px">학생이 직접 '알림 켜기'를 눌러야 새 숙제 알림을 받아요</div>
+        ${lastPushHtml()}
         ${(typeof bmCanInstallUI==='function'&&bmCanInstallUI())?`<button class="btn btn-outline btn-sm" style="margin-top:8px;width:100%;justify-content:center" onclick="bmInstallClick()">📲 홈 화면에 추가</button>`:''}
       </div>
       <div class="card" style="margin:0">
@@ -4922,6 +4935,29 @@ async function dropDeadTokens(invalid){
   }
   return cleaned;
 }
+// 토스트는 금방 사라져서 왜 실패했는지 다시 볼 수가 없다. 마지막 결과를 남겨둔다.
+function savePushLog(j, total){
+  try{
+    const code=(j&&j.errors&&j.errors[0]&&j.errors[0].code) || (j&&j.error?'SERVER':'') || (j?'':'NO_RESPONSE');
+    localStorage.setItem('bm_lastPush', JSON.stringify({
+      at:new Date().toLocaleString('ko-KR'), total:total,
+      sent:(j&&j.sent)||0, failed:j?((j.failed)||0):total,
+      code:code, msg:(j&&j.error)||''
+    }));
+  }catch(e){}
+}
+function lastPushHtml(){
+  let p=null; try{ p=JSON.parse(localStorage.getItem('bm_lastPush')||'null'); }catch(e){}
+  if(!p || !p.total) return '';
+  const allOk = p.sent && !p.failed;
+  const color = allOk ? 'var(--green)' : (p.sent ? 'var(--yellow)' : 'var(--red)');
+  const why = p.msg || PUSH_WHY[p.code] || p.code || '';
+  const esc=v=>String(v==null?'':v).replace(/</g,'&lt;');
+  return `<div style="margin-top:7px;padding-top:7px;border-top:1px solid var(--border);font-size:11px;color:var(--text-muted)">
+    마지막 발송 <strong style="color:${color}">${p.sent}/${p.total}명</strong> · ${esc(p.at)}
+    ${allOk?'':`<div style="color:${color};margin-top:2px;line-height:1.5">${esc(why)}${p.code?` <span style="opacity:.65">(${esc(p.code)})</span>`:''}</div>`}
+  </div>`;
+}
 // 알림 한 번 보내기 — 결과 안내와 죽은 토큰 정리를 한곳에서 처리한다
 async function sendPush(tokens, title, body){
   const total=(tokens||[]).length;
@@ -4931,6 +4967,7 @@ async function sendPush(tokens, title, body){
       body:JSON.stringify({tokens:tokens||[], title:title, body:body})});
     j=await r.json().catch(()=>null);
   }catch(e){ j=null; }
+  savePushLog(j, total);
   const [msg,type]=pushMsg(j,total);
   showToast(msg,type);
   if(j && j.invalid && j.invalid.length){
