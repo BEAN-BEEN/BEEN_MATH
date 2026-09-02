@@ -1939,7 +1939,15 @@ function doPasteAnalysis(){
     fileExams=data.exams.filter(e=>e&&Array.isArray(e.problems)).map(e=>({title:e.title||e.examTitle||'', range:e.examRange||e.range||'', source:e.source||e.examSource||'', problems:mkRows(e.problems), summary:e.summary||''}));
   else if(data && Array.isArray(data.problems))
     fileExams=[{title:data.examTitle||'', range:data.examRange||'', source:data.source||data.examSource||'', problems:mkRows(data.problems), summary:data.summary||''}];
-  if(!fileExams.length || !fileExams[0].problems.length){ showToast('problems 배열을 찾지 못했어요','error'); return; }
+  if(!fileExams.length || !fileExams[0].problems.length){
+    // 분석 '결과' 대신 분석 '규칙 문서'(계약서)를 붙여넣는 실수가 잦다. 그걸 알아보고 짚어준다.
+    const spec = data && !Array.isArray(data) &&
+      (data.abilityRules||data.problemFields||data.difficultyRules||data.updatePolicy||data.tieBreakRules||data.abilityPrinciple);
+    showToast(spec
+      ? '이건 분석 규칙 문서예요 — 문항이 없어요. GPT에 시험지를 넣고 받은 결과 JSON을 붙여넣어 주세요 📄'
+      : '문항(problems)을 찾지 못했어요 — {"exams":[{"problems":[…]}]} 또는 {"problems":[…]} 형태여야 해요','error');
+    return;
+  }
   anFileExams=fileExams; anFileIdx=0;
   const rows=fileExams[0].problems;
   lastAnalysis={ problems:rows, summary:fileExams[0].summary||'밖에서 정리한 분석을 가져왔어요.' };
