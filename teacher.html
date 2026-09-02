@@ -5628,7 +5628,7 @@ function makeupBlockHtml(){
         <button class="btn btn-outline btn-sm" onclick="document.getElementById('mk-time').value='17:00~'">🕔 5시 (학교시험 없는 날)</button>
         <button class="btn btn-primary btn-sm" onclick="doAutoMakeups()">🪄 시험 전날 직보 자동 생성</button>
       </div>
-      <div style="font-size:12px;color:var(--text-muted);margin-top:6px">🪄 자동 생성: <strong>수학시험</strong> 기준 — 수학 직전의 쉬는 날(주말·공휴일)을 거슬러 모으고 그 앞 하루까지 잡아요. 시간은 토·일·공휴일 <strong>12시</strong> / 금요일 <strong>3시</strong> / 그 밖의 평일 <strong>2시</strong>. (이미 있는 날짜는 건너뜀)</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:6px">🪄 자동 생성: <strong>수학시험</strong> 기준 — 전날부터 거슬러 올라가며 <strong>주말이 끼면 그 앞 금요일까지</strong> 잡아요 (월요일 시험이면 금·토·일, 화요일 시험이면 금·토·일·월). 시간은 토·일·공휴일 <strong>12시</strong> / 금요일 <strong>3시</strong> / 그 밖의 평일 <strong>2시</strong>. (자동으로 만든 건 다시 눌러도 지금 규칙에 맞게 고쳐져요)</div>
       ${makeups.length?`<div class="table-wrap" style="margin-top:10px"><table>
         <thead><tr><th>날짜</th><th>반/대상</th><th>시간</th><th>메모</th><th></th></tr></thead>
         <tbody>${makeups.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(m=>`<tr>
@@ -5721,9 +5721,13 @@ function bogangCheckHtml(){
     </div>`:''}`;
 }
 // 🪄 시험 전날 직보 자동 생성 — 수학시험 전날: 그날 학교시험 있으면 2시, 없으면 5시
-// 🔶 직보 날짜 — 수학시험 직전의 '쉬는 날'을 거슬러 모으고, 그 앞의 시험/수업일 하루까지 넣는다.
-//   신성고 예: 시험 10/1 시작, 수학 10/6, 10/2(금)에 시험이 끝나고 10/3 토 · 10/4 일 · 10/5 공휴일
-//   → 직보 10/2·10/3·10/4·10/5 (4일). 주말·공휴일이 없으면 자연히 '전날 하루'가 된다.
+// 🔶 직보 날짜 — 수학시험 전날부터 거슬러 올라가며 잡는다.
+//   쉬는 날(주말·공휴일)이 이어지는 동안 계속 잡고, 그 앞의 평일 하루까지 잡는다.
+//   즉 주말이 끼면 그 앞 금요일까지 간다:
+//     · 주말 낀 월요일 시험 → 금·토·일 (3일)
+//     · 주말 낀 화요일 시험 → 금·토·일·월 (4일)
+//     · 신성고 10월: 수학 10/6(화), 10/5 월이 공휴일 → 10/2 금·10/3 토·10/4 일·10/5 월 (4일)
+//   쉬는 날이 아예 없으면 자연히 '전날 하루'가 된다.
 //   시간: 토·일·공휴일 12시 / 금요일 3시 / 그 밖의 평일 2시.
 function jikboAdd(ds,k){ const d=new Date(ds+'T00:00:00'); d.setDate(d.getDate()+k); const p=x=>String(x).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; }
 function jikboIsOff(ds){ const dow=new Date(ds+'T00:00:00').getDay(); return dow===0||dow===6||!!holidayName(ds); }
@@ -5741,10 +5745,13 @@ function jikboDatesOf(e){
   else {
     mds.forEach(md=>{
       let d=jikboAdd(md,-1);
-      for(let i=0;i<7;i++){                 // 연휴가 길어도 일주일까지만 거슬러 올라간다
+      for(let i=0;i<9;i++){                 // 연휴가 길어도 9일까지만 거슬러 올라간다
         set.add(d);
-        if(!jikboIsOff(d)) break;           // 쉬는 날이 아니면(=시험/수업일) 그 하루까지만
-        d=jikboAdd(d,-1);
+        const prev=jikboAdd(d,-1);
+        // 평일이어도 그 앞이 쉬는 날이면(=주말 앞 금요일 등) 더 거슬러 올라간다.
+        // 평일이 연달아 나오면 거기서 멈춘다 → 쉬는 날이 없으면 '전날 하루'.
+        if(!jikboIsOff(d) && !jikboIsOff(prev)) break;
+        d=prev;
       }
     });
   }
@@ -5765,7 +5772,7 @@ async function doAutoMakeups(){
     });
   });
   if(!plans.length){ showToast('자동 생성할 다가오는 수학 시험이 없어요','warning'); return; }
-  if(!confirm(`다가오는 수학시험 기준으로 직보 ${plans.length}일을 자동 생성할까요?\n· 토·일·공휴일 → 12시\n· 금요일 → 3시\n· 그 밖의 평일 → 2시\n(수학 직전의 쉬는 날들과 그 앞 하루를 잡아요)\n(같은 학교·같은 날짜가 이미 있으면 건너뜀)`)) return;
+  if(!confirm(`다가오는 수학시험 기준으로 직보 ${plans.length}일을 자동 생성할까요?\n· 토·일·공휴일 → 12시\n· 금요일 → 3시\n· 그 밖의 평일 → 2시\n(주말이 끼면 그 앞 금요일까지 잡아요)\n(자동으로 만든 건 지금 규칙에 맞게 고쳐집니다)`)) return;
   let created=0, fixed=0, skipped=0;
   for(const p of plans){
     const note=`수학시험 직보 (${p.why})`;

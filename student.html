@@ -1237,9 +1237,13 @@ const HOLIDAY_YEAR={
 function holidayName(ds){ const y=(ds||'').slice(0,4), md=(ds||'').slice(5); return (HOLIDAY_YEAR[y]&&HOLIDAY_YEAR[y][md]) || HOLIDAY_FIXED[md] || ''; }
 function _jbAddDays(ds,n){ const d=new Date(ds+'T00:00:00'); d.setDate(d.getDate()+n); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function _jbMathDates(e){ return (Array.isArray(e.mathDates)&&e.mathDates.length)?e.mathDates.filter(m=>m&&m.date).map(m=>m.date):(e.mathDate?[e.mathDate]:[]); }
-// 🔶 직보 날짜 — 수학시험 직전의 '쉬는 날'을 거슬러 모으고, 그 앞의 시험/수업일 하루까지 넣는다.
-//   신성고 예: 시험 10/1 시작, 수학 10/6, 10/2(금)에 시험이 끝나고 10/3 토 · 10/4 일 · 10/5 공휴일
-//   → 직보 10/2·10/3·10/4·10/5 (4일). 주말·공휴일이 없으면 자연히 '전날 하루'가 된다.
+// 🔶 직보 날짜 — 수학시험 전날부터 거슬러 올라가며 잡는다.
+//   쉬는 날(주말·공휴일)이 이어지는 동안 계속 잡고, 그 앞의 평일 하루까지 잡는다.
+//   즉 주말이 끼면 그 앞 금요일까지 간다:
+//     · 주말 낀 월요일 시험 → 금·토·일 (3일)
+//     · 주말 낀 화요일 시험 → 금·토·일·월 (4일)
+//     · 신성고 10월: 수학 10/6(화), 10/5 월이 공휴일 → 10/2 금·10/3 토·10/4 일·10/5 월 (4일)
+//   쉬는 날이 아예 없으면 자연히 '전날 하루'가 된다.
 //   시간: 토·일·공휴일 12시 / 금요일 3시 / 그 밖의 평일 2시.
 function _jbIsOff(ds){ const dow=new Date(ds+'T00:00:00').getDay(); return dow===0||dow===6||!!holidayName(ds); }
 function _jbDates(e){ const mds=_jbMathDates(e).filter(Boolean).sort(); if(!mds.length) return []; const set=new Set();
@@ -1247,10 +1251,11 @@ function _jbDates(e){ const mds=_jbMathDates(e).filter(Boolean).sort(); if(!mds.
   else {
     mds.forEach(md=>{
       let d=_jbAddDays(md,-1);
-      for(let i=0;i<7;i++){
+      for(let i=0;i<9;i++){
         set.add(d);
-        if(!_jbIsOff(d)) break;
-        d=_jbAddDays(d,-1);
+        const prev=_jbAddDays(d,-1);
+        if(!_jbIsOff(d) && !_jbIsOff(prev)) break;
+        d=prev;
       }
     });
   }
