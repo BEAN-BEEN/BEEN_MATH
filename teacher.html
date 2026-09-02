@@ -1487,6 +1487,44 @@ function mockExamCardHtml(){
     </table></div>`:'<div style="margin-top:12px;font-size:13px;color:var(--text-muted)">아직 등록된 모의고사가 없어요. 만들면 학생이 ‘성적’ 탭에서 직접 점수를 등록해요.</div>'}
   </div>${mockScoreOpenId?mockScoreRosterHtml(mockScoreOpenId):''}`;
 }
+// 📊 등급컷 — 원점수만으로는 등급을 알 수 없어서, 시험마다 컷을 넣어두고 그걸로 계산한다.
+//   cuts[0]=1등급 최저점 … cuts[7]=8등급 최저점. 그 아래는 9등급.
+//   컷이 하나도 없으면 계산하지 않고 빈칸으로 둔다(멋대로 등급을 붙이지 않는다).
+function mockCuts(m){
+  const c=(m&&m.cuts)||[];
+  if(!Array.isArray(c)) return [];
+  return c.map(x=>(x===''||x==null||isNaN(Number(x)))?null:Number(x));
+}
+function mockGradeOf(score, cuts){
+  const v=(score===''||score==null)?null:Number(score);
+  if(v==null || isNaN(v)) return '';
+  const c=cuts||[];
+  if(!c.some(x=>x!=null)) return '';
+  for(let i=0;i<8;i++){ if(c[i]!=null && v>=c[i]) return (i+1)+'등급'; }
+  return '9등급';
+}
+// 화면에 적혀 있는 컷을 읽는다 (아직 저장 전이어도 바로 계산되게)
+function mockCutsFromInputs(mockId){
+  const out=[];
+  for(let i=1;i<=8;i++){ const el=document.getElementById('mcut-'+mockId+'-'+i); const v=el?el.value.trim():''; out.push(v===''?null:Number(v)); }
+  return out;
+}
+// 점수를 적으면 등급을 채운다. 손으로 적은 등급은 건드리지 않는다.
+function mockAutoGrade(mockId, sid, force){
+  const sEl=document.querySelector('.mscore-'+mockId+'[data-sid="'+sid+'"]');
+  const gEl=document.querySelector('.msgrade-'+mockId+'[data-sid="'+sid+'"]');
+  if(!sEl||!gEl) return;
+  if(!force && gEl.dataset.auto!=='1' && gEl.value.trim()) return;
+  const g=mockGradeOf(sEl.value.trim(), mockCutsFromInputs(mockId));
+  gEl.value=g; gEl.dataset.auto=g?'1':'';
+}
+function mockAutoGradeAll(mockId, force){
+  [].slice.call(document.querySelectorAll('.mscore-'+mockId)).forEach(el=>mockAutoGrade(mockId, el.dataset.sid, force));
+}
+function doRecalcMockGrades(mockId){
+  mockAutoGradeAll(mockId, true);
+  showToast('등급컷으로 전체 등급을 다시 계산했어요 ⚡','success');
+}
 // ✍️ 선생님 모의고사 점수 입력 로스터 (재원 학생 명단에 점수+등급)
 function mockScoreRosterHtml(mockId){
   const m=getMockExams().find(x=>x.id===mockId); if(!m) return '';
@@ -1494,16 +1532,28 @@ function mockScoreRosterHtml(mockId){
   const all=getStudents().filter(isActiveStudent);
   const sts=all.filter(isHomeroomStudent).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   const hidden=assistantOnlyCount(all);
+  const cuts=mockCuts(m);
   const esc=s=>(s||'').replace(/"/g,'&quot;');
   return `<div class="card" style="border-left:4px solid var(--primary)">
     <div class="card-title">✍️ ${m.title} 점수 입력 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(만점 ${m.maxScore||100} · 빈칸은 미입력/미응시로 둠)</span></div>
+    <div style="background:var(--bg);border-radius:10px;padding:10px 12px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+        <span style="font-size:12px;font-weight:800">📊 등급컷 <span style="font-weight:400;color:var(--text-muted);font-size:11px">(각 등급의 최저 원점수 · 넣어두면 점수만 적어도 등급이 자동으로 채워져요)</span></span>
+        <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px" onclick="doRecalcMockGrades('${mockId}')">⚡ 전체 등급 다시 계산</button>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${[1,2,3,4,5,6,7,8].map(g=>`<label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:var(--text-muted)">${g}등급
+          <input class="form-input" id="mcut-${mockId}-${g}" type="number" value="${cuts[g-1]!=null?cuts[g-1]:''}" oninput="mockAutoGradeAll('${mockId}')" style="width:62px;padding:4px 6px;font-size:12px"></label>`).join('')}
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:5px">비워두면 등급을 자동으로 붙이지 않아요. 직접 적은 등급은 덮어쓰지 않습니다(‘전체 다시 계산’은 덮어써요).</div>
+    </div>
     <div class="table-wrap"><table>
       <thead><tr><th>학생</th><th>학교</th><th>점수</th><th>등급</th></tr></thead>
       <tbody>${sts.map(s=>{ const ex=byStu[s.id]||{}; return `<tr>
         <td><strong>${s.name}</strong></td>
         <td style="color:var(--text-muted);font-size:12px">${s.school||''}</td>
-        <td><input class="form-input mscore-${mockId}" data-sid="${s.id}" data-name="${esc(s.name)}" type="number" value="${ex.score!=null?ex.score:''}" style="width:80px;padding:5px 8px"></td>
-        <td><input class="form-input msgrade-${mockId}" data-sid="${s.id}" value="${esc(ex.grade||'')}" placeholder="예: 2등급" style="width:96px;padding:5px 8px"></td>
+        <td><input class="form-input mscore-${mockId}" data-sid="${s.id}" data-name="${esc(s.name)}" type="number" value="${ex.score!=null?ex.score:''}" oninput="mockAutoGrade('${mockId}','${s.id}')" style="width:80px;padding:5px 8px"></td>
+        <td><input class="form-input msgrade-${mockId}" data-sid="${s.id}" value="${esc(ex.grade||'')}" oninput="this.dataset.auto=''" placeholder="예: 2등급" style="width:96px;padding:5px 8px"></td>
       </tr>`; }).join('')}</tbody>
     </table></div>
     ${assistantOnlyNote(hidden)}
@@ -1516,6 +1566,9 @@ function mockScoreRosterHtml(mockId){
 async function doSaveMockScores(mockId){
   const m=getMockExams().find(x=>x.id===mockId); if(!m) return;
   const gradeMap={}; document.querySelectorAll('.msgrade-'+mockId).forEach(el=>{ gradeMap[el.dataset.sid]=el.value.trim(); });
+  // 등급컷도 같이 저장해 다음에 열었을 때 그대로 쓰게 한다
+  const cuts=mockCutsFromInputs(mockId);
+  if(cuts.some(x=>x!=null)){ try{ await updateMockExam(mockId, {cuts}); }catch(e){} }
   const existing={}; getMockSubs().filter(s=>s.mockId===mockId).forEach(s=>{ existing[s.studentId]=s; });
   let n=0;
   try{
