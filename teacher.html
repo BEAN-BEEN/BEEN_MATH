@@ -431,12 +431,20 @@ function cacheMerge(col, id, doc){ return cachePut(col, id, doc) || cacheAdd(col
 // 재원 = 활성. 휴원·퇴원은 명단·출석·숙제·알림·통계에서 제외(기록은 보존)
 function studentStatus(s){ return (s&&s.status)||'재원'; }
 function isActiveStudent(s){ return studentStatus(s)==='재원'; }
-// 내신 대상 학생 = 담임 반에 속한 재원생 (부담임 반만 다니는 학생은 내신 인원에서 제외)
-function isNaesinStudent(s){
+// 담임 반 학생 = 재원생 중 담임 반이 '하나라도' 있는 학생.
+//   부담임 반만 다니는 학생은 점수 입력·내신 인원에서 뺀다.
+//   부담임 반에도 있지만 담임 반이 하나라도 있으면 그대로 둔다(빼면 안 됨).
+function isHomeroomStudent(s){
   if(!isActiveStudent(s)) return false;
-  const ids=(s.classIds)||(s.classId?[s.classId]:[]);
+  const ids=(s&&s.classIds)||((s&&s.classId)?[s.classId]:[]);
   if(!ids.length) return false;
   return ids.some(id=>{ const c=CLASSES.find(x=>x.id===id); return c && classIsHomeroom(c); });
+}
+function isNaesinStudent(s){ return isHomeroomStudent(s); }   // 예전 이름 (내신 인원 집계에서 씀)
+// 부담임 반만 다녀서 빠진 인원 — 명단 아래에 몇 명 뺐는지 알려줄 때 쓴다
+function assistantOnlyCount(list){ return (list||[]).filter(x=>isActiveStudent(x) && !isHomeroomStudent(x)).length; }
+function assistantOnlyNote(cnt){
+  return cnt?`<div style="font-size:11px;color:var(--text-muted);margin-top:6px">🙈 부담임 반만 다니는 학생 ${cnt}명은 뺐어요. (담임 반이 하나라도 있으면 그대로 나와요 · 반 역할은 <strong>시간표 관리</strong>에서 바꿔요)</div>`:'';
 }
 function getActiveStudents(){ return STUDENTS_CACHE.filter(isActiveStudent); }
 function getStudentsByClass(cid, includeInactive){
@@ -1483,7 +1491,9 @@ function mockExamCardHtml(){
 function mockScoreRosterHtml(mockId){
   const m=getMockExams().find(x=>x.id===mockId); if(!m) return '';
   const byStu={}; getMockSubs().filter(s=>s.mockId===mockId).forEach(s=>{ byStu[s.studentId]=s; });
-  const sts=getStudents().filter(isActiveStudent).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const all=getStudents().filter(isActiveStudent);
+  const sts=all.filter(isHomeroomStudent).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const hidden=assistantOnlyCount(all);
   const esc=s=>(s||'').replace(/"/g,'&quot;');
   return `<div class="card" style="border-left:4px solid var(--primary)">
     <div class="card-title">✍️ ${m.title} 점수 입력 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(만점 ${m.maxScore||100} · 빈칸은 미입력/미응시로 둠)</span></div>
@@ -1496,6 +1506,7 @@ function mockScoreRosterHtml(mockId){
         <td><input class="form-input msgrade-${mockId}" data-sid="${s.id}" value="${esc(ex.grade||'')}" placeholder="예: 2등급" style="width:96px;padding:5px 8px"></td>
       </tr>`; }).join('')}</tbody>
     </table></div>
+    ${assistantOnlyNote(hidden)}
     <div class="btn-row" style="margin-top:10px">
       <button class="btn btn-primary" onclick="doSaveMockScores('${mockId}')">전체 저장 💾</button>
       <button class="btn btn-outline" onclick="mockScoreOpenId=null;rGrades()">닫기</button>
@@ -2412,7 +2423,9 @@ function printAnalysisReport(){
 function examAnalysisTabHtml(){
   const withAn=anExamsWithAnalysis();
   const exam=getExams().find(e=>e.id===anRepExamId);
-  const sts=exam?getStudentsByClass(exam.classId):[];
+  const inClass=exam?getStudentsByClass(exam.classId):[];
+  const sts=inClass.filter(isHomeroomStudent);
+  const hiddenAn=assistantOnlyCount(inClass);
   return `
     <div class="card" style="border-left:4px solid var(--primary)">
       <div class="card-title">🤖 ① 시험지 분석 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(사진 또는 PDF · 대단원/중단원 · 요구능력 · 난이도 · 해결 방법)</span></div>
@@ -2470,6 +2483,7 @@ function examAnalysisTabHtml(){
               return `<button class="btn ${s.id===anRepStId?'btn-primary':'btn-outline'} btn-sm" onclick="anPickStudent('${s.id}')">${done?'✅ ':''}${anEsc(s.name)}</button>`; }).join('')
               :'<span style="font-size:13px;color:var(--text-muted)">이 반에 학생이 없어요</span>'}
           </div>
+          ${assistantOnlyNote(hiddenAn)}
         </div>`:''}
         <div id="anrep">${anReportPanelHtml()}</div>
       `:`<div style="color:var(--text-muted);padding:12px;font-size:13px">아직 분석된 시험이 없어요. 위에서 시험지를 올려 분석한 뒤 <strong>시험으로 등록</strong>하면 여기에 나타나요.</div>`}
@@ -5234,7 +5248,9 @@ function renderDirectScores(){
   const el=document.getElementById('directScores'); if(!el) return;
   if(!examId){ el.innerHTML=''; return; }
   const exam=getExams().find(e=>e.id===examId); if(!exam){ el.innerHTML=''; return; }
-  const sts=getStudentsByClass(exam.classId), esubs=getExamSubs();
+  const inClass=getStudentsByClass(exam.classId), esubs=getExamSubs();
+  const sts=inClass.filter(isHomeroomStudent);
+  const hiddenDS=assistantOnlyCount(inClass);
   el.innerHTML = sts.length ? `
     <div class="table-wrap"><table>
       <thead><tr><th>학생</th><th>점수 (만점 ${exam.maxScore||100})</th><th>코멘트</th><th></th></tr></thead>
@@ -5246,6 +5262,7 @@ function renderDirectScores(){
           <td><button class="btn btn-green btn-sm" onclick="doSaveDirect('${examId}','${st.id}')">저장</button></td>
         </tr>`;}).join('')}</tbody>
     </table></div>
+    ${assistantOnlyNote(hiddenDS)}
     <button class="btn btn-primary btn-sm" style="margin-top:10px" onclick="doSaveAllDirect('${examId}')">전체 한번에 저장</button>`
   : '<div style="color:var(--text-muted);padding:12px">이 반에 배정된 학생이 없어요</div>';
 }
