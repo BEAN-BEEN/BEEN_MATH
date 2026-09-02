@@ -3488,7 +3488,7 @@ function rHomework(){
         </div>`:`<div style="font-size:11px;color:var(--text-muted);margin-top:8px">보이는 교재 칩이 없어요.${HIDDEN_TB.length?` <a onclick="doResetHiddenTextbooks()" style="cursor:pointer;color:var(--primary);text-decoration:underline">숨긴 ${HIDDEN_TB.length}개 되돌리기</a>`:''}</div>`}
       </div>
       <div class="form-group"><label class="form-label">과제 제목 *</label><input class="form-input" id="hw-title" placeholder="예: 수학Ⅱ 3단원 연습문제" value="${editA?esc(editA.title):''}"></div>
-      <div class="form-group"><label class="form-label">과제 내용</label><textarea class="form-textarea" id="hw-content" placeholder="교재 페이지, 문제 범위 등">${editA?(editA.content||''):''}</textarea></div>
+      <div class="form-group"><label class="form-label">과제 내용</label><textarea class="form-textarea" id="hw-content" rows="4" style="min-height:96px;line-height:1.6" placeholder="교재 페이지, 문제 범위 등 (엔터로 줄 나눠 적어도 돼요)">${editA?(editA.content||''):''}</textarea></div>
       <div class="form-group" style="background:var(--primary-light);border-radius:10px;padding:12px">
         <label class="form-label">🔢 오답 관리 범위 <span style="font-size:11px;color:var(--text-muted)">(입력하면 학생이 '틀린 문제만' 표시→오답 관리 방식으로 바뀌어요)</span></label>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -4138,7 +4138,7 @@ function openQuickHw(){
     <label class="form-label">제목 *</label>
     <input class="form-input" id="qhw-title" placeholder="예: 쎈 p.50~60" style="margin-bottom:12px">
     <label class="form-label">내용 (선택)</label>
-    <input class="form-input" id="qhw-content" placeholder="문제 범위·메모" style="margin-bottom:12px">
+    <textarea class="form-textarea" id="qhw-content" rows="4" placeholder="문제 범위·메모 (엔터로 줄 나눠 적어도 돼요)" style="margin-bottom:12px;min-height:96px;line-height:1.6"></textarea>
     <div style="background:var(--primary-light);border-radius:10px;padding:11px 12px;margin-bottom:12px">
       <label class="form-label" style="margin-bottom:5px">🔢 문제 번호 <span style="font-size:11px;color:var(--text-muted);font-weight:400">(적으면 학생이 번호판에서 틀린 것만 고르는 오답 숙제가 돼요)</span></label>
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
@@ -4281,7 +4281,9 @@ function todayRosterHtml(todayCls, subs){
     // 숙제 상세: 제목 + 교재 + 범위(몇 번~몇 번) + 내용
     const asgnDetail=x=>{ if(!x) return '';
       const range=(x.probStart&&x.probEnd)?`${x.probStart}~${x.probEnd}번`:(x.probLabel||'');
-      const extra=[x.textbook?`📗 ${el(x.textbook)}`:'', range?`<b style="color:var(--red)">${el(range)}</b>`:'', el(x.content||'')].filter(Boolean).join(' · ');
+      // 요약 한 줄이라 줄바꿈은 가운뎃점으로 바꿔 붙인다 (원문은 숙제 화면에서 그대로 보임)
+      const oneLine=v=>el(String(v||'')).split(/\r?\n/).map(t=>t.trim()).filter(Boolean).join(' · ');
+      const extra=[x.textbook?`📗 ${el(x.textbook)}`:'', range?`<b style="color:var(--red)">${el(range)}</b>`:'', oneLine(x.content)].filter(Boolean).join(' · ');
       return `${el(x.title)}${extra?`<div style="font-size:11px;color:var(--text-muted);font-weight:400;margin-top:1px">${extra}</div>`:''}`; };
     const testedToday=!!(chk.testLog&&chk.testLog[todayStr]);
     const prevCD=prevClassDate(c), testedPrev=!!(chk.testLog&&prevCD&&chk.testLog[prevCD]);
@@ -5626,10 +5628,10 @@ function makeupBlockHtml(){
         <button class="btn btn-outline btn-sm" onclick="document.getElementById('mk-time').value='17:00~'">🕔 5시 (학교시험 없는 날)</button>
         <button class="btn btn-primary btn-sm" onclick="doAutoMakeups()">🪄 시험 전날 직보 자동 생성</button>
       </div>
-      <div style="font-size:12px;color:var(--text-muted);margin-top:6px">🪄 자동 생성: 등록된 내신 일정의 <strong>수학시험 전날</strong>에 직보를 만들어요 — 그날 학교시험이 있으면 <strong>2시</strong>, 없으면 <strong>5시</strong>. (이미 있는 날짜는 건너뜀)</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:6px">🪄 자동 생성: <strong>수학시험</strong> 기준 — 수학 직전의 쉬는 날(주말·공휴일)을 거슬러 모으고 그 앞 하루까지 잡아요. 시간은 토·일·공휴일 <strong>12시</strong> / 금요일 <strong>3시</strong> / 그 밖의 평일 <strong>2시</strong>. (이미 있는 날짜는 건너뜀)</div>
       ${makeups.length?`<div class="table-wrap" style="margin-top:10px"><table>
         <thead><tr><th>날짜</th><th>반/대상</th><th>시간</th><th>메모</th><th></th></tr></thead>
-        <tbody>${makeups.slice().sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(m=>`<tr>
+        <tbody>${makeups.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(m=>`<tr>
           <td><strong>${m.date}</strong></td><td>${m.className||'-'}</td><td style="color:var(--text-muted)">${m.time||'-'}</td><td style="color:var(--text-muted)">${m.note||'-'}</td>
           <td style="white-space:nowrap"><button class="btn ${mkRosterOpenId===m.id?'btn-primary':'btn-outline'} btn-sm" onclick="mkRosterOpenId=(mkRosterOpenId==='${m.id}'?null:'${m.id}');rNaesin()">🙋 참석 ${(m.attendees||[]).length}</button>
             <button class="btn btn-red btn-sm" onclick="doDelMakeup('${m.id}')">삭제</button></td>
@@ -5719,29 +5721,58 @@ function bogangCheckHtml(){
     </div>`:''}`;
 }
 // 🪄 시험 전날 직보 자동 생성 — 수학시험 전날: 그날 학교시험 있으면 2시, 없으면 5시
+// 🔶 직보 날짜 — 수학시험 직전의 '쉬는 날'을 거슬러 모으고, 그 앞의 시험/수업일 하루까지 넣는다.
+//   신성고 예: 시험 10/1 시작, 수학 10/6, 10/2(금)에 시험이 끝나고 10/3 토 · 10/4 일 · 10/5 공휴일
+//   → 직보 10/2·10/3·10/4·10/5 (4일). 주말·공휴일이 없으면 자연히 '전날 하루'가 된다.
+//   시간: 토·일·공휴일 12시 / 금요일 3시 / 그 밖의 평일 2시.
+function jikboAdd(ds,k){ const d=new Date(ds+'T00:00:00'); d.setDate(d.getDate()+k); const p=x=>String(x).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; }
+function jikboIsOff(ds){ const dow=new Date(ds+'T00:00:00').getDay(); return dow===0||dow===6||!!holidayName(ds); }
+function jikboTime(ds){
+  const dow=new Date(ds+'T00:00:00').getDay();
+  if(dow===0||dow===6||holidayName(ds)) return '12:00~';   // 토·일·공휴일
+  if(dow===5) return '15:00~';                              // 금요일
+  return '14:00~';                                          // 그 밖의 평일
+}
+function jikboDatesOf(e){
+  const mds=examMathDates(e).map(m=>m.date).filter(Boolean).sort();
+  if(!mds.length) return [];
+  const set=new Set();
+  if(e.jikboStart){ const last=mds[mds.length-1]; let d=e.jikboStart; while(d<last){ set.add(d); d=jikboAdd(d,1); } }
+  else {
+    mds.forEach(md=>{
+      let d=jikboAdd(md,-1);
+      for(let i=0;i<7;i++){                 // 연휴가 길어도 일주일까지만 거슬러 올라간다
+        set.add(d);
+        if(!jikboIsOff(d)) break;           // 쉬는 날이 아니면(=시험/수업일) 그 하루까지만
+        d=jikboAdd(d,-1);
+      }
+    });
+  }
+  mds.forEach(md=>set.delete(md));
+  return [...set].sort();
+}
 async function doAutoMakeups(){
   const today=new Date().toISOString().slice(0,10);
   const pad=n=>String(n).padStart(2,'0');
   const plans=[];
   visibleSchoolExams().forEach(e=>{
-    examMathDates(e).forEach(m=>{
-      if(!m.date || m.date<today) return;
-      const d=new Date(m.date+'T00:00:00'); d.setDate(d.getDate()-1);
-      const mkDate=`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+    jikboDatesOf(e).forEach(mkDate=>{
       if(mkDate<today) return;
-      const hadExam=!!(e.startDate&&e.endDate&&mkDate>=e.startDate&&mkDate<=e.endDate);
-      plans.push({date:mkDate, school:e.school, grade:e.grade||'', label:m.label||'수학', time:hadExam?'14:00~':'17:00~', hadExam});
+      const dow=new Date(mkDate+'T00:00:00').getDay();
+      const hol=holidayName(mkDate);
+      const why = (dow===0||dow===6) ? '주말' : (hol ? hol : (dow===5 ? '금요일' : '평일'));
+      plans.push({date:mkDate, school:e.school, grade:e.grade||'', time:jikboTime(mkDate), why});
     });
   });
   if(!plans.length){ showToast('자동 생성할 다가오는 수학 시험이 없어요','warning'); return; }
-  if(!confirm(`다가오는 수학시험 ${plans.length}건의 전날 직보를 자동 생성할까요?\n· 그날 학교시험 O → 2시\n· 그날 학교시험 X → 5시\n(같은 학교·같은 날짜가 이미 있으면 건너뜀)`)) return;
+  if(!confirm(`다가오는 수학시험 기준으로 직보 ${plans.length}일을 자동 생성할까요?\n· 토·일·공휴일 → 12시\n· 금요일 → 3시\n· 그 밖의 평일 → 2시\n(수학 직전의 쉬는 날들과 그 앞 하루를 잡아요)\n(같은 학교·같은 날짜가 이미 있으면 건너뜀)`)) return;
   let created=0, skipped=0;
   for(const p of plans){
     const dup=getMakeups().some(x=>x.date===p.date && (x.school===p.school || (x.className||'').includes(p.school)));
     if(dup){ skipped++; continue; }
     const doc={
       date:p.date, className:`${p.school}${p.grade?' '+p.grade:''} 직보`, school:p.school,
-      time:p.time, note:`${p.label} 시험 전날 직보 ${p.hadExam?'(그날 시험O→2시)':'(그날 시험X→5시)'}`,
+      time:p.time, note:`수학시험 직보 (${p.why})`,
       auto:true, ts:Date.now()
     };
     const ref=await db.collection('makeups').add(doc);

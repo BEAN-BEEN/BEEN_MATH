@@ -102,7 +102,7 @@
     .hw-card.submitted{border-left-color:var(--green)}
     .hw-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px}
     .hw-title{font-size:15px;font-weight:700}
-    .hw-body{font-size:13px;color:var(--text-sub);line-height:1.6;margin-bottom:8px}
+    .hw-body{font-size:13px;color:var(--text-sub);line-height:1.6;margin-bottom:8px;white-space:pre-wrap;word-break:break-word}
     .hw-due{font-size:12px;color:var(--text-muted);margin-bottom:12px}
     .upload-area{border:2px dashed var(--border);border-radius:var(--radius-sm);padding:14px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg);margin-bottom:12px}
     .upload-area:hover{border-color:var(--primary);background:var(--primary-light)}
@@ -1226,12 +1226,34 @@ function statusBadge(s) {
 // ================================================================
 // ===== 내 직보 일정 (본인 학교 기준 자동 계산 — 다른 학생 이름은 안 보임) =====
 //  선생님 플래너와 같은 규칙: 시험기간에 주말 끼면 금·토·일, 아니면 수학 전날 하루
+// 🇰🇷 공휴일 — 선생님 포털과 같은 표 (직보가 공휴일까지 잡히려면 학생 쪽도 알아야 해요)
+const HOLIDAY_FIXED={'01-01':'신정','03-01':'삼일절','05-05':'어린이날','06-06':'현충일','08-15':'광복절','10-03':'개천절','10-09':'한글날','12-25':'성탄절'};
+const HOLIDAY_YEAR={
+  '2026':{'02-16':'설날','02-17':'설날','02-18':'설날','03-02':'대체공휴일','05-24':'부처님오신날','05-25':'대체공휴일',
+          '06-03':'지방선거','08-17':'대체공휴일','09-24':'추석','09-25':'추석','09-26':'추석','10-05':'대체공휴일'},
+  '2027':{'02-05':'설날','02-06':'설날','02-07':'설날','02-08':'대체공휴일','05-13':'부처님오신날',
+          '08-16':'대체공휴일','09-14':'추석','09-15':'추석','09-16':'추석','10-04':'대체공휴일','10-11':'대체공휴일','12-27':'대체공휴일'}
+};
+function holidayName(ds){ const y=(ds||'').slice(0,4), md=(ds||'').slice(5); return (HOLIDAY_YEAR[y]&&HOLIDAY_YEAR[y][md]) || HOLIDAY_FIXED[md] || ''; }
 function _jbAddDays(ds,n){ const d=new Date(ds+'T00:00:00'); d.setDate(d.getDate()+n); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function _jbMathDates(e){ return (Array.isArray(e.mathDates)&&e.mathDates.length)?e.mathDates.filter(m=>m&&m.date).map(m=>m.date):(e.mathDate?[e.mathDate]:[]); }
-function _jbWeekendSat(e){ if(!e.startDate||!e.endDate) return null; let d=e.startDate; while(d<=e.endDate){ const dow=new Date(d+'T00:00:00').getDay(); if(dow===6) return d; if(dow===0) return _jbAddDays(d,-1); d=_jbAddDays(d,1); } return null; }
+// 🔶 직보 날짜 — 수학시험 직전의 '쉬는 날'을 거슬러 모으고, 그 앞의 시험/수업일 하루까지 넣는다.
+//   신성고 예: 시험 10/1 시작, 수학 10/6, 10/2(금)에 시험이 끝나고 10/3 토 · 10/4 일 · 10/5 공휴일
+//   → 직보 10/2·10/3·10/4·10/5 (4일). 주말·공휴일이 없으면 자연히 '전날 하루'가 된다.
+//   시간: 토·일·공휴일 12시 / 금요일 3시 / 그 밖의 평일 2시.
+function _jbIsOff(ds){ const dow=new Date(ds+'T00:00:00').getDay(); return dow===0||dow===6||!!holidayName(ds); }
 function _jbDates(e){ const mds=_jbMathDates(e).filter(Boolean).sort(); if(!mds.length) return []; const set=new Set();
   if(e.jikboStart){ const last=mds[mds.length-1]; let d=e.jikboStart; while(d<last){ set.add(d); d=_jbAddDays(d,1);} }
-  else { const sat=_jbWeekendSat(e); if(sat){ set.add(_jbAddDays(sat,-1)); set.add(sat); set.add(_jbAddDays(sat,1)); } else { mds.forEach(md=>set.add(_jbAddDays(md,-1))); } }
+  else {
+    mds.forEach(md=>{
+      let d=_jbAddDays(md,-1);
+      for(let i=0;i<7;i++){
+        set.add(d);
+        if(!_jbIsOff(d)) break;
+        d=_jbAddDays(d,-1);
+      }
+    });
+  }
   mds.forEach(md=>set.delete(md)); return [...set]; }
 function myJikbo(){
   // 부담임 반(X/Y/Z)만 있는 학생은 직보 제외 — 담임 반이 하나라도 있으면 표시
@@ -1239,9 +1261,9 @@ function myJikbo(){
   if((S_CLASSES||[]).length && !(S_CLASSES||[]).some(_hr)) return [];
   const today=new Date().toISOString().slice(0,10); const out=[];
   (S_SCHOOL_EXAMS||[]).forEach(e=>{ _jbDates(e).forEach(ds=>{ if(ds<today) return;
-    const inExam=e.startDate&&e.endDate&&ds>=e.startDate&&ds<=e.endDate;
     const dow=new Date(ds+'T00:00:00').getDay();
-    const time=(dow===0||dow===6)?'오전 11시':(inExam?'오후 2시':'오후 5시');   // 토·일은 11시
+    // 토·일·공휴일 12시 / 금요일 3시 / 그 밖의 평일 2시 (선생님 자동 생성과 같은 기준)
+    const time=(dow===0||dow===6||holidayName(ds))?'낮 12시':(dow===5?'오후 3시':'오후 2시');
     out.push({date:ds, time, title:e.title||'시험'}); }); });
   out.sort((a,b)=>a.date.localeCompare(b.date));
   return out;
@@ -1735,7 +1757,7 @@ function renderOapCard(a){
     <div class="hw-head"><div><span class="chip">${clsLabel(a.className)}</span><span style="margin-left:8px">${badge}</span></div></div>
     <div class="hw-title" style="margin-bottom:6px">${a.title}</div>
     ${a.textbook?`<div style="font-size:12px;color:var(--primary);font-weight:600;margin-bottom:4px">📘 ${a.textbook}</div>`:''}
-    ${a.content?`<div class="hw-body">${a.content}</div>`:''}
+    ${a.content?`<div class="hw-body">${String(a.content).replace(/</g,'&lt;')}</div>`:''}
     ${a.dueDate?`<div class="hw-due">📅 ${fmtDateFull(a.dueDate)} 까지</div>`:''}
     ${a.rejected?`<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:var(--radius-sm);padding:12px;margin:10px 0">
       <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:4px">🔁 오답이 반려됐어요 — 틀린 문제를 다시 골라주세요</div>
@@ -1957,7 +1979,7 @@ function renderHomework() {
         ${a.textbook?`<div style="font-size:12px;color:var(--primary);font-weight:600;margin-bottom:4px">📘 ${a.textbook}</div>`:''}
         ${parityLabel(a.probParity)?`<div style="font-size:12px;color:var(--primary);font-weight:700;margin-bottom:4px">🔢 ${parityLabel(a.probParity)} 풀어요</div>`:''}
         ${a.notDone?`<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:var(--radius-sm);padding:10px 12px;margin:8px 0"><div style="font-size:13px;font-weight:800;color:var(--red)">❌ 안 해온 걸로 기록됐어요${a.notDoneReason?` <span style="font-weight:600">(${a.notDoneReason})</span>`:''}</div><div style="font-size:12px;color:#7F1D1D;margin-top:3px">지금이라도 해서 올리면 선생님이 확인해줘요!</div></div>`:''}
-        <div class="hw-body">${a.content}</div>
+        <div class="hw-body">${String(a.content==null?'':a.content).replace(/</g,'&lt;')}</div>
         <div class="hw-due">📅 ${a.startDate?fmtDateFull(a.startDate)+' ~ ':''}${fmtDateFull(a.dueDate)} 까지 제출</div>
         ${a.rejected?`<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:var(--radius-sm);padding:12px;margin:10px 0">
           <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:4px">🔁 숙제가 반려됐어요 — 다시 제출해주세요</div>
