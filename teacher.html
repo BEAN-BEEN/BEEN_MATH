@@ -4909,9 +4909,17 @@ const PUSH_WHY={
   QUOTA_EXCEEDED:'잠시 후 다시 시도해주세요',
   UNAVAILABLE:'FCM이 잠시 불안정해요. 다시 시도해주세요',
   THIRD_PARTY_AUTH_ERROR:'푸시 인증 설정을 확인해주세요',
+  PERMISSION_DENIED:'서버가 알림을 보낼 권한이 없어요 — Firebase 콘솔에서 Cloud Messaging API를 켜야 해요',
+  UNAUTHENTICATED:'푸시 인증이 만료됐어요',
+  NOT_FOUND:'토큰이 만료됐어요 (학생이 알림을 다시 켜야 해요)',
   NETWORK:'알림 서버에 연결하지 못했어요'
 };
-function pushWhy(j){ const c=(j&&j.errors&&j.errors[0]&&j.errors[0].code)||''; return PUSH_WHY[c]||c||'원인 불명'; }
+function pushWhy(j){
+  const e=(j&&j.errors&&j.errors[0])||{};
+  return PUSH_WHY[e.code] || e.code || '원인 불명';
+}
+// 서버가 준 원문 설명 — 무엇을 켜야 하는지가 여기 적혀 있어 그대로 보여준다
+function pushDetail(j){ const e=(j&&j.errors&&j.errors[0])||{}; return String(e.msg||'').trim(); }
 function pushMsg(j, total){
   if(!j) return ['알림 서버에 연결하지 못했어요','error'];
   if(j.error) return ['알림 실패 — '+j.error,'error'];
@@ -4942,7 +4950,7 @@ function savePushLog(j, total){
     localStorage.setItem('bm_lastPush', JSON.stringify({
       at:new Date().toLocaleString('ko-KR'), total:total,
       sent:(j&&j.sent)||0, failed:j?((j.failed)||0):total,
-      code:code, msg:(j&&j.error)||''
+      code:code, msg:(j&&j.error)||'', detail:pushDetail(j)
     }));
   }catch(e){}
 }
@@ -4955,7 +4963,8 @@ function lastPushHtml(){
   const esc=v=>String(v==null?'':v).replace(/</g,'&lt;');
   return `<div style="margin-top:7px;padding-top:7px;border-top:1px solid var(--border);font-size:11px;color:var(--text-muted)">
     마지막 발송 <strong style="color:${color}">${p.sent}/${p.total}명</strong> · ${esc(p.at)}
-    ${allOk?'':`<div style="color:${color};margin-top:2px;line-height:1.5">${esc(why)}${p.code?` <span style="opacity:.65">(${esc(p.code)})</span>`:''}</div>`}
+    ${allOk?'':`<div style="color:${color};margin-top:2px;line-height:1.5">${esc(why)}${p.code?` <span style="opacity:.65">(${esc(p.code)})</span>`:''}</div>
+      ${p.detail?`<div style="color:var(--text-muted);margin-top:3px;font-size:10.5px;line-height:1.45">${esc(p.detail)}</div>`:''}`}
   </div>`;
 }
 // 알림 한 번 보내기 — 결과 안내와 죽은 토큰 정리를 한곳에서 처리한다

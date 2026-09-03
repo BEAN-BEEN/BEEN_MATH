@@ -107,16 +107,18 @@ async function notify(request, env) {
       txt = await r.text();
     } catch (e) { errors.push({ code: 'NETWORK', msg: String((e && e.message) || e) }); continue; }
     if (r.ok) { sent++; continue; }
-    let code = 'UNKNOWN';
+    let code = 'UNKNOWN', msg = '';
     try {
       const j = JSON.parse(txt);
-      code = (j.error && (j.error.status || j.error.message)) || code;
+      code = (j.error && j.error.status) || code;
+      // 구글이 준 설명을 남긴다 — 무엇을 켜야 하는지가 여기 적혀 있다
+      msg = String((j.error && j.error.message) || '').slice(0, 300);
       const det = (j.error && j.error.details) || [];
       const fcm = det.find(d => String(d['@type'] || '').includes('FcmError'));
       if (fcm && fcm.errorCode) code = fcm.errorCode;
     } catch (e) {}
     if (r.status === 404 || code === 'UNREGISTERED' || code === 'INVALID_ARGUMENT') invalid.push(t);
-    errors.push({ code, status: r.status });
+    errors.push({ code, status: r.status, msg });
   }
   return json({ sent, failed: tokens.length - sent, total: tokens.length, invalid, errors: errors.slice(0, 10) });
 }
