@@ -1482,7 +1482,7 @@ function mockExamCardHtml(){
         <td><strong>${m.title}</strong></td><td style="color:var(--text-muted)">${m.date||'-'}</td>
         <td>${m.mode==='auto'?'<span class="badge b-primary">자동채점</span>':'<span class="badge b-gray">점수만</span>'}</td>
         <td>${m.maxScore||'-'}</td><td>${ms.length}명</td><td>${avg!=null?`<strong>${avg}점</strong>`:'-'}</td>
-        <td style="white-space:nowrap"><button class="btn btn-primary btn-sm" onclick="mockScoreOpenId=mockScoreOpenId==='${m.id}'?null:'${m.id}';rGrades();${''}">✍️ 점수 입력</button> <button class="btn btn-outline btn-sm" onclick="mockEditId='${m.id}';rGrades();window.scrollTo({top:0,behavior:'smooth'})">수정</button> <button class="btn btn-red btn-sm" onclick="doDelMock('${m.id}','${(m.title||'').replace(/'/g,'')}')">삭제</button></td>
+        <td style="white-space:nowrap"><button class="btn btn-primary btn-sm" onclick="mockScoreOpenId=mockScoreOpenId==='${m.id}'?null:'${m.id}';mockEditId=null;rGrades();">✍️ 점수 입력</button> <button class="btn btn-outline btn-sm" onclick="mockEditId='${m.id}';mockScoreOpenId=null;rGrades();window.scrollTo({top:0,behavior:'smooth'})">수정</button> <button class="btn btn-red btn-sm" onclick="doDelMock('${m.id}','${(m.title||'').replace(/'/g,'')}')">삭제</button></td>
       </tr>`;}).join('')}</tbody>
     </table></div>`:'<div style="margin-top:12px;font-size:13px;color:var(--text-muted)">아직 등록된 모의고사가 없어요. 만들면 학생이 ‘성적’ 탭에서 직접 점수를 등록해요.</div>'}
   </div>${mockScoreOpenId?mockScoreRosterHtml(mockScoreOpenId):''}`;
@@ -3893,8 +3893,8 @@ async function doSaveAsgn(){
       showToast(`"${title}" 과제 수정 완료 ✏️`,'success'); rHomework();
     }else{
       await saveAssignment(data);
-      showToast(`"${title}" 과제 등록 완료! 학생들이 바로 볼 수 있어요 📝`,'success'); rHomework();
-      sendPush(classTokens(classId), '새 숙제가 등록됐어요 📝', `${cls?.name||''} · ${title}`);
+      // 등록만으로 알림을 보내지 않는다. 언제 알릴지는 선생님이 목록의 '🔔 알림'으로 정한다.
+      showToast(`"${title}" 과제 등록 완료! (알림은 목록의 🔔 알림 버튼으로 보내요) 📝`,'success'); rHomework();
     }
   }catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
