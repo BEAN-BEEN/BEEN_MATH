@@ -2095,15 +2095,19 @@ async function doRegisterAnalyzedExam(){
     // 고른 반마다 한 건씩 등록한다 (반별로 정오표·분석서가 따로 나와야 하므로)
     const today=new Date().toISOString().slice(0,10);
     const summary=(lastAnalysis&&lastAnalysis.summary)||'';
+    // 분석서에 적힌 정답을 정답표로 같이 저장한다 — 따로 입력하지 않아도 바로 채점된다
+    const keyFromProbs=answerKeyFromAnalysis({analysis:probs});
     let firstId='';
     for(const cid of classIds){
       const cls=CLASSES.find(c=>c.id===cid);
-      const id=await saveExam({ classId:cid, className:cls?.name||'', title, kind:anKind, range:range.trim(), source, maxScore, date:today, analysis:probs, analysisSummary:summary });
+      const id=await saveExam({ classId:cid, className:cls?.name||'', title, kind:anKind, range:range.trim(), source, maxScore, date:today, analysis:probs, analysisSummary:summary, answerKey:keyFromProbs });
       if(!firstId) firstId=id||'';
     }
+    const keyN=Object.keys(keyFromProbs).length;
+    const keyMsg=keyN?` · 정답 ${keyN}개도 같이 저장했어요`:'';
     showToast(classIds.length>1
-      ? `"${title}" ${classIds.length}개 반에 등록 완료! 반별로 정오표를 찍으면 분석서가 나와요 📋`
-      : `"${title}" 등록 완료! 이제 학생별 정오표를 찍으면 분석서가 나와요 📋`, 'success');
+      ? `"${title}" ${classIds.length}개 반에 등록 완료!${keyMsg} 📋`
+      : `"${title}" 등록 완료!${keyMsg} 📋`, 'success');
     anTitleDraft=''; anRangeDraft=''; anSourceDraft='';   // 다음 회차를 이어서 넣도록 폼을 비운다
     anRepExamId=firstId; anRepStId=''; anOX=null;
     rGrades();
@@ -2390,6 +2394,17 @@ function anReportHtml(){
 //   정답을 넣어두면 학생 답만 들어와도 자동 채점되고, 틀린 번호가 오답으로 이어집니다.
 // ================================================================
 let akExamId='', akDraft=null;      // 정답 입력 중인 시험 / 편집 중인 답
+// 분석서 문항에 적힌 정답을 정답표 모양으로 바꾼다.
+//   분석서에 정답이 있는데 따로 또 입력하게 두면 자동 채점이 안 돌아간다.
+function answerKeyFromAnalysis(e){
+  const out={};
+  anProbs(e).forEach(p=>{
+    const no=String(p.no==null?'':p.no).trim();
+    const a=String(p.answer==null?'':p.answer).trim();
+    if(no && a) out[no]=a;
+  });
+  return out;
+}
 function examChoices(e){ const n=parseInt(e&&e.choices,10); return (n>=2&&n<=9)?n:5; }
 // 채점할 문항 번호 — 분석에서 읽은 번호가 있으면 그대로, 없으면 1..문항수
 function examNos(e){
@@ -2415,7 +2430,14 @@ function gradeOmr(key, ans){
   });
   return { total:nos.length, correct, wrong, blank, rate: nos.length?Math.round(correct/nos.length*100):null };
 }
-function akPick(exam){ akExamId=exam?exam.id:''; akDraft=exam?Object.assign({}, exam.answerKey||{}):null; rGrades(); }
+function akPick(exam){
+  akExamId=exam?exam.id:'';
+  if(!exam){ akDraft=null; rGrades(); return; }
+  const saved=exam.answerKey||{};
+  // 저장된 정답표가 없으면 분석서에 적힌 정답으로 시작한다 (예전에 등록한 시험도 살아나게)
+  akDraft = Object.keys(saved).length ? Object.assign({}, saved) : answerKeyFromAnalysis(exam);
+  rGrades();
+}
 function akSet(no, v){ if(!akDraft) akDraft={}; akDraft[no]=(akDraft[no]===v?'':v); rGrades(); }
 function akClear(){ if(!akDraft) return; if(!confirm('입력한 정답을 모두 지울까요?')) return; akDraft={}; rGrades(); }
 async function akSave(){
