@@ -862,12 +862,21 @@ function schoolExamCardHtml(){
         <td><span class="chip">${e.school}</span><div style="font-size:10px;color:var(--text-muted);margin-top:2px">${n}명${bk.publisher?' · '+esc(bk.publisher):''}</div></td>
         <td><strong>${e.title||'-'}</strong>${e.grade?` <span style="font-size:11px;color:var(--text-muted)">${e.grade}</span>`:''}</td>
         <td style="color:var(--text-muted);white-space:nowrap">${e.startDate||'?'}~${e.endDate||'?'}</td>
-        <td>${examMathDates(e).map(m=>`<div style="margin:1px 0;white-space:nowrap"><strong>${m.label||'수학'}</strong> ${m.date} ${ddayBadge(m.date)}</div>`).join('')||'<span class="badge b-yellow">📌 수학일 미정</span>'}</td>
+        <td>${examMathDates(e).map(m=>`<div style="margin:1px 0;white-space:nowrap"><strong>${m.label||'수학'}</strong> ${m.date} ${ddayBadge(m.date)}</div>`).join('')||`<div style="white-space:nowrap"><input class="form-input" type="date" title="수학 시험일을 넣으면 직보가 바로 잡혀요" onchange="doSetExamMathDate('${e.id}',this.value)" ${e.startDate?`min="${e.startDate}"`:''} ${e.endDate?`max="${e.endDate}"`:''} style="width:145px;padding:3px 6px;font-size:12px;border-color:var(--yellow)"><div style="font-size:10px;color:var(--orange);font-weight:700;margin-top:2px">📌 수학일 미정 — 넣으면 바로 저장</div></div>`}</td>
         <td><input class="form-input" value="${esc(e.scope)}" placeholder="예: 수학Ⅰ 1~3단원" style="width:100%;min-width:190px;padding:4px 8px;font-size:12px" onchange="doSaveExamScope('${e.id}',this.value)"></td>
         <td style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="seEditId='${e.id}';rNaesin();window.scrollTo({top:0,behavior:'smooth'})">수정</button> <button class="btn btn-red btn-sm" onclick="doDelSchoolExam('${e.id}','${(e.school||'')+' '+(e.title||'')}')">삭제</button></td>
       </tr>`;}).join('')}</tbody>
     </table></div>`:'<div style="margin-top:12px;font-size:13px;color:var(--text-muted)">아직 등록된 내신 일정이 없어요. 학교별로 추가하면 그 학교 학생 전원이 D-day를 봐요.</div>'}
   </div>`;
+}
+// 목록에서 수학 시험일을 바로 확정 — 이걸 넣어야 직보가 잡힌다.
+async function doSetExamMathDate(id, v){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(v||'')) return;
+  try{
+    await updateSchoolExam(id, { mathDate:v, mathDates:[{label:'수학', date:v}] });
+    showToast('수학 시험일 저장 ✓ 이제 직보 자동 생성에 잡혀요','success');
+    rNaesin();
+  }catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
 async function doSaveSchoolExam(){
   const school=normSchool(document.getElementById('se-school').value);
@@ -2418,6 +2427,77 @@ async function akSave(){
   }catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
 // 정답 입력 화면 — 번호마다 보기를 눌러 찍습니다
+// 🅱️ OMR 답안지 — 학생이 답을 적을 종이. 분석서에 있는 정답을 보고
+//   보기 번호(1~보기 수)면 객관식, 값이나 식이면 주관식으로 만든다.
+//   정답이 아직 없으면 객관식으로 둔다(대부분이 객관식이라).
+function omrIsChoice(ans, choices){
+  const v=String(ans==null?'':ans).trim();
+  if(!v) return true;
+  return /^[1-9]$/.test(v) && Number(v)<=choices;
+}
+function omrTypeMap(exam){
+  const key=(exam&&exam.answerKey)||{}, ch=examChoices(exam), byNo={};
+  anProbs(exam).forEach(p=>{ byNo[String(p.no).trim()]=String(p.answer==null?'':p.answer).trim(); });
+  const out={};
+  examNos(exam).forEach(no=>{
+    const fromKey=String(key[no]==null?'':key[no]).trim();
+    out[no]= omrIsChoice(fromKey||byNo[no]||'', ch) ? '객관식' : '주관식';
+  });
+  return out;
+}
+function omrSheetHtml(exam){
+  if(!exam) return '';
+  const nos=examNos(exam); if(!nos.length) return '';
+  const ch=examChoices(exam), types=omrTypeMap(exam);
+  const circ=['①','②','③','④','⑤','⑥','⑦','⑧','⑨'];
+  const COLS=4;
+  const cell=no=>{
+    const obj = types[no]==='객관식';
+    const body = obj
+      ? `<div style="display:flex;gap:4px">${Array.from({length:ch},(_,i)=>`<span style="width:18px;height:18px;border:1.2px solid #64748B;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10px;color:#94A3B8">${circ[i]}</span>`).join('')}</div>`
+      : `<div style="height:20px;border:1.2px solid #64748B;border-radius:4px"></div>`;
+    return `<td style="padding:6px 7px;border:1px solid #CBD5E1;vertical-align:top;width:${Math.floor(100/COLS)}%">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+        <strong style="font-size:12.5px;min-width:20px">${anEsc(no)}</strong>
+        <span style="font-size:9px;font-weight:700;color:${obj?'#2563EB':'#B45309'}">${obj?'객관식':'주관식'}</span>
+      </div>${body}</td>`;
+  };
+  const rows=[];
+  for(let i=0;i<nos.length;i+=COLS){
+    const part=nos.slice(i,i+COLS);
+    const pad=Array.from({length:COLS-part.length},()=>'<td style="border:1px solid #CBD5E1"></td>').join('');
+    rows.push('<tr>'+part.map(cell).join('')+pad+'</tr>');
+  }
+  const objN=nos.filter(no=>types[no]==='객관식').length;
+  const line='<span style="display:inline-block;border-bottom:1px solid #94A3B8;min-width:110px">&nbsp;</span>';
+  return `<div style="font-family:'Noto Sans KR',-apple-system,sans-serif;color:#1E293B;max-width:760px">
+    <div style="border-bottom:3px solid #5B6CF5;padding-bottom:9px;margin-bottom:12px">
+      <div style="font-size:12px;color:#5B6CF5;font-weight:800">답안지 (OMR)</div>
+      <div style="font-size:20px;font-weight:800;margin-top:3px">${anEsc(exam.title||'')}</div>
+      ${exam.source?`<div style="font-size:12.5px;font-weight:700;color:#5B6CF5;margin-top:2px">${anEsc(exam.source)}</div>`:''}
+      <div style="font-size:12px;color:#64748B;margin-top:3px">${anEsc(anClsLabel(exam.className))}${exam.range?' · 범위 '+anEsc(exam.range):''} · 전체 ${nos.length}문항 (객관식 ${objN} · 주관식 ${nos.length-objN})</div>
+    </div>
+    <div style="display:flex;gap:22px;font-size:13px;margin-bottom:12px">
+      <div>이름 ${line}</div><div>반 ${line}</div><div>날짜 ${line}</div>
+    </div>
+    <table style="width:100%;border-collapse:collapse;table-layout:fixed"><tbody>${rows.join('')}</tbody></table>
+    <div style="font-size:11px;color:#64748B;margin-top:10px">객관식은 번호에 색칠하고, 주관식은 칸에 답을 적어주세요.</div>
+  </div>`;
+}
+function printOmrSheet(){
+  const exam=getExams().find(e=>e.id===akExamId);
+  if(!exam){ showToast('시험을 먼저 고르세요','error'); return; }
+  const html=omrSheetHtml(exam);
+  if(!html){ showToast('문항 번호를 알 수 없어요. 시험지 분석을 먼저 하거나 문항 수를 넣어주세요','warning'); return; }
+  const w=window.open('','_blank','width=820,height=900');
+  if(!w){ showToast('팝업이 막혔어요. 브라우저에서 팝업을 허용해주세요','warning'); return; }
+  w.document.write(`<html><head><meta charset="utf-8"><title>${anEsc(exam.title||'')} 답안지</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>@page{margin:14mm} body{margin:0;padding:20px} table{page-break-inside:auto} tr{page-break-inside:avoid}</style>
+    </head><body>${html}</body></html>`);
+  w.document.close();
+  setTimeout(()=>{ try{ w.focus(); w.print(); }catch(e){} }, 600);
+}
 function answerKeyPanelHtml(){
   const withAn=getExams();
   const exam=withAn.find(e=>e.id===akExamId);
@@ -2440,7 +2520,8 @@ function answerKeyPanelHtml(){
           <select class="form-select" style="width:70px;padding:4px 6px;font-size:12px" onchange="akChoices(this.value)">${[4,5].map(v=>`<option value="${v}" ${ch===v?'selected':''}>${v}지</option>`).join('')}</select>
           <span class="badge ${filled===nos.length?'b-green':'b-yellow'}">${filled}/${nos.length} 입력</span>
           <div style="flex:1"></div>
-          <button class="btn btn-outline btn-sm" onclick="akClear()">전부 지우기</button>
+          <button class="btn btn-outline btn-sm" onclick="printOmrSheet()">🖨 답안지(OMR) 인쇄</button>
+        <button class="btn btn-outline btn-sm" onclick="akClear()">전부 지우기</button>
           <button class="btn btn-green btn-sm" onclick="akSave()">💾 정답 저장</button>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:6px">${nos.map(n=>`
