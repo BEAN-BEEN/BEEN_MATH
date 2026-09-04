@@ -2439,6 +2439,9 @@ function akPick(exam){
   rGrades();
 }
 function akSet(no, v){ if(!akDraft) akDraft={}; akDraft[no]=(akDraft[no]===v?'':v); rGrades(); }
+// 주관식 정답은 동그라미로 못 넣는다. 글자로 직접 적는다.
+//   타이핑 중에 다시 그리면 커서가 튀어서, 여기서는 값만 담고 화면은 그대로 둔다.
+function akSetText(no, v){ if(!akDraft) akDraft={}; akDraft[no]=String(v==null?'':v).trim(); }
 function akClear(){ if(!akDraft) return; if(!confirm('입력한 정답을 모두 지울까요?')) return; akDraft={}; rGrades(); }
 async function akSave(){
   const exam=getExams().find(e=>e.id===akExamId); if(!exam){ showToast('시험을 고르세요','error'); return; }
@@ -2520,6 +2523,29 @@ function printOmrSheet(){
   w.document.close();
   setTimeout(()=>{ try{ w.focus(); w.print(); }catch(e){} }, 600);
 }
+// 정답표가 비어 있는데 분석서에는 정답이 있는 시험들 — 예전에 등록해 둔 것들
+function examsNeedingKey(){
+  return getExams().filter(e=>{
+    const k=(e.answerKey&&Object.keys(e.answerKey).length)||0;
+    return !k && Object.keys(answerKeyFromAnalysis(e)).length>0;
+  });
+}
+// 한꺼번에 채운다. 이미 정답표가 있는 시험은 건드리지 않는다.
+async function doFillAnswerKeys(){
+  const list=examsNeedingKey();
+  if(!list.length){ showToast('채울 시험이 없어요','warning'); return; }
+  const total=list.reduce((a,e)=>a+Object.keys(answerKeyFromAnalysis(e)).length,0);
+  const lines=list.map(e=>`· ${e.title} (${Object.keys(answerKeyFromAnalysis(e)).length}개)`).join(String.fromCharCode(10));
+  const nl=String.fromCharCode(10);
+  if(!confirm(`시험 ${list.length}건의 정답표를 분석서 정답으로 채울까요? (정답 ${total}개)` + nl + nl + lines + nl + nl + '이미 정답표가 있는 시험은 건드리지 않아요.')) return;
+  let done=0, failed=0;
+  for(const e of list){
+    try{ await updateExam(e.id, { answerKey: answerKeyFromAnalysis(e) }); done++; }catch(err){ failed++; }
+  }
+  akDraft=null; akExamId='';
+  showToast(`정답표 ${done}건 채웠어요 — 이제 학생 답이 들어오면 자동 채점돼요 🅰️${failed?` (${failed}건 실패)`:''}`, failed?'warning':'success');
+  rGrades();
+}
 function answerKeyPanelHtml(){
   const withAn=getExams();
   const exam=withAn.find(e=>e.id===akExamId);
@@ -2530,9 +2556,15 @@ function answerKeyPanelHtml(){
   const draft=akDraft||{};
   const filled=nos.filter(n=>String(draft[n]||'').trim()).length;
   const circ=['①','②','③','④','⑤','⑥','⑦','⑧','⑨'];
+  const need=examsNeedingKey();
   return `<div class="card" style="border-left:4px solid var(--orange)">
     <div class="card-title">🅰️ 정답 입력 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(정답을 넣어두면 학생 답만 들어와도 자동 채점돼요)</span></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${withAn.map(chip).join('')}</div>
+    ${need.length?`<div style="background:var(--primary-light);border:1px solid var(--primary);border-radius:10px;padding:10px 12px;margin-bottom:10px">
+      <div style="font-size:12.5px;font-weight:800;color:var(--primary-dark);margin-bottom:3px">🅰️ 분석서에 정답이 있는데 정답표가 비어 있는 시험 ${need.length}건</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:7px">채워두면 학생이 답을 찍는 순간 자동 채점되고 정오표도 알아서 채워져요. 다시 입력하지 않아도 됩니다.</div>
+      <button class="btn btn-primary btn-sm" onclick="doFillAnswerKeys()">분석서 정답으로 한꺼번에 채우기</button>
+    </div>`:''}
     ${!exam?'<div style="color:var(--text-muted);font-size:13px">시험을 고르세요.</div>':(
       !nos.length?`<div style="color:var(--text-muted);font-size:13px">문항 번호를 알 수 없어요. 시험지 분석을 먼저 하거나, 아래에 문항 수를 넣어주세요.
         <div style="display:flex;gap:6px;align-items:center;margin-top:8px"><input class="form-input" id="ak-count" type="number" min="1" max="200" placeholder="문항 수" style="width:110px;padding:5px 8px">
@@ -2548,10 +2580,12 @@ function answerKeyPanelHtml(){
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:6px">${nos.map(n=>`
           <div style="border:1px solid var(--border);border-radius:9px;padding:5px 7px;min-width:56px;text-align:center">
-            <div style="font-size:11px;font-weight:800;color:var(--text-sub);margin-bottom:3px">${anEsc(n)}</div>
+            <div style="font-size:11px;font-weight:800;color:var(--text-sub);margin-bottom:3px">${anEsc(n)}${(function(){ const cur=String(draft[n]||'').trim(); return (cur && !omrIsChoice(cur, ch))?' <span style="font-size:8.5px;color:#B45309">주관식</span>':''; })()}</div>
             <div style="display:flex;gap:2px;justify-content:center">${Array.from({length:ch},(_,k)=>{ const v=String(k+1); const on=String(draft[n]||'')===v;
               return `<button class="btn btn-sm" style="padding:1px 4px;font-size:12px;min-width:0;${on?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="akSet('${String(n).replace(/'/g,'')}','${v}')">${circ[k]}</button>`;}).join('')}</div>
-          </div>`).join('')}</div>`)}
+            <input class="form-input" value="${anEsc(String(draft[n]==null?'':draft[n])).replace(/"/g,'&quot;')}" oninput="akSetText('${String(n).replace(/'/g,'')}', this.value)" placeholder="주관식" title="주관식 정답은 여기에 적어요" style="width:100%;margin-top:3px;padding:2px 3px;font-size:11px;text-align:center">
+          </div>`).join('')}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:8px">객관식은 번호를 누르고, 주관식은 아래 칸에 답을 적어요. 다 넣었으면 <strong>💾 정답 저장</strong>을 눌러주세요.</div>`)}
   </div>`;
 }
 function akChoices(v){ const exam=getExams().find(e=>e.id===akExamId); if(!exam) return; updateExam(akExamId,{choices:parseInt(v,10)||5}).then(()=>rGrades()); }
