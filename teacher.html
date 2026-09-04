@@ -1813,6 +1813,7 @@ function anPickFileExam(i){
   const t=document.getElementById('an-title'), r=document.getElementById('an-range');
   const sc=document.getElementById('an-source');
   if(t) t.value=anTitleDraft; if(r) r.value=anRangeDraft; if(sc) sc.value=anSourceDraft;
+  anFillMax(ex.problems);               // 회차마다 문항 수가 달라 만점도 달라진다
   renderAnalysis(lastAnalysis);
 }
 function anFileExamsHtml(){
@@ -1846,7 +1847,7 @@ function renderAnalysis(data){
     <div style="margin-bottom:6px">${uComp}</div>
     <div style="margin-bottom:10px">${comp} ${AN_DIFFS.filter(d=>dCounts[d]).map(d=>`<span class="badge ${(d==='상'||d==='최상')?'b-red':((d==='하'||d==='중하')?'b-green':'b-yellow')}" style="margin:2px">난이도 ${d} ${dCounts[d]}문항</span>`).join('')}</div>
     <div class="table-wrap"><table>
-      <thead><tr><th style="width:44px">번호</th><th style="min-width:110px">대단원</th><th style="min-width:120px">중단원</th><th style="width:104px">출제 의도</th><th style="min-width:120px">세부 유형</th><th style="width:74px">난이도</th><th style="min-width:180px">해결 방법</th></tr></thead>
+      <thead><tr><th style="width:44px">번호</th><th style="min-width:110px">대단원</th><th style="min-width:120px">중단원</th><th style="width:104px">출제 의도</th><th style="min-width:120px">세부 유형</th><th style="width:74px">난이도</th><th style="width:56px">배점</th><th style="min-width:180px">해결 방법</th></tr></thead>
       <tbody>${probs.map((p,i)=>`<tr>
         <td><input class="form-input an-f" data-i="${i}" data-k="no" value="${anEsc(p.no||'').replace(/"/g,'&quot;')}" style="width:40px;padding:3px 5px;font-size:12px;text-align:center;font-weight:700"></td>
         <td><input class="form-input an-f" data-i="${i}" data-k="bigUnit" value="${anEsc(anBig(p)).replace(/"/g,'&quot;')}" style="width:100%;padding:3px 6px;font-size:12px"></td>
@@ -1855,10 +1856,21 @@ function renderAnalysis(data){
         <td title="${anEsc(p.abilityReason||'').replace(/"/g,'&quot;')}"><select class="form-select an-f" data-i="${i}" data-k="ability" style="width:100%;padding:3px 4px;font-size:12px">${anOptions(AN_ABILITIES, p.ability)}</select>${p.isKiller?'<div style="font-size:10px;color:var(--red);font-weight:800;margin-top:2px">⚡ 킬러</div>':''}</td>
         <td><input class="form-input an-f" data-i="${i}" data-k="abilityDetail" value="${anEsc(p.abilityDetail||'').replace(/"/g,'&quot;')}" style="width:100%;padding:3px 6px;font-size:11.5px" placeholder="세부 유형"></td>
         <td><select class="form-select an-f" data-i="${i}" data-k="difficulty" style="width:100%;padding:3px 4px;font-size:12px">${anOptions(AN_DIFFS, p.difficulty)}</select></td>
+        <td><input class="form-input an-f" data-i="${i}" data-k="points" type="number" min="0" step="0.5" value="${(p.points===''||p.points==null)?defaultPoints(p,5):p.points}" style="width:100%;padding:3px 4px;font-size:12px;text-align:center"></td>
         <td><input class="form-input an-f" data-i="${i}" data-k="solution" value="${anEsc(p.solution||'').replace(/"/g,'&quot;')}" style="width:100%;padding:3px 6px;font-size:11.5px" placeholder="해결 방법"></td>
       </tr>`).join('')}</tbody>
     </table></div>
     <div style="font-size:11px;color:var(--text-muted);margin:8px 0">✏️ AI가 잘못 읽은 칸은 <strong>그 자리에서 고치면</strong> 그대로 저장돼요. 원본 사진·PDF는 저장하지 않으니 지우셔도 됩니다.</div>
+    ${(function(){ // 배점 합계 — 시험지에 배점이 없어 난이도로 매기니, 합이 만점과 맞는지 보여준다
+      const tot=rowsTotalPoints(probs);
+      const max=parseInt((document.getElementById('an-max')||{}).value,10)||100;
+      const same=Math.abs(tot-max)<0.001;
+      return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0;font-size:12px">
+        <span>배점 합계 <strong style="color:${same?'var(--green)':'var(--orange)'}">${tot}점</strong> <span style="color:var(--text-muted)">/ 만점 ${max}점</span></span>
+        ${same?'':`<span style="color:var(--orange);font-size:11px">합이 만점과 달라요</span>
+          <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px" onclick="anSyncMax(${tot})">만점을 ${tot}점으로</button>`}
+        <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px" onclick="doResetPoints()">난이도로 배점 다시 매기기</button>
+      </div>`; })()}
     ${(function(){ const errs=anValidate(probs); if(!errs.length) return '';
       return `<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:10px;padding:10px 12px;margin:8px 0">
         <div style="font-size:13px;font-weight:800;color:#B91C1C;margin-bottom:5px">⚠️ 고쳐야 등록할 수 있어요 (${errs.length}곳)</div>
@@ -1940,7 +1952,7 @@ function analysisPromptText(){
     '- difficultyBasis: 초기에는 predicted_rubric',
     '- isKiller: true 또는 false',
     '- solution: 핵심 풀이 방법 1~2문장. 필요한 좌표 설정, 조건식, 공식과 결론을 포함한다.',
-    '- answer: 객관식은 1~5의 번호 문자열, 주관식은 값 문자열',
+    '- points: 배점. 시험지에 적혀 있을 때만 그 숫자를 쓴다. 없으면 빈 문자열로 두면 된다',
     '',
     '[시험 필드]',
     '- title: 시험 이름. <연도> <학교> <학년-학기-차수> <종류> 순서로 짧게 적는다.',
@@ -1982,26 +1994,47 @@ function fallbackCopy(txt, done){
 }
 // 📋 밖에서 만든 분석 결과를 그대로 가져오기 — 교재 한 권을 미리 정리해 둘 때 편해요.
 // 📁 JSON 파일을 그대로 읽어오기 — 붙여넣기가 길면 파일이 편해요
-function doLoadAnalysisFile(inp){
-  const file=inp&&inp.files&&inp.files[0]; if(!file) return;
-  const r=new FileReader();
-  r.onload=()=>{
-    const ta=document.getElementById('an-paste');
-    if(ta) ta.value=String(r.result||'');
-    doPasteAnalysis();
-    inp.value='';                                  // 같은 파일을 다시 골라도 동작하게
-  };
-  r.onerror=()=>showToast('파일을 읽지 못했어요','error');
-  r.readAsText(file);
+function readTextFile(f){
+  return new Promise(res=>{
+    const r=new FileReader();
+    r.onload=()=>res({name:f.name, text:String(r.result||'')});
+    r.onerror=()=>res({name:f.name, text:null});
+    r.readAsText(f);
+  });
 }
-function doPasteAnalysis(){
-  const el=document.getElementById('an-paste'); const raw=(el?el.value:'').trim();
-  if(!raw){ showToast('붙여넣은 내용이 없어요','error'); return; }
-  let data;
-  try{ data=JSON.parse(raw.replace(/```json/gi,'').replace(/```/g,'').trim()); }
-  catch(e){ showToast('JSON 형식이 아니에요: '+e.message,'error'); return; }
-  // 받은 값을 그대로 옮긴다. 비어 있어도 대신 채워 넣지 않는다(그게 값을 둔갑시키는 원인이 된다).
-  const mkRows=(arr)=>arr.map((p,i)=>({
+// 파일을 여러 개 골라도 된다. 각 파일의 시험을 모두 모아 회차 목록으로 보여준다.
+//   한 건씩 열고 등록하고 다시 여는 게 너무 느려서.
+async function doLoadAnalysisFile(inp){
+  const files=(inp&&inp.files)?[].slice.call(inp.files):[];
+  if(!files.length) return;
+  if(files.length===1){
+    const one=await readTextFile(files[0]);
+    inp.value='';
+    if(one.text==null){ showToast('파일을 읽지 못했어요','error'); return; }
+    const ta=document.getElementById('an-paste'); if(ta) ta.value=one.text;
+    doPasteAnalysis();
+    return;
+  }
+  showToast(`파일 ${files.length}개 읽는 중…`);
+  const read=await Promise.all(files.map(readTextFile));
+  inp.value='';
+  const merged=[], bad=[];
+  read.forEach(f=>{
+    if(f.text==null){ bad.push(f.name); return; }
+    const exams=parseAnalysisExams(f.text).filter(x=>x.problems.length);
+    if(!exams.length){ bad.push(f.name); return; }
+    // 어느 파일에서 왔는지 알 수 있게, 이름이 비면 파일명을 쓴다
+    exams.forEach(x=>{ if(!x.title) x.title=f.name.replace(/\.[^.]+$/,''); merged.push(x); });
+  });
+  if(!merged.length){ showToast('문항을 찾은 파일이 없어요 — 분석 결과 JSON이 맞는지 확인해주세요','error'); return; }
+  anFileExams=merged; anFileIdx=0;
+  anPickFileExam(0);
+  const tail=bad.length?` · ${bad.length}개는 못 읽었어요`:'';
+  showToast(`파일 ${files.length}개에서 시험 ${merged.length}건을 불러왔어요 — 위에서 회차를 골라 등록하세요 📚${tail}`, bad.length?'warning':'success');
+}
+// 받은 값을 그대로 옮긴다. 비어 있어도 대신 채워 넣지 않는다(그게 값을 둔갑시키는 원인이 된다).
+function mkAnalysisRows(arr){
+  return (arr||[]).map((p,i)=>({
     no:String(p.no!=null?p.no:(i+1)),
     bigUnit:p.bigUnit||String(p.unit||'').split('>')[0].trim()||'',
     smallUnit:p.smallUnit||(String(p.unit||'').split('>')[1]||'').trim(),
@@ -2015,16 +2048,33 @@ function doPasteAnalysis(){
     actualCorrectRate:p.actualCorrectRate==null?null:p.actualCorrectRate,
     difficultyBasis:p.difficultyBasis||'',
     isKiller:p.isKiller===true,
+    points:(p.points==null||p.points==='')?'':(Number(p.points)||''),
     solution:p.solution||'', answer:String(p.answer==null?'':p.answer).trim(),
     unit:p.unit||''
   }));
-  // v4는 exams 배열로 온다. 배열만 오거나 problems만 오는 예전 형태도 그대로 받는다.
-  let fileExams=[];
-  if(Array.isArray(data)) fileExams=[{title:'', range:'', source:'', problems:mkRows(data), summary:''}];
-  else if(data && Array.isArray(data.exams))
-    fileExams=data.exams.filter(e=>e&&Array.isArray(e.problems)).map(e=>({title:e.title||e.examTitle||'', range:e.examRange||e.range||'', source:e.source||e.examSource||'', problems:mkRows(e.problems), summary:e.summary||''}));
-  else if(data && Array.isArray(data.problems))
-    fileExams=[{title:data.examTitle||'', range:data.examRange||'', source:data.source||data.examSource||'', problems:mkRows(data.problems), summary:data.summary||''}];
+}
+// v4는 exams 배열로 온다. 배열만 오거나 problems만 오는 예전 형태도 그대로 받는다.
+function analysisExamsFrom(data){
+  if(Array.isArray(data)) return [{title:'', range:'', source:'', problems:mkAnalysisRows(data), summary:''}];
+  if(data && Array.isArray(data.exams))
+    return data.exams.filter(e=>e&&Array.isArray(e.problems)).map(e=>({title:e.title||e.examTitle||'', range:e.examRange||e.range||'', source:e.source||e.examSource||'', problems:mkAnalysisRows(e.problems), summary:e.summary||''}));
+  if(data && Array.isArray(data.problems))
+    return [{title:data.examTitle||'', range:data.examRange||'', source:data.source||data.examSource||'', problems:mkAnalysisRows(data.problems), summary:data.summary||''}];
+  return [];
+}
+// 글에서 바로 뽑기 — 파일 여러 개를 합칠 때 파일마다 이걸 쓴다
+function parseAnalysisExams(raw){
+  let data;
+  try{ data=JSON.parse(String(raw||'').replace(/```json/gi,'').replace(/```/g,'').trim()); }catch(e){ return []; }
+  return analysisExamsFrom(data);
+}
+function doPasteAnalysis(){
+  const el=document.getElementById('an-paste'); const raw=(el?el.value:'').trim();
+  if(!raw){ showToast('붙여넣은 내용이 없어요','error'); return; }
+  let data;
+  try{ data=JSON.parse(raw.replace(/```json/gi,'').replace(/```/g,'').trim()); }
+  catch(e){ showToast('JSON 형식이 아니에요: '+e.message,'error'); return; }
+  const fileExams=analysisExamsFrom(data);
   if(!fileExams.length || !fileExams[0].problems.length){
     // 분석 '결과' 대신 분석 '규칙 문서'(계약서)를 붙여넣는 실수가 잦다. 그걸 알아보고 짚어준다.
     const spec = data && !Array.isArray(data) &&
@@ -2040,6 +2090,7 @@ function doPasteAnalysis(){
   // 정답이 같이 왔으면 정답 입력칸에 미리 채워둡니다 (저장은 선생님이 확인 후)
   const gotKey={}; rows.forEach(p=>{ if(p.answer) gotKey[p.no]=p.answer; });
   if(Object.keys(gotKey).length){ akDraft=Object.assign({}, akDraft||{}, gotKey); }
+  const maxFilled=anFillMax(rows);      // 표의 '배점 합계 / 만점' 줄보다 먼저
   renderAnalysis(lastAnalysis);
   // 시험명·범위 자동 채우기 — GPT가 준 값이 있으면 그걸, 없으면 단원에서 뽑는다.
   // 이미 적어둔 값은 덮어쓰지 않는다.
@@ -2052,6 +2103,7 @@ function doPasteAnalysis(){
   const srcNow=sEl?sEl.value.trim():anSourceDraft;
   if(tEl && !tEl.value.trim()){ const v=gTitle||anTitleFrom(rows, srcNow); if(v){ tEl.value=v; anTitleDraft=v; filled.push('시험명'); } }
   if(rEl && !rEl.value.trim()){ const v=gRange||anRangeFrom(rows); if(v){ rEl.value=v; anRangeDraft=v; filled.push('범위'); } }
+  if(maxFilled) filled.push('만점');
   const nKey=rows.filter(p=>p.answer).length;
   const errs=anValidate(rows);
   const extra=[fileExams.length>1?`시험 ${fileExams.length}개`:'', nKey?`정답 ${nKey}개`:'', filled.length?filled.join('·')+' 자동':''].filter(Boolean).join(', ');
@@ -2089,7 +2141,8 @@ async function doRegisterAnalyzedExam(){
     return;
   }
   const range=(document.getElementById('an-range')||{}).value||'';
-  const maxScore=parseInt((document.getElementById('an-max')||{}).value,10)||100;
+  // 만점은 배점 합계를 기본으로 (손으로 고쳤으면 그 값)
+  const maxScore=parseInt((document.getElementById('an-max')||{}).value,10)||rowsTotalPoints(probs)||100;
   const source=((document.getElementById('an-source')||{}).value||'').trim();
   try{
     // 고른 반마다 한 건씩 등록한다 (반별로 정오표·분석서가 따로 나와야 하므로)
@@ -2120,7 +2173,8 @@ async function doRegisterAnalyzedExam(){
 //   → ③ 학생 고르고 틀린 문제만 X로 → ④ 분석서(정오표+단원·능력·난이도별 정답률+풀이) 출력
 // ================================================================
 let anKind='내신';                      // 분석할 시험 종류
-let anTitleDraft='', anRangeDraft='', anMaxDraft='100', anSourceDraft='';   // 등록 폼에 쓴 값 (다시 그려도 유지)
+let anTitleDraft='', anRangeDraft='', anMaxDraft='100', anSourceDraft='';
+let anMaxTouched=false;   // 만점을 직접 고쳤으면 배점 합계로 덮어쓰지 않는다   // 등록 폼에 쓴 값 (다시 그려도 유지)
 let anRepExamId='', anRepStId='';       // 분석서 대상 시험 · 학생
 let anOX=null;                          // 문항별 정오 {번호:true(맞음)|false(틀림)}
 // [값, 버튼 라벨, 분석서 제목] — 큰 이벤트(내신·모의) 먼저, 그다음 수업 내 테스트(데일리), 교재 기출(기출)
@@ -2222,6 +2276,14 @@ function anTitleFrom(rows, source){
   const bigs=anUnitGroups(rows).map(g=>g.big).filter(b=>b && b!=='기타');
   if(!bigs.length) return kind;
   return kind+' - '+bigs.slice(0,2).join('·')+(bigs.length>2?' 외':'');
+}
+// 배점을 난이도 기준으로 다시 매긴다 (손으로 고친 값도 초기화된다)
+function doResetPoints(){
+  const rows=collectAnalysis();
+  rows.forEach(p=>{ p.points=defaultPoints(p,5); });
+  if(lastAnalysis) lastAnalysis.problems=rows;
+  renderAnalysis(lastAnalysis);
+  showToast('난이도로 배점을 다시 매겼어요 (객관 3·4·5 / 서술형 8)','success');
 }
 function anBig(p){ if(p.bigUnit) return String(p.bigUnit).trim(); const u=String(p.unit||'').split('>')[0]; return u.trim()||'기타'; }
 function anSmall(p){ if(p.smallUnit) return String(p.smallUnit).trim(); const parts=String(p.unit||'').split('>'); return parts.length>1?parts[1].trim():''; }
@@ -2325,8 +2387,9 @@ function anReportHtml(){
   const total=probs.length, correct=probs.filter(p=>ox[String(p.no)]).length;
   const wrongProbs=probs.filter(p=>!ox[String(p.no)]);
   const rate=Math.round(correct/total*100);
-  const maxScore=exam.maxScore||100;
-  const score=Math.round(correct/total*maxScore);
+  // 점수는 맞은 문항의 배점 합. 배점이 안 적혀 있으면 난이도로 매긴 값을 쓴다.
+  const sc=scoreFromOX(exam, ox);
+  const score=sc.score, maxScore=sc.total;
   const kindLbl=anKindTitle(exam.kind);
   const cell=(l,v,c)=>`<div style="flex:1;min-width:74px;text-align:center;background:${AN_C.bg};border-radius:10px;padding:9px 6px">
     <div style="font-size:11px;color:${AN_C.muted};margin-bottom:2px">${l}</div><div style="font-size:20px;font-weight:800;color:${c}">${v}</div></div>`;
@@ -2338,10 +2401,10 @@ function anReportHtml(){
       <div style="font-size:12px;color:${AN_C.muted};margin-top:3px">${anEsc(st.name)} 학생 · ${anEsc(anClsLabel(exam.className))}${exam.range?' · 범위 '+anEsc(exam.range):''}</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
-      ${cell('점수', score+'점', AN_C.pri)}${cell('정답률', rate+'%', rate>=80?AN_C.green:(rate>=50?AN_C.orange:AN_C.red))}
+      ${cell('점수', score+'/'+maxScore, AN_C.pri)}${cell('정답률', rate+'%', rate>=80?AN_C.green:(rate>=50?AN_C.orange:AN_C.red))}
       ${cell('맞은 문항', correct+'개', AN_C.green)}${cell('틀린 문항', (total-correct)+'개', AN_C.red)}${cell('전체', total+'문항', AN_C.muted)}
     </div>
-    <div style="font-size:11px;color:${AN_C.muted};margin-bottom:14px">점수는 문항 수 기준 환산값이에요 (배점이 다르면 참고용).</div>
+    <div style="font-size:11px;color:${AN_C.muted};margin-bottom:14px">점수는 맞은 문항의 배점을 더한 값이에요 (배점 합계 ${maxScore}점).</div>
 
     <div style="font-size:13px;font-weight:800;margin-bottom:6px">✅ 정오표</div>
     <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">
@@ -2358,7 +2421,7 @@ function anReportHtml(){
       <thead><tr style="background:${AN_C.bg}">
         <th style="padding:6px;border:1px solid ${AN_C.border};width:34px">번호</th>
         <th style="padding:6px;border:1px solid ${AN_C.border};text-align:left">출제 단원</th>
-        <th style="padding:6px;border:1px solid ${AN_C.border};width:44px">난이도</th>
+        <th style="padding:6px;border:1px solid ${AN_C.border};width:44px">난이도</th><th style="padding:6px;border:1px solid ${AN_C.border};width:38px">배점</th>
         <th style="padding:6px;border:1px solid ${AN_C.border};width:66px">출제 의도</th>
         <th style="padding:6px;border:1px solid ${AN_C.border};text-align:left">해결 방법</th>
         <th style="padding:6px;border:1px solid ${AN_C.border};width:38px">정답</th>
@@ -2371,6 +2434,7 @@ function anReportHtml(){
         <td style="padding:6px;border:1px solid ${AN_C.border};text-align:center;font-weight:800">${anEsc(n)}</td>
         <td style="padding:6px;border:1px solid ${AN_C.border}"><strong>${anEsc(anBig(p))}</strong>${anSmall(p)?`<div style="color:${AN_C.muted};font-size:11px">${anEsc(anSmall(p))}</div>`:''}</td>
         <td style="padding:6px;border:1px solid ${AN_C.border};text-align:center;font-weight:700;color:${anDiffColor(p.difficulty)}">${anEsc(p.difficulty||'-')}${p.isKiller?'<div style="font-size:9px;color:'+AN_C.red+'">⚡킬러</div>':''}</td>
+        <td style="padding:6px;border:1px solid ${AN_C.border};text-align:center">${probPoints(p, examChoices(exam))}</td>
         <td style="padding:6px;border:1px solid ${AN_C.border};text-align:center;font-size:11px">${anEsc(p.ability||'-')}${p.abilityDetail?`<div style="font-size:9.5px;color:${AN_C.muted}">${anEsc(p.abilityDetail)}</div>`:''}</td>
         <td style="padding:6px;border:1px solid ${AN_C.border};line-height:1.45">${anEsc(p.solution||'-')}</td>
         <td style="padding:6px;border:1px solid ${AN_C.border};text-align:center;font-weight:700">${anEsc(kv||'-')}</td>
@@ -2405,6 +2469,46 @@ function answerKeyFromAnalysis(e){
   });
   return out;
 }
+// 📐 배점 — 시험지에 배점이 안 적혀 있어서 난이도와 형식으로 매긴다.
+//   객관식: 하·중하 3점 / 중·중상 4점 / 상·최상 5점
+//   주관식(서술형): 8점 (보통 7~10점이라 가운데값. 문항마다 고치면 된다)
+const AN_POINTS={'하':3,'중하':3,'중':4,'중상':4,'상':5,'최상':5};
+const AN_POINTS_SUBJECTIVE=8;
+function defaultPoints(p, choices){
+  if(!omrIsChoice(p&&p.answer, choices||5)) return AN_POINTS_SUBJECTIVE;
+  return AN_POINTS[String((p&&p.difficulty)||'').trim()] || 4;
+}
+// 적어 둔 배점이 있으면 그걸, 없으면 난이도로 매긴 값
+function probPoints(p, choices){
+  const v=Number(p&&p.points);
+  return (isFinite(v)&&v>0) ? v : defaultPoints(p, choices);
+}
+// 만점을 배점 합계로 채운다. 직접 고친 적이 있으면 건드리지 않는다.
+//   시험지에 배점이 안 적혀 있어서, 100점이라는 값에도 근거가 없다.
+function anFillMax(rows){
+  const el=document.getElementById('an-max');
+  if(!el || anMaxTouched) return false;
+  const tot=rowsTotalPoints(rows); if(!(tot>0)) return false;
+  el.value=tot; anMaxDraft=String(tot);
+  return true;
+}
+function rowsTotalPoints(rows, choices){ return (rows||[]).reduce((a,p)=>a+probPoints(p, choices||5), 0); }
+// 만점을 배점 합계에 맞춘다 (직접 고친 적이 없을 때만 자동으로)
+function anSyncMax(tot){
+  const el=document.getElementById('an-max'); if(!el) return;
+  el.value=tot; anMaxDraft=String(tot); anMaxTouched=true;
+  renderAnalysis(lastAnalysis);
+  showToast(`만점을 ${tot}점으로 맞췄어요`,'success');
+}
+function examTotalPoints(e){ const ch=examChoices(e); return anProbs(e).reduce((a,p)=>a+probPoints(p,ch),0); }
+// 맞은 문항의 배점 합이 점수다 (문항 수로 환산하던 예전 방식은 배점이 섞이면 어긋난다)
+function scoreFromOX(e, ox){
+  const probs=anProbs(e); if(!probs.length) return {score:0, got:0, total:0};
+  const ch=examChoices(e);
+  const total=probs.reduce((a,p)=>a+probPoints(p,ch),0);
+  const got=probs.reduce((a,p)=>a+((ox&&ox[String(p.no)])?probPoints(p,ch):0),0);
+  return {score:got, got:got, total:total};
+}
 function examChoices(e){ const n=parseInt(e&&e.choices,10); return (n>=2&&n<=9)?n:5; }
 // 채점할 문항 번호 — 분석에서 읽은 번호가 있으면 그대로, 없으면 1..문항수
 function examNos(e){
@@ -2426,6 +2530,10 @@ function gradeOmr(key, ans){
   nos.forEach(n=>{
     const a=String(ans[n]==null?'':ans[n]).trim();
     if(!a){ blank.push(n); wrong.push(n); return; }        // 안 찍은 건 틀린 것으로
+    // 주관식은 O/X로 받는다. 정답을 옮겨 적기 어려워서 맞았는지만 표시하게 했다.
+    const ox=a.toUpperCase();
+    if(ox==='O'){ correct++; return; }
+    if(ox==='X'){ wrong.push(n); return; }
     if(a===String(key[n]).trim()) correct++; else wrong.push(n);
   });
   return { total:nos.length, correct, wrong, blank, rate: nos.length?Math.round(correct/nos.length*100):null };
@@ -2480,10 +2588,11 @@ function omrSheetHtml(exam){
     const obj = types[no]==='객관식';
     const body = obj
       ? `<div style="display:flex;gap:4px">${Array.from({length:ch},(_,i)=>`<span style="width:18px;height:18px;border:1.2px solid #64748B;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10px;color:#94A3B8">${circ[i]}</span>`).join('')}</div>`
-      : `<div style="height:20px;border:1.2px solid #64748B;border-radius:4px"></div>`;
+      : `<div style="display:flex;gap:6px">${['O','X'].map(v=>`<span style="width:22px;height:20px;border:1.2px solid #64748B;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#94A3B8">${v}</span>`).join('')}<span style="font-size:9px;color:#94A3B8;align-self:center">맞으면 O</span></div>`;
     return `<td style="padding:6px 7px;border:1px solid #CBD5E1;vertical-align:top;width:${Math.floor(100/COLS)}%">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
         <strong style="font-size:12.5px;min-width:20px">${anEsc(no)}</strong>
+        ${(function(){ const p=anProbs(exam).find(x=>String(x.no).trim()===String(no)); return p?`<span style="font-size:9px;color:#94A3B8">${probPoints(p,ch)}점</span>`:''; })()}
         <span style="font-size:9px;font-weight:700;color:${obj?'#2563EB':'#B45309'}">${obj?'객관식':'주관식'}</span>
       </div>${body}</td>`;
   };
@@ -2506,7 +2615,7 @@ function omrSheetHtml(exam){
       <div>이름 ${line}</div><div>반 ${line}</div><div>날짜 ${line}</div>
     </div>
     <table style="width:100%;border-collapse:collapse;table-layout:fixed"><tbody>${rows.join('')}</tbody></table>
-    <div style="font-size:11px;color:#64748B;margin-top:10px">객관식은 번호에 색칠하고, 주관식은 칸에 답을 적어주세요.</div>
+    <div style="font-size:11px;color:#64748B;margin-top:10px">객관식은 번호에, 주관식은 맞았으면 <strong>O</strong>·틀렸으면 <strong>X</strong>에 색칠해주세요.</div>
   </div>`;
 }
 function printOmrSheet(){
@@ -2675,7 +2784,7 @@ function examAnalysisTabHtml(){
       <div class="form-row-3">
         <div class="form-group"><label class="form-label">시험명</label><input class="form-input" id="an-title" value="${anEsc(anTitleDraft).replace(/"/g,'&quot;')}" oninput="anTitleDraft=this.value" placeholder="예: 2학기 중간고사 / 기출편 3회"></div>
         <div class="form-group"><label class="form-label">출제 범위 <span style="font-weight:400;color:var(--text-muted);font-size:11px">(중단원까지)</span></label><input class="form-input" id="an-range" value="${anEsc(anRangeDraft).replace(/"/g,'&quot;')}" oninput="anRangeDraft=this.value" placeholder="예: 집합 &gt; 집합의 포함관계까지"></div>
-        <div class="form-group"><label class="form-label">만점</label><input class="form-input" id="an-max" type="number" value="${anMaxDraft||100}" oninput="anMaxDraft=this.value"></div>
+        <div class="form-group"><label class="form-label">만점</label><input class="form-input" id="an-max" type="number" value="${anMaxDraft||100}" oninput="anMaxDraft=this.value;anMaxTouched=true"></div>
       </div>
       <div class="form-group"><label class="form-label">출처 <span style="font-weight:400;color:var(--text-muted);font-size:11px">(선택 · 어느 학교 몇 년도 시험인지 — 분석서에 같이 찍혀요)</span></label>
         <input class="form-input" id="an-source" value="${anEsc(anSourceDraft).replace(/"/g,'&quot;')}" oninput="anSourceDraft=this.value" placeholder="예: 2024 평촌고 1-2-1"></div>
@@ -2697,8 +2806,8 @@ function examAnalysisTabHtml(){
         <div style="margin-top:8px">
           <textarea class="form-textarea" id="an-paste" style="min-height:90px;font-size:12px;font-family:monospace" placeholder='[{"no":"1","bigUnit":"다항식","smallUnit":"인수분해","ability":"계산","difficulty":"중","intent":"...","solution":"..."}]'></textarea>
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px">
-            <input type="file" accept="application/json,.json,.txt" id="an-json" style="display:none" onchange="doLoadAnalysisFile(this)">
-            <button class="btn btn-outline btn-sm" onclick="document.getElementById('an-json').click()">📁 JSON 파일 열기</button>
+            <input type="file" accept="application/json,.json,.txt" id="an-json" multiple style="display:none" onchange="doLoadAnalysisFile(this)">
+            <button class="btn btn-outline btn-sm" onclick="document.getElementById('an-json').click()">📁 JSON 파일 열기 <span style="font-size:10px;opacity:.75">(여러 개 가능)</span></button>
             <span style="font-size:11px;color:var(--text-muted)">GPT가 만든 파일을 그대로 올려도 돼요</span>
           </div>
           <button class="btn btn-primary btn-sm" style="margin-top:6px" onclick="copyAnalysisPrompt()">📄 GPT에 넣을 지시서 복사</button>

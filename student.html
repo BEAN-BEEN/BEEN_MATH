@@ -764,6 +764,12 @@ function omrPick(examId, no, v){
   d[no] = (d[no]===v ? '' : v);
   renderGrades();
 }
+// 정답이 보기 번호면 객관식, 값이나 식이면 주관식 (선생님 화면과 같은 기준)
+function omrIsChoiceAns(ans, choices){
+  const v=String(ans==null?'':ans).trim();
+  if(!v) return true;
+  return /^[1-9]$/.test(v) && Number(v)<=choices;
+}
 function omrPadHtml(e){
   const nos=omrNos(e);
   if(!nos.length) return '';
@@ -781,8 +787,15 @@ function omrPadHtml(e){
     <div style="display:flex;flex-wrap:wrap;gap:6px">${nos.map(n=>`
       <div style="border:1px solid var(--border);border-radius:9px;padding:5px 7px;min-width:56px;text-align:center;background:var(--surface)">
         <div style="font-size:11px;font-weight:800;color:var(--text-sub);margin-bottom:3px">${n}</div>
-        <div style="display:flex;gap:2px;justify-content:center">${Array.from({length:ch},(_,k)=>{ const v=String(k+1); const on=String(d[n]||'')===v;
-          return `<button type="button" style="border:none;border-radius:6px;padding:2px 5px;font-size:12px;cursor:pointer;font-family:inherit;${on?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="omrPick('${e.id}','${String(n).replace(/'/g,'')}','${v}')">${circ[k]}</button>`;}).join('')}</div>
+        <div style="display:flex;gap:2px;justify-content:center">${(function(){
+      const key=(e&&e.answerKey)||{};
+      // 주관식은 답을 옮겨 적기 어려워서 O/X만 고르게 한다
+      const opts = omrIsChoiceAns(key[n], ch) ? Array.from({length:ch},(_,k)=>String(k+1)) : ['O','X'];
+      return opts.map(v=>{ const on=String(d[n]||'').toUpperCase()===v;
+          const lbl = /^[0-9]$/.test(v) ? circ[Number(v)-1] : v;
+      return `<button type="button" style="border:none;border-radius:6px;padding:2px 6px;font-size:12px;font-weight:${/^[0-9]$/.test(v)?'400':'800'};cursor:pointer;font-family:inherit;${on?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="omrPick('${e.id}','${String(n).replace(/'/g,'')}','${v}')">${lbl}</button>`;
+        }).join('');
+      })()}</div>
       </div>`).join('')}</div>
   </div>`;
 }
@@ -794,6 +807,10 @@ function gradeOmr(key, ans){
   nos.sort((a,b)=>(parseFloat(a)-parseFloat(b))||(a>b?1:-1));
   const wrong=[]; let correct=0;
   nos.forEach(n=>{ const a=String(ans[n]==null?'':ans[n]).trim();
+    // 주관식은 O/X로 받는다 — O면 맞음, X면 틀림
+    const ox=a.toUpperCase();
+    if(ox==='O'){ correct++; return; }
+    if(ox==='X'){ wrong.push(n); return; }
     if(a && a===String(key[n]).trim()) correct++; else wrong.push(n); });
   return { total:nos.length, correct, wrong, rate: nos.length?Math.round(correct/nos.length*100):null };
 }
