@@ -11,6 +11,7 @@ export default {
     try {
       if (url.pathname === '/api/login' && request.method === 'POST')     return await login(request, env);
       if (url.pathname === '/api/notify' && request.method === 'POST')   return await notify(request, env);
+      if (url.pathname === '/api/pushcheck')                             return await pushCheck(env);
       if (url.pathname === '/api/school')                                return await schoolApi(url, env);
     } catch (e) {
       return json({ error: e.message }, 500);
@@ -123,6 +124,57 @@ async function notify(request, env) {
   return json({ sent, failed: tokens.length - sent, total: tokens.length, invalid, errors: errors.slice(0, 10) });
 }
 
+// ----------------------------------------------------------------
+// 🔎 푸시 설정 점검 — 알림이 안 갈 때 '무엇이' 문제인지 보려고 만든 것
+//   비밀은 내보내지 않는다: 계정 이름 앞부분과 키 ID 끝 6자리만.
+//   그 6자리를 받아둔 JSON 파일과 맞춰보면 시크릿이 진짜 바뀌었는지 알 수 있다.
+//   가짜 토큰으로 한 번 찔러보므로 아무에게도 알림이 가지 않는다.
+// ----------------------------------------------------------------
+async function pushCheck(env) {
+  if (!env.FIREBASE_SERVICE_ACCOUNT) return json({ ok: false, why: 'FIREBASE_SERVICE_ACCOUNT 시크릿이 없어요' });
+  let sa;
+  try { sa = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT); }
+  catch (e) { return json({ ok: false, why: '시크릿이 JSON이 아니에요 — 받은 파일 내용을 통째로 넣었는지 보세요' }); }
+
+  const out = {
+    project: sa.project_id || '',
+    account: String(sa.client_email || '').split('@')[0],   // firebase-adminsdk-xxxxx (도메인은 뺀다)
+    keyIdTail: String(sa.private_key_id || '').slice(-6),
+    oauth: '', fcm: ''
+  };
+
+  let accessToken;
+  try { accessToken = await getAccessToken(sa); out.oauth = 'ok'; }
+  catch (e) { out.ok = false; out.oauth = String((e && e.message) || e); return json(out); }
+
+  let r, txt = '';
+  try {
+    r = await fetch(`https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: { token: 'pushcheck-not-a-real-token', notification: { title: 'x', body: 'x' } } })
+    });
+    txt = await r.text();
+  } catch (e) { out.ok = false; out.fcm = 'NETWORK ' + String((e && e.message) || e); return json(out); }
+
+  let code = 'UNKNOWN', msg = '';
+  try {
+    const j = JSON.parse(txt);
+    code = (j.error && j.error.status) || code;
+    msg = String((j.error && j.error.message) || '').slice(0, 300);
+    const det = (j.error && j.error.details) || [];
+    const fcmErr = det.find(d => String(d['@type'] || '').includes('FcmError'));
+    if (fcmErr && fcmErr.errorCode) code = fcmErr.errorCode;
+  } catch (e) {}
+
+  // 가짜 토큰을 '없는 토큰'이라고 거절하면 권한은 멀쩡하다는 뜻이다
+  out.ok = (code === 'UNREGISTERED' || code === 'INVALID_ARGUMENT');
+  out.fcm = code;
+  out.why = out.ok
+    ? '권한 정상 — 가짜 토큰이라 거절된 것뿐이에요. 실제 발송은 됩니다.'
+    : msg;
+  return json(out);
+}
 async function getAccessToken(sa, scope) {
   const now = Math.floor(Date.now() / 1000);
   const claim = {
