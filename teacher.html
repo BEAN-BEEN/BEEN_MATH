@@ -1805,26 +1805,38 @@ async function pdfSlice(file, rangeStr){
 function isPdfFile(f){ return !!f && ((f.type||'').toLowerCase()==='application/pdf' || /\.pdf$/i.test(f.name||'')); }
 // 한 파일에 여러 회차가 들어올 수 있다(계약의 exams 배열). 고른 회차만 표에 띄운다.
 let anFileExams=[], anFileIdx=0;
+let anFileDone=[];       // 이미 등록한 회차 (다시 등록하지 않게)
+let anClsDraft=[];       // 고른 반 — 표를 다시 그려도 유지된다
 function anPickFileExam(i){
   const ex=anFileExams[i]; if(!ex) return;
+  // 보고 있던 회차의 수정 내용을 먼저 담아둔다 (회차를 오가며 고쳐도 안 날아가게)
+  if(anFileIdx>=0 && anFileIdx!==i && anFileExams[anFileIdx] && lastAnalysis){
+    const cur=anFileExams[anFileIdx];
+    cur.problems=collectAnalysis();
+    const t0=document.getElementById('an-title'), r0=document.getElementById('an-range'), s0=document.getElementById('an-source');
+    if(t0) cur.title=t0.value; if(r0) cur.range=r0.value; if(s0) cur.source=s0.value;
+  }
   anFileIdx=i;
   lastAnalysis={ problems:ex.problems, summary:ex.summary||'' };
   anTitleDraft=ex.title||''; anRangeDraft=ex.range||anRangeFrom(ex.problems)||''; anSourceDraft=ex.source||'';
   const t=document.getElementById('an-title'), r=document.getElementById('an-range');
   const sc=document.getElementById('an-source');
   if(t) t.value=anTitleDraft; if(r) r.value=anRangeDraft; if(sc) sc.value=anSourceDraft;
-  anFillMax(ex.problems);               // 회차마다 문항 수가 달라 만점도 달라진다
   renderAnalysis(lastAnalysis);
 }
 function anFileExamsHtml(){
   if(anFileExams.length<2) return '';
   return `<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:9px 11px;margin-bottom:9px">
-    <div style="font-size:12px;font-weight:800;color:#1E40AF;margin-bottom:5px">📚 이 파일에 시험 ${anFileExams.length}개 — 등록할 회차를 고르세요</div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap">${anFileExams.map((e,i)=>`<button class="btn ${i===anFileIdx?'btn-primary':'btn-outline'} btn-sm" onclick="anPickFileExam(${i})">${anEsc(e.title||('시험 '+(i+1)))} <span style="opacity:.7">${(e.problems||[]).length}문항</span></button>`).join('')}</div>
+    <div style="font-size:12px;font-weight:800;color:#1E40AF;margin-bottom:5px">📚 시험 ${anFileExams.length}개 ${anFileDone.filter(Boolean).length?`· 등록 완료 ${anFileDone.filter(Boolean).length}개`:''} — 등록할 회차를 고르세요</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${anFileExams.map((e,i)=>`<button class="btn ${i===anFileIdx?'btn-primary':'btn-outline'} btn-sm" style="${anFileDone[i]?'opacity:.55':''}" onclick="anPickFileExam(${i})">${anFileDone[i]?'✓ ':''}${anEsc(e.title||('시험 '+(i+1)))} <span style="opacity:.7">${(e.problems||[]).length}문항</span></button>`).join('')}</div>
   </div>`;
 }
 function anCheckedCls(){ return [].slice.call(document.querySelectorAll('.an-class-chk')).filter(x=>x.checked).map(x=>x.value); }
-function anClsCount(){ const el=document.getElementById('an-cls-count'); if(el){ const n=anCheckedCls().length; el.textContent=n?`${n}개 반 선택됨`:''; } }
+function anClsCount(){
+  anClsDraft=anCheckedCls();                 // 표를 다시 그려도 고른 반이 남게
+  const el=document.getElementById('an-cls-count');
+  if(el) el.textContent=anClsDraft.length?`${anClsDraft.length}개 반 선택됨`:'';
+}
 function anToggleAllCls(){
   const all=[].slice.call(document.querySelectorAll('.an-class-chk'));
   const on=all.some(x=>!x.checked);            // 하나라도 안 켜져 있으면 전부 켠다
@@ -1847,7 +1859,7 @@ function renderAnalysis(data){
     <div style="margin-bottom:6px">${uComp}</div>
     <div style="margin-bottom:10px">${comp} ${AN_DIFFS.filter(d=>dCounts[d]).map(d=>`<span class="badge ${(d==='상'||d==='최상')?'b-red':((d==='하'||d==='중하')?'b-green':'b-yellow')}" style="margin:2px">난이도 ${d} ${dCounts[d]}문항</span>`).join('')}</div>
     <div class="table-wrap"><table>
-      <thead><tr><th style="width:44px">번호</th><th style="min-width:110px">대단원</th><th style="min-width:120px">중단원</th><th style="width:104px">출제 의도</th><th style="min-width:120px">세부 유형</th><th style="width:74px">난이도</th><th style="width:56px">배점</th><th style="min-width:180px">해결 방법</th></tr></thead>
+      <thead><tr><th style="width:44px">번호</th><th style="min-width:110px">대단원</th><th style="min-width:120px">중단원</th><th style="width:104px">출제 의도</th><th style="min-width:120px">세부 유형</th><th style="width:74px">난이도</th><th style="width:62px">가중치<div style="font-weight:400;font-size:9.5px;color:var(--text-muted)">→ 배점</div></th><th style="min-width:180px">해결 방법</th></tr></thead>
       <tbody>${probs.map((p,i)=>`<tr>
         <td><input class="form-input an-f" data-i="${i}" data-k="no" value="${anEsc(p.no||'').replace(/"/g,'&quot;')}" style="width:40px;padding:3px 5px;font-size:12px;text-align:center;font-weight:700"></td>
         <td><input class="form-input an-f" data-i="${i}" data-k="bigUnit" value="${anEsc(anBig(p)).replace(/"/g,'&quot;')}" style="width:100%;padding:3px 6px;font-size:12px"></td>
@@ -1856,20 +1868,19 @@ function renderAnalysis(data){
         <td title="${anEsc(p.abilityReason||'').replace(/"/g,'&quot;')}"><select class="form-select an-f" data-i="${i}" data-k="ability" style="width:100%;padding:3px 4px;font-size:12px">${anOptions(AN_ABILITIES, p.ability)}</select>${p.isKiller?'<div style="font-size:10px;color:var(--red);font-weight:800;margin-top:2px">⚡ 킬러</div>':''}</td>
         <td><input class="form-input an-f" data-i="${i}" data-k="abilityDetail" value="${anEsc(p.abilityDetail||'').replace(/"/g,'&quot;')}" style="width:100%;padding:3px 6px;font-size:11.5px" placeholder="세부 유형"></td>
         <td><select class="form-select an-f" data-i="${i}" data-k="difficulty" style="width:100%;padding:3px 4px;font-size:12px">${anOptions(AN_DIFFS, p.difficulty)}</select></td>
-        <td><input class="form-input an-f" data-i="${i}" data-k="points" type="number" min="0" step="0.5" value="${(p.points===''||p.points==null)?defaultPoints(p,5):p.points}" style="width:100%;padding:3px 4px;font-size:12px;text-align:center"></td>
+        <td><input class="form-input an-f" data-i="${i}" data-k="points" type="number" min="0" step="0.5" value="${(p.points===''||p.points==null)?defaultPoints(p,5):p.points}" style="width:100%;padding:3px 4px;font-size:12px;text-align:center">
+          <div style="font-size:9.5px;color:var(--text-muted);text-align:center;margin-top:1px">${showPoints(p, probs, anMaxNow(), 5)}점</div></td>
         <td><input class="form-input an-f" data-i="${i}" data-k="solution" value="${anEsc(p.solution||'').replace(/"/g,'&quot;')}" style="width:100%;padding:3px 6px;font-size:11.5px" placeholder="해결 방법"></td>
       </tr>`).join('')}</tbody>
     </table></div>
     <div style="font-size:11px;color:var(--text-muted);margin:8px 0">✏️ AI가 잘못 읽은 칸은 <strong>그 자리에서 고치면</strong> 그대로 저장돼요. 원본 사진·PDF는 저장하지 않으니 지우셔도 됩니다.</div>
-    ${(function(){ // 배점 합계 — 시험지에 배점이 없어 난이도로 매기니, 합이 만점과 맞는지 보여준다
-      const tot=rowsTotalPoints(probs);
-      const max=parseInt((document.getElementById('an-max')||{}).value,10)||100;
-      const same=Math.abs(tot-max)<0.001;
+    ${(function(){ // 시험지에 배점이 없다. 난이도를 가중치로 두고 만점에 맞춰 나눠준다.
+      const max=anMaxNow();
+      const w=rowsTotalWeight(probs);
       return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0;font-size:12px">
-        <span>배점 합계 <strong style="color:${same?'var(--green)':'var(--orange)'}">${tot}점</strong> <span style="color:var(--text-muted)">/ 만점 ${max}점</span></span>
-        ${same?'':`<span style="color:var(--orange);font-size:11px">합이 만점과 달라요</span>
-          <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px" onclick="anSyncMax(${tot})">만점을 ${tot}점으로</button>`}
-        <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px" onclick="doResetPoints()">난이도로 배점 다시 매기기</button>
+        <span>난이도 가중치 합 <strong>${w}</strong> → <strong style="color:var(--green)">만점 ${max}점</strong>에 맞춰 나눠요
+          <span style="color:var(--text-muted)">(가중치를 고치면 배점도 같이 움직여요)</span></span>
+        <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px" onclick="doResetPoints()">난이도로 다시 매기기</button>
       </div>`; })()}
     ${(function(){ const errs=anValidate(probs); if(!errs.length) return '';
       return `<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:10px;padding:10px 12px;margin:8px 0">
@@ -1886,7 +1897,7 @@ function renderAnalysis(data){
           <span id="an-cls-count" style="font-size:11px;color:var(--primary);font-weight:700"></span>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          ${CLASSES.map(c=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;border:1.5px solid var(--border);border-radius:7px;padding:6px 9px;cursor:pointer"><input type="checkbox" class="an-class-chk" value="${c.id}" onchange="anClsCount()"> ${anEsc(c.name)} <span style="color:var(--text-muted)">${clsDayLabel(c)+(c.slot||'')}</span></label>`).join('')}
+          ${CLASSES.map(c=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;border:1.5px solid var(--border);border-radius:7px;padding:6px 9px;cursor:pointer"><input type="checkbox" class="an-class-chk" value="${c.id}" ${anClsDraft.indexOf(c.id)>=0?'checked':''} onchange="anClsCount()"> ${anEsc(c.name)} <span style="color:var(--text-muted)">${clsDayLabel(c)+(c.slot||'')}</span></label>`).join('')}
         </div>
       </div>
       <button class="btn btn-green" onclick="doRegisterAnalyzedExam()">✅ 시험으로 등록</button>
@@ -1952,7 +1963,9 @@ function analysisPromptText(){
     '- difficultyBasis: 초기에는 predicted_rubric',
     '- isKiller: true 또는 false',
     '- solution: 핵심 풀이 방법 1~2문장. 필요한 좌표 설정, 조건식, 공식과 결론을 포함한다.',
+    '- answer: 객관식은 1~5의 번호 문자열, 주관식은 값 문자열',
     '- points: 배점. 시험지에 적혀 있을 때만 그 숫자를 쓴다. 없으면 빈 문자열로 두면 된다',
+    '         (없으면 사이트가 난이도로 가중치를 주고 만점 100점에 맞춰 나눈다)',
     '',
     '[시험 필드]',
     '- title: 시험 이름. <연도> <학교> <학년-학기-차수> <종류> 순서로 짧게 적는다.',
@@ -2027,7 +2040,7 @@ async function doLoadAnalysisFile(inp){
     exams.forEach(x=>{ if(!x.title) x.title=f.name.replace(/\.[^.]+$/,''); merged.push(x); });
   });
   if(!merged.length){ showToast('문항을 찾은 파일이 없어요 — 분석 결과 JSON이 맞는지 확인해주세요','error'); return; }
-  anFileExams=merged; anFileIdx=0;
+  anFileExams=merged; anFileDone=[]; anFileIdx=-1;   // -1이면 '보던 회차 없음' — 첫 회차를 덮지 않는다
   anPickFileExam(0);
   const tail=bad.length?` · ${bad.length}개는 못 읽었어요`:'';
   showToast(`파일 ${files.length}개에서 시험 ${merged.length}건을 불러왔어요 — 위에서 회차를 골라 등록하세요 📚${tail}`, bad.length?'warning':'success');
@@ -2084,13 +2097,12 @@ function doPasteAnalysis(){
       : '문항(problems)을 찾지 못했어요 — {"exams":[{"problems":[…]}]} 또는 {"problems":[…]} 형태여야 해요','error');
     return;
   }
-  anFileExams=fileExams; anFileIdx=0;
+  anFileExams=fileExams; anFileDone=[]; anFileIdx=0;
   const rows=fileExams[0].problems;
   lastAnalysis={ problems:rows, summary:fileExams[0].summary||'밖에서 정리한 분석을 가져왔어요.' };
   // 정답이 같이 왔으면 정답 입력칸에 미리 채워둡니다 (저장은 선생님이 확인 후)
   const gotKey={}; rows.forEach(p=>{ if(p.answer) gotKey[p.no]=p.answer; });
   if(Object.keys(gotKey).length){ akDraft=Object.assign({}, akDraft||{}, gotKey); }
-  const maxFilled=anFillMax(rows);      // 표의 '배점 합계 / 만점' 줄보다 먼저
   renderAnalysis(lastAnalysis);
   // 시험명·범위 자동 채우기 — GPT가 준 값이 있으면 그걸, 없으면 단원에서 뽑는다.
   // 이미 적어둔 값은 덮어쓰지 않는다.
@@ -2103,7 +2115,6 @@ function doPasteAnalysis(){
   const srcNow=sEl?sEl.value.trim():anSourceDraft;
   if(tEl && !tEl.value.trim()){ const v=gTitle||anTitleFrom(rows, srcNow); if(v){ tEl.value=v; anTitleDraft=v; filled.push('시험명'); } }
   if(rEl && !rEl.value.trim()){ const v=gRange||anRangeFrom(rows); if(v){ rEl.value=v; anRangeDraft=v; filled.push('범위'); } }
-  if(maxFilled) filled.push('만점');
   const nKey=rows.filter(p=>p.answer).length;
   const errs=anValidate(rows);
   const extra=[fileExams.length>1?`시험 ${fileExams.length}개`:'', nKey?`정답 ${nKey}개`:'', filled.length?filled.join('·')+' 자동':''].filter(Boolean).join(', ');
@@ -2141,8 +2152,7 @@ async function doRegisterAnalyzedExam(){
     return;
   }
   const range=(document.getElementById('an-range')||{}).value||'';
-  // 만점은 배점 합계를 기본으로 (손으로 고쳤으면 그 값)
-  const maxScore=parseInt((document.getElementById('an-max')||{}).value,10)||rowsTotalPoints(probs)||100;
+  const maxScore=anMaxNow();     // 기본 100점 — 난이도 가중치를 여기에 맞춰 나눈다
   const source=((document.getElementById('an-source')||{}).value||'').trim();
   try{
     // 고른 반마다 한 건씩 등록한다 (반별로 정오표·분석서가 따로 나와야 하므로)
@@ -2163,7 +2173,20 @@ async function doRegisterAnalyzedExam(){
       : `"${title}" 등록 완료!${keyMsg} 📋`, 'success');
     anTitleDraft=''; anRangeDraft=''; anSourceDraft='';   // 다음 회차를 이어서 넣도록 폼을 비운다
     anRepExamId=firstId; anRepStId=''; anOX=null;
-    rGrades();
+    // 여러 회차를 이어서 등록하는 중이면 목록을 지우지 않는다.
+    //   rGrades()가 화면을 다시 그리면서 표와 회차 목록이 통째로 사라지던 문제.
+    if(anFileExams.length) anFileDone[anFileIdx]=true;
+    const nextIdx=anFileExams.findIndex((x,i)=>!anFileDone[i]);
+    rGrades();                                            // 등록한 시험이 아래 목록에 나타나게
+    if(nextIdx>=0){
+      anFileIdx=-1;                                       // 방금 등록한 회차 값을 덮어쓰지 않게
+      anPickFileExam(nextIdx);
+      const nm=anFileExams[nextIdx].title||('시험 '+(nextIdx+1));
+      setTimeout(()=>showToast(`다음 회차 "${nm}" 을 띄웠어요 — 반을 고르고 등록하세요 📚`), 500);
+    } else if(anFileExams.length){
+      anFileExams=[]; anFileDone=[]; anFileIdx=0; lastAnalysis=null;
+      setTimeout(()=>showToast('불러온 회차를 모두 등록했어요 🎉','success'), 500);
+    }
   }catch(e){ showToast('등록 실패: '+e.message,'error'); }
 }
 
@@ -2278,12 +2301,13 @@ function anTitleFrom(rows, source){
   return kind+' - '+bigs.slice(0,2).join('·')+(bigs.length>2?' 외':'');
 }
 // 배점을 난이도 기준으로 다시 매긴다 (손으로 고친 값도 초기화된다)
+function anMaxNow(){ const v=parseInt((document.getElementById('an-max')||{}).value,10); return (v>0)?v:AN_MAX_DEFAULT; }
 function doResetPoints(){
   const rows=collectAnalysis();
-  rows.forEach(p=>{ p.points=defaultPoints(p,5); });
+  rows.forEach(p=>{ p.points=''; });      // 비우면 난이도 가중치를 다시 쓴다
   if(lastAnalysis) lastAnalysis.problems=rows;
   renderAnalysis(lastAnalysis);
-  showToast('난이도로 배점을 다시 매겼어요 (객관 3·4·5 / 서술형 8)','success');
+  showToast('난이도 가중치로 되돌렸어요 (객관 3·4·5 / 서술형 8 → 만점에 맞춰 환산)','success');
 }
 function anBig(p){ if(p.bigUnit) return String(p.bigUnit).trim(); const u=String(p.unit||'').split('>')[0]; return u.trim()||'기타'; }
 function anSmall(p){ if(p.smallUnit) return String(p.smallUnit).trim(); const parts=String(p.unit||'').split('>'); return parts.length>1?parts[1].trim():''; }
@@ -2434,7 +2458,7 @@ function anReportHtml(){
         <td style="padding:6px;border:1px solid ${AN_C.border};text-align:center;font-weight:800">${anEsc(n)}</td>
         <td style="padding:6px;border:1px solid ${AN_C.border}"><strong>${anEsc(anBig(p))}</strong>${anSmall(p)?`<div style="color:${AN_C.muted};font-size:11px">${anEsc(anSmall(p))}</div>`:''}</td>
         <td style="padding:6px;border:1px solid ${AN_C.border};text-align:center;font-weight:700;color:${anDiffColor(p.difficulty)}">${anEsc(p.difficulty||'-')}${p.isKiller?'<div style="font-size:9px;color:'+AN_C.red+'">⚡킬러</div>':''}</td>
-        <td style="padding:6px;border:1px solid ${AN_C.border};text-align:center">${probPoints(p, examChoices(exam))}</td>
+        <td style="padding:6px;border:1px solid ${AN_C.border};text-align:center">${probPoints(p, exam)}</td>
         <td style="padding:6px;border:1px solid ${AN_C.border};text-align:center;font-size:11px">${anEsc(p.ability||'-')}${p.abilityDetail?`<div style="font-size:9.5px;color:${AN_C.muted}">${anEsc(p.abilityDetail)}</div>`:''}</td>
         <td style="padding:6px;border:1px solid ${AN_C.border};line-height:1.45">${anEsc(p.solution||'-')}</td>
         <td style="padding:6px;border:1px solid ${AN_C.border};text-align:center;font-weight:700">${anEsc(kv||'-')}</td>
@@ -2469,45 +2493,47 @@ function answerKeyFromAnalysis(e){
   });
   return out;
 }
-// 📐 배점 — 시험지에 배점이 안 적혀 있어서 난이도와 형식으로 매긴다.
-//   객관식: 하·중하 3점 / 중·중상 4점 / 상·최상 5점
-//   주관식(서술형): 8점 (보통 7~10점이라 가운데값. 문항마다 고치면 된다)
+// 📐 배점 — 시험지에 배점이 안 적혀 있다.
+//   난이도는 '가중치'로만 쓰고, 실제 배점은 만점(기본 100점)에 맞춰 나눈다.
+//   그래야 회차마다 문항 수가 달라도 점수를 같은 자로 잴 수 있다.
+//   가중치 — 객관식: 하·중하 3 / 중·중상 4 / 상·최상 5, 주관식(서술형): 8
 const AN_POINTS={'하':3,'중하':3,'중':4,'중상':4,'상':5,'최상':5};
 const AN_POINTS_SUBJECTIVE=8;
-function defaultPoints(p, choices){
+const AN_MAX_DEFAULT=100;
+// 문항 하나의 가중치 (적어 둔 배점이 있으면 그게 곧 가중치다)
+function probWeight(p, choices){
+  const v=Number(p&&p.points);
+  if(isFinite(v)&&v>0) return v;
   if(!omrIsChoice(p&&p.answer, choices||5)) return AN_POINTS_SUBJECTIVE;
   return AN_POINTS[String((p&&p.difficulty)||'').trim()] || 4;
 }
-// 적어 둔 배점이 있으면 그걸, 없으면 난이도로 매긴 값
-function probPoints(p, choices){
-  const v=Number(p&&p.points);
-  return (isFinite(v)&&v>0) ? v : defaultPoints(p, choices);
+function rowsTotalWeight(rows, choices){ return (rows||[]).reduce((a,p)=>a+probWeight(p, choices||5), 0); }
+// 가중치를 만점으로 환산한 '진짜 배점'. 화면·답안지에 보여줄 때만 반올림한다.
+//   점수 계산은 반올림 전 값으로 해야 다 맞았을 때 정확히 만점이 된다.
+function scaledPoints(p, rows, max, choices){
+  const sum=rowsTotalWeight(rows, choices);
+  if(!(sum>0)) return 0;
+  return probWeight(p, choices) / sum * (max>0?max:AN_MAX_DEFAULT);
 }
-// 만점을 배점 합계로 채운다. 직접 고친 적이 있으면 건드리지 않는다.
-//   시험지에 배점이 안 적혀 있어서, 100점이라는 값에도 근거가 없다.
-function anFillMax(rows){
-  const el=document.getElementById('an-max');
-  if(!el || anMaxTouched) return false;
-  const tot=rowsTotalPoints(rows); if(!(tot>0)) return false;
-  el.value=tot; anMaxDraft=String(tot);
-  return true;
+// 보여줄 배점 — 소수 한 자리. 같은 난이도면 항상 같은 값이 나온다.
+function showPoints(p, rows, max, choices){ return Math.round(scaledPoints(p, rows, max, choices)*10)/10; }
+// 예전 이름 (분석 표에서 '난이도로 매긴 기본값'을 보여줄 때 씀)
+function defaultPoints(p, choices){ return probWeight(Object.assign({}, p, {points:''}), choices); }
+function examMaxScore(e){ const v=Number(e&&e.maxScore); return (isFinite(v)&&v>0)?v:AN_MAX_DEFAULT; }
+function probPoints(p, e){
+  if(Array.isArray(e)) return showPoints(p, e, AN_MAX_DEFAULT, 5);           // rows를 직접 준 경우
+  return showPoints(p, anProbs(e), examMaxScore(e), examChoices(e));
 }
-function rowsTotalPoints(rows, choices){ return (rows||[]).reduce((a,p)=>a+probPoints(p, choices||5), 0); }
-// 만점을 배점 합계에 맞춘다 (직접 고친 적이 없을 때만 자동으로)
-function anSyncMax(tot){
-  const el=document.getElementById('an-max'); if(!el) return;
-  el.value=tot; anMaxDraft=String(tot); anMaxTouched=true;
-  renderAnalysis(lastAnalysis);
-  showToast(`만점을 ${tot}점으로 맞췄어요`,'success');
-}
-function examTotalPoints(e){ const ch=examChoices(e); return anProbs(e).reduce((a,p)=>a+probPoints(p,ch),0); }
-// 맞은 문항의 배점 합이 점수다 (문항 수로 환산하던 예전 방식은 배점이 섞이면 어긋난다)
+function examTotalPoints(e){ return anProbs(e).length ? examMaxScore(e) : 0; }
+// 점수 = 맞은 문항의 가중치 몫 (만점 기준). 반올림은 마지막에 한 번만.
 function scoreFromOX(e, ox){
   const probs=anProbs(e); if(!probs.length) return {score:0, got:0, total:0};
-  const ch=examChoices(e);
-  const total=probs.reduce((a,p)=>a+probPoints(p,ch),0);
-  const got=probs.reduce((a,p)=>a+((ox&&ox[String(p.no)])?probPoints(p,ch):0),0);
-  return {score:got, got:got, total:total};
+  const ch=examChoices(e), max=examMaxScore(e);
+  const sum=probs.reduce((a,p)=>a+probWeight(p,ch),0);
+  if(!(sum>0)) return {score:0, got:0, total:max};
+  const gotW=probs.reduce((a,p)=>a+((ox&&ox[String(p.no)])?probWeight(p,ch):0),0);
+  const score=Math.round(gotW/sum*max);
+  return {score, got:score, total:max};
 }
 function examChoices(e){ const n=parseInt(e&&e.choices,10); return (n>=2&&n<=9)?n:5; }
 // 채점할 문항 번호 — 분석에서 읽은 번호가 있으면 그대로, 없으면 1..문항수
@@ -2592,7 +2618,7 @@ function omrSheetHtml(exam){
     return `<td style="padding:6px 7px;border:1px solid #CBD5E1;vertical-align:top;width:${Math.floor(100/COLS)}%">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
         <strong style="font-size:12.5px;min-width:20px">${anEsc(no)}</strong>
-        ${(function(){ const p=anProbs(exam).find(x=>String(x.no).trim()===String(no)); return p?`<span style="font-size:9px;color:#94A3B8">${probPoints(p,ch)}점</span>`:''; })()}
+        ${(function(){ const p=anProbs(exam).find(x=>String(x.no).trim()===String(no)); return p?`<span style="font-size:9px;color:#94A3B8">${probPoints(p,exam)}점</span>`:''; })()}
         <span style="font-size:9px;font-weight:700;color:${obj?'#2563EB':'#B45309'}">${obj?'객관식':'주관식'}</span>
       </div>${body}</td>`;
   };
