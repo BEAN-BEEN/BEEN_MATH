@@ -1736,6 +1736,7 @@ function rHomeworkHub(){
   ({homework:rHomework,wrong:rWrong,review:rReview})[hwTab]?.();
 }
 // 대시보드 → 숙제 관리의 특정 하위탭으로 바로 이동
+const NL_T='\n';   // 복사용 줄바꿈
 function goHw(tab){ hwTab=tab||'homework'; navigate('homework'); }
 function toggleMob(){document.getElementById('sidebar').classList.toggle('mob-open');document.getElementById('mobOverlay').classList.toggle('open');}
 function closeMob(){document.getElementById('sidebar').classList.remove('mob-open');document.getElementById('mobOverlay').classList.remove('open');}
@@ -3058,6 +3059,7 @@ function rDashboard(){
   const retryPendingSubs=subs.filter(s=>s.needsRetry);
   const retryPending=retryPendingSubs.length;
   const retryDoneCount=subs.filter(s=>s.retryResolved && !s.needsRetry).length;
+  const missingN=hwMissingCount();
   const todayDue=getAssignments().filter(a=>a.dueDate===today.toISOString().slice(0,10)).length;
   // 복습 집계 — 학생이 다 풀어 올렸지만(done) 선생님 확인 전(!checked)
   let reviewWaiting=0, reviewOngoing=0;
@@ -3085,12 +3087,15 @@ function rDashboard(){
       </div>
     </div>
     <div style="display:flex;flex-direction:column;gap:14px" id="dashMain">
+    ${dashMissingHtml()}
     <div class="card" style="border:2px solid var(--primary);background:linear-gradient(180deg,var(--primary-light),var(--surface));margin:0;order:9">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px">
         <div class="card-title" style="margin:0;font-size:17px">📚 숙제 · 오답 · 복습 <span style="font-size:12px;color:var(--text-muted);font-weight:400">— 빠짐없이 끝까지 챙겨요</span></div>
         <button class="btn btn-primary btn-sm" onclick="goHw('homework')">숙제 관리로 →</button>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px" id="hwHeroGrid">
+        <div onclick="goHw('homework')" style="cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center">
+          <div style="font-size:30px;font-weight:800;color:var(--red)">${missingN}</div><div style="font-size:12px;color:var(--text-sub);margin-top:2px">📮 미제출</div></div>
         <div onclick="goHw('homework')" style="cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center">
           <div style="font-size:30px;font-weight:800;color:var(--orange)">${unchecked}</div><div style="font-size:12px;color:var(--text-sub);margin-top:2px">📝 미확인 숙제</div></div>
         <div onclick="goHw('wrong')" style="cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center">
@@ -3782,7 +3787,7 @@ function rClassroom(){
 // ================================================================
 // HOMEWORK
 // ================================================================
-let hwOpenId=null, hwEditId=null, hwGroupBy='date', hwPeriod='week', hwBoardOpen=false;   // 기본은 최신 숙제부터(날짜순)
+let hwOpenId=null, hwEditId=null, hwGroupBy='date', hwPeriod='week', hwBoardOpen=true;   // 기본은 최신 숙제부터(날짜순)
 let hwSeasonId=null;   // 숙제 관리에서 보고 있는 시즌(null=현재 시즌, '__all'=전체 기간)
 // 숙제 관리에서 고른 시즌 — 없으면 오늘 속한 시즌, '__all'이면 전체
 function hwSelSeason(){ const list=getSeasons(); if(!list.length) return null; if(hwSeasonId==='__all') return null; return list.find(x=>x.id===hwSeasonId) || currentSeason(); }
@@ -3902,29 +3907,103 @@ async function doCheckAllOffline(aid){
     showToast(`${missing.length}명 전원 직접확인 완료 ✋`,'success'); rHomework();
   }catch(e){ showToast('실패: '+e.message,'error'); }
 }
+// 📮 미제출 목록 — 마감이 지난 것과 이번 주 것을 함께 본다.
+//   '이번 주'만 보면 지난주에 마감된 미제출이 조용히 사라진다. 그게 제일 급한 건데.
+//   마감 지난 것 먼저, 그다음 마감이 가까운 순.
+function hwMissingList(){
+  const today=new Date().toISOString().slice(0,10);
+  const mon=thisMonday();
+  return getAssignments()
+    .filter(a=>{
+      const st=a.startDate||a.createdAt||'', due=a.dueDate||'';
+      if(st && st>today) return false;                  // 아직 내주지도 않은 숙제는 미제출이 아니다
+      if(due && due<today) return true;                 // 마감 지남 — 언제 낸 숙제든 급하다
+      return (st&&st>=mon) || (due&&due>=mon);          // 이번 주
+    })
+    .map(a=>{
+      const subs=getSubsByAssignment(a.id), sts=hwStudents(a);
+      const missing=sts.filter(st=>!subs.find(x=>x.studentId===st.id));
+      return {a, missing, overdue:!!(a.dueDate && a.dueDate<today)};
+    })
+    .filter(x=>x.missing.length>0)
+    .sort((x,y)=>{
+      if(x.overdue!==y.overdue) return x.overdue?-1:1;
+      return String(x.a.dueDate||'9999').localeCompare(String(y.a.dueDate||'9999'));
+    });
+}
+function hwMissingCount(){ return hwMissingList().reduce((n,x)=>n+x.missing.length,0); }
+// 카톡에 그대로 붙여넣을 수 있는 줄 (푸시가 막혀 있어도 바로 독촉할 수 있게)
+function hwMissingText(x){
+  const due=x.a.dueDate?` (마감 ${x.a.dueDate}${x.overdue?' 지남':''})`:'';
+  return `[${x.a.className||''}] ${x.a.title||''}${due}` + NL_T + `아직 안 낸 사람: ${x.missing.map(st=>st.name).join(', ')}`;
+}
+function copyMissing(i){
+  const list=hwMissingList();
+  const txt = (i==null||i<0) ? list.map(hwMissingText).join(NL_T+NL_T) : (list[i]?hwMissingText(list[i]):'');
+  if(!txt){ showToast('복사할 미제출이 없어요','warning'); return; }
+  const done=()=>showToast('명단을 복사했어요 — 카톡에 붙여넣으세요 📋','success');
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, ()=>prompt('아래를 복사하세요', txt));
+    else prompt('아래를 복사하세요', txt);
+  }catch(e){ prompt('아래를 복사하세요', txt); }
+}
+// 📮 대시보드용 — 접지 않고 바로 보여준다. 빨리 보고 바로 다시 말해야 하니까.
+function dashMissingHtml(){
+  const list=hwMissingList();
+  const total=list.reduce((n,x)=>n+x.missing.length,0);
+  if(!total) return `<div class="card" style="margin:0;order:-2;border-left:4px solid var(--green)">
+    <div style="font-size:14px;font-weight:800;color:var(--green)">📮 숙제 미제출 없음 ✓</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-top:3px">이번 주 낼 숙제를 다 냈어요.</div></div>`;
+  const over=list.filter(x=>x.overdue).reduce((n,x)=>n+x.missing.length,0);
+  return `<div class="card" style="margin:0;order:-2;border:2px solid var(--red)">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <span style="font-size:16px;font-weight:800">📮 숙제 미제출</span>
+      <span class="badge b-red">${total}명</span>
+      ${over?`<span class="badge b-orange">마감 지남 ${over}명</span>`:''}
+      <button class="btn btn-outline btn-sm" style="margin-left:auto;padding:3px 9px;font-size:11px" onclick="copyMissing(-1)">📋 전체 명단 복사</button>
+      <button class="btn btn-primary btn-sm" style="padding:3px 9px;font-size:11px" onclick="goHw('homework')">숙제 관리로 →</button>
+    </div>
+    ${list.map((x,i)=>`<div style="border-top:1px solid var(--border);padding:9px 0">
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <span class="chip">${anEsc(x.a.className||'')}</span>
+        <strong style="font-size:13px">${anEsc(x.a.title||'')}</strong>
+        ${x.overdue?'<span class="badge b-red">마감 지남</span>':(x.a.dueDate?`<span style="font-size:11px;color:var(--text-muted)">~${x.a.dueDate}</span>`:'')}
+        <span class="badge b-orange">${x.missing.length}명</span>
+        <span style="margin-left:auto;display:flex;gap:5px">
+          <button class="btn btn-outline btn-sm" style="padding:2px 7px;font-size:11px" onclick="copyMissing(${i})">📋</button>
+          <button class="btn btn-orange btn-sm" style="padding:2px 7px;font-size:11px" onclick="doRemind('${x.a.classId}','${String(x.a.title||'').replace(/'/g,'')}')">🔔 독촉</button>
+        </span>
+      </div>
+      <div style="font-size:13px;color:var(--text-sub);margin-top:5px;line-height:1.7">${x.missing.map(st=>`<span style="display:inline-block;background:var(--red-light,#FEE2E2);color:var(--red);border-radius:6px;padding:1px 7px;margin-right:4px;font-weight:700;font-size:12px">${anEsc(st.name)}</span>`).join('')}</div>
+    </div>`).join('')}
+  </div>`;
+}
 // 🚨 이번 주 미제출 한눈에 (반·숙제별 미제출자 모아보기 + 독촉)
 function hwMissingBoardHtml(){
   const _t=new Date().toISOString().slice(0,10);
-  const items=getAssignments().filter(hwInWeek).map(a=>{ const subs=getSubsByAssignment(a.id), sts=hwStudents(a); return {a, missing:sts.filter(st=>!subs.find(s=>s.studentId===st.id))}; }).filter(x=>x.missing.length>0);
-  items.sort((x,y)=>{ const ox=(x.a.dueDate&&x.a.dueDate<_t)?0:1, oy=(y.a.dueDate&&y.a.dueDate<_t)?0:1; return ox-oy; });
+  const items=hwMissingList();      // 대시보드와 같은 목록 (마감 지난 것 + 이번 주)
   const total=items.reduce((n,x)=>n+x.missing.length,0);
   if(!hwBoardOpen){
     return `<div class="card" style="padding:11px 16px;margin-bottom:10px;cursor:pointer;display:flex;align-items:center;gap:8px" onclick="hwBoardOpen=true;rHomework()">
-      <span style="font-weight:700">🚨 이번 주 미제출 한눈에</span>
+      <span style="font-weight:700">📮 미제출 한눈에</span>
       ${total?`<span class="badge b-red">${total}건 (${items.length}개 숙제)</span>`:'<span class="badge b-green">없음 ✓</span>'}
       <span style="margin-left:auto;color:var(--text-muted);font-size:13px">펼치기 ▾</span></div>`;
   }
   return `<div class="card" style="margin-bottom:10px">
     <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="hwBoardOpen=false;rHomework()">
-      <span style="font-weight:700">🚨 이번 주 미제출 한눈에 ${total?`<span class="badge b-red">${total}건</span>`:''}</span>
+      <span style="font-weight:700">📮 미제출 한눈에 ${total?`<span class="badge b-red">${total}명</span>`:''}</span>
+      <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px;margin-left:8px" onclick="event.stopPropagation();copyMissing(-1)">📋 전체 명단 복사</button>
       <span style="color:var(--text-muted);font-size:13px">접기 ▴</span></div>
     ${items.length? items.map(x=>`<div style="border-top:1px solid var(--border);padding:9px 0">
         <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;align-items:center">
           <div><span class="chip">${x.a.className}</span> <strong style="margin-left:6px">${x.a.title}</strong> ${x.a.dueDate&&x.a.dueDate<_t?'<span class="badge b-red">마감 지남</span>':(x.a.dueDate?`<span style="font-size:11px;color:var(--text-muted)">~${x.a.dueDate}</span>`:'')}</div>
-          <button class="btn btn-orange btn-sm" onclick="doRemind('${x.a.classId}','${(x.a.title||'').replace(/'/g,'')}')">🔔 독촉</button>
+          <span style="display:flex;gap:5px">
+            <button class="btn btn-outline btn-sm" onclick="copyMissing(${items.indexOf(x)})">📋 명단</button>
+            <button class="btn btn-orange btn-sm" onclick="doRemind('${x.a.classId}','${(x.a.title||'').replace(/'/g,'')}')">🔔 독촉</button>
+          </span>
         </div>
         <div style="font-size:13px;color:var(--text-sub);margin-top:4px">미제출 <strong style="color:var(--red)">${x.missing.length}</strong>: ${x.missing.map(st=>st.name).join(', ')}</div>
-      </div>`).join('') : '<div style="padding:12px;color:var(--green);font-weight:700">이번 주 미제출이 없어요 🎉</div>'}
+      </div>`).join('') : '<div style="padding:12px;color:var(--green);font-weight:700">미제출이 없어요 🎉</div>'}
   </div>`;
 }
 function rHomework(){
