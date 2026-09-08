@@ -3791,11 +3791,47 @@ let hwOpenId=null, hwEditId=null, hwGroupBy='date', hwPeriod='week', hwBoardOpen
 let hwSeasonId=null;   // 숙제 관리에서 보고 있는 시즌(null=현재 시즌, '__all'=전체 기간)
 // 숙제 관리에서 고른 시즌 — 없으면 오늘 속한 시즌, '__all'이면 전체
 function hwSelSeason(){ const list=getSeasons(); if(!list.length) return null; if(hwSeasonId==='__all') return null; return list.find(x=>x.id===hwSeasonId) || currentSeason(); }
+// n주 전 월요일 (0=이번 주, -1=지난 주, -2=지지난 주)
+function weekMonday(n){
+  const d=new Date(); const dow=(d.getDay()+6)%7;
+  d.setDate(d.getDate()-dow+((n||0)*7));
+  const p=x=>String(x).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+}
 // 이번 주 월요일(YYYY-MM-DD)
-function thisMonday(){ const n=new Date(); const dow=(n.getDay()+6)%7; n.setDate(n.getDate()-dow); const p=x=>String(x).padStart(2,'0'); return `${n.getFullYear()}-${p(n.getMonth()+1)}-${p(n.getDate())}`; }
-// 기간 필터: 이번 주(이번 주 출제 or 마감 임박/이후) / 지난 숙제 / 전체
+function thisMonday(){ return weekMonday(0); }
 function hwInWeek(a){ const mon=thisMonday(); const s=a.startDate||a.createdAt||''; const d=a.dueDate||''; return (s&&s>=mon) || (d&&d>=mon); }
-function hwPeriodFilter(asgn){ if(hwPeriod==='all') return asgn; const wk=asgn.filter(hwInWeek); return hwPeriod==='week'?wk:asgn.filter(a=>!hwInWeek(a)); }
+// 이 숙제가 몇 주 전 것인가 — 0 이번 주, 1 지난 주, 2 지지난 주, 3 그 이전.
+//   기준은 출제일(내준 날). 마감일로 재면 한 숙제가 두 주에 걸쳐 양쪽에 나온다.
+function hwWeekAgo(a){
+  const d=hwDateOf(a); if(!d) return 3;
+  if(d>=weekMonday(0)) return 0;
+  if(d>=weekMonday(-1)) return 1;
+  if(d>=weekMonday(-2)) return 2;
+  return 3;
+}
+const HW_PERIODS=[['week','📌 이번 주',0],['last','🗓 지난 주',1],['last2','🗓 지지난 주',2],['old','🗂 그 이전',3],['all','전체',null]];
+function hwPeriodCount(asgn, w){ return w==null ? asgn.length : asgn.filter(a=>hwWeekAgo(a)===w).length; }
+function hwPeriodFilter(asgn){
+  if(hwPeriod==='all') return asgn;
+  const f=HW_PERIODS.find(x=>x[0]===hwPeriod);
+  const w=f?f[2]:0;
+  if(w===3) return asgn.filter(a=>hwWeekAgo(a)>=3);   // 그 이전은 전부 묶어서
+  return asgn.filter(a=>hwWeekAgo(a)===w);
+}
+// 고른 보기 방식을 기억한다 — 들어올 때마다 다시 누르지 않게
+const HW_PREF_KEY='bm_hwPref';
+function hwLoadPref(){
+  try{
+    const p=JSON.parse(localStorage.getItem(HW_PREF_KEY)||'{}');
+    if(HW_PERIODS.some(x=>x[0]===p.period)) hwPeriod=p.period;
+    if(['date','class','day'].indexOf(p.groupBy)>=0) hwGroupBy=p.groupBy;
+  }catch(e){}
+}
+function hwSavePref(){ try{ localStorage.setItem(HW_PREF_KEY, JSON.stringify({period:hwPeriod, groupBy:hwGroupBy})); }catch(e){} }
+function hwSetPeriod(v){ hwPeriod=v; hwSavePref(); rHomework(); }
+function hwSetGroup(v){ hwGroupBy=v; hwSavePref(); rHomework(); }
+hwLoadPref();
 // 숙제 목록 정렬: 그룹(반/요일) 기준 + 그룹 안에서 최신순
 // 숙제의 기준 날짜 = 출제일(내준 날). createdAt(등록한 시각)으로 정렬하면 나중에 만든 지난 숙제가 위로 올라와요.
 function hwDateOf(a){ return (a&&(a.startDate||a.createdAt||a.dueDate))||''; }
@@ -4073,22 +4109,21 @@ function rHomework(){
       </div>`:''}
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
         <span style="font-size:14px;font-weight:700;color:var(--text-sub)">📋 제출 현황</span>
-        <button class="btn btn-sm" style="${hwPeriod==='week'?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="hwPeriod='week';rHomework()">📌 이번 주 (${asgn.filter(hwInWeek).length})</button>
-        <button class="btn btn-sm" style="${hwPeriod==='past'?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="hwPeriod='past';rHomework()">🗂 지난 숙제 (${asgn.filter(a=>!hwInWeek(a)).length})</button>
-        <button class="btn btn-sm" style="${hwPeriod==='all'?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="hwPeriod='all';rHomework()">전체 (${asgn.length})</button>
+        ${HW_PERIODS.map(([v,lbl,w])=>{ const c=hwPeriodCount(asgn,w);
+          return `<button class="btn btn-sm" style="${hwPeriod===v?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-sub)'}${c?'':';opacity:.5'}" onclick="hwSetPeriod('${v}')">${lbl} (${c})</button>`; }).join('')}
         <button class="btn btn-outline btn-sm" onclick="openHwShot('')" title="학생에게 캡처해서 보낼 화면">📸 캡처용 보기</button>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <span style="font-size:12px;color:var(--text-muted)">묶음:</span>
         <div style="display:inline-flex;background:var(--bg);border-radius:9px;padding:3px">
-          <button class="btn btn-sm" style="${hwGroupBy==='date'?'background:var(--primary);color:#fff':'background:transparent;color:var(--text-muted)'}" onclick="hwGroupBy='date';rHomework()">📆 날짜순</button>
-          <button class="btn btn-sm" style="${hwGroupBy==='class'?'background:var(--primary);color:#fff':'background:transparent;color:var(--text-muted)'}" onclick="hwGroupBy='class';rHomework()">📚 반별</button>
-          <button class="btn btn-sm" style="${hwGroupBy==='day'?'background:var(--primary);color:#fff':'background:transparent;color:var(--text-muted)'}" onclick="hwGroupBy='day';rHomework()">📅 요일별</button>
+          <button class="btn btn-sm" style="${hwGroupBy==='date'?'background:var(--primary);color:#fff':'background:transparent;color:var(--text-muted)'}" onclick="hwSetGroup('date')">📆 날짜순</button>
+          <button class="btn btn-sm" style="${hwGroupBy==='class'?'background:var(--primary);color:#fff':'background:transparent;color:var(--text-muted)'}" onclick="hwSetGroup('class')">📚 반별</button>
+          <button class="btn btn-sm" style="${hwGroupBy==='day'?'background:var(--primary);color:#fff':'background:transparent;color:var(--text-muted)'}" onclick="hwSetGroup('day')">📅 요일별</button>
         </div>
-        <span style="font-size:12px;color:var(--text-muted)">· 최근 숙제부터</span>
+        <span style="font-size:12px;color:var(--text-muted)">· 최근 숙제부터 · 고른 방식은 다음에도 그대로예요</span>
       </div>
     </div>
-    ${hwPeriodFilter(asgn).length===0?`<div class="card" style="text-align:center;padding:30px;color:var(--text-muted)">${allAsgn.length===0?'아직 만든 과제가 없어요. 위에서 첫 과제를 만들어보세요!':(asgn.length===0?'이 시즌 구간에 낸 숙제가 없어요. 다른 시즌이나 ‘전체 시즌’을 눌러보세요.':(hwPeriod==='week'?'이번 주에 낸 숙제가 없어요. ‘지난 숙제’ 또는 ‘전체’를 눌러보세요.':'해당하는 숙제가 없어요.'))}</div>`:''}
+    ${hwPeriodFilter(asgn).length===0?`<div class="card" style="text-align:center;padding:30px;color:var(--text-muted)">${allAsgn.length===0?'아직 만든 과제가 없어요. 위에서 첫 과제를 만들어보세요!':(asgn.length===0?'이 시즌 구간에 낸 숙제가 없어요. 다른 시즌이나 ‘전체 시즌’을 눌러보세요.':`${(HW_PERIODS.find(x=>x[0]===hwPeriod)||['','이 기간'])[1].replace(/^\S+\s/,'')}에 낸 숙제가 없어요. 다른 주나 ‘전체’를 눌러보세요.`)}</div>`:''}
     ${(function(){let _o='',_lk=null;hwOrder(hwPeriodFilter(asgn)).forEach(function(a){const _k=hwGroupKey(a);if(_k!==_lk){_o+='<div class="sec-label">'+hwGroupHeader(_k)+'</div>';_lk=_k;}_o+=(function(a){
       const subs=getSubsByAssignment(a.id),sts=hwStudents(a),isOpen=hwOpenId===a.id;
       const missing=Math.max(0, sts.length-subs.length);
