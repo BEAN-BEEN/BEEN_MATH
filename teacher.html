@@ -2328,7 +2328,7 @@ function anLoadOX(){
   const exam=getExams().find(e=>e.id===anRepExamId);
   const sub=getExamSubs().find(s=>s.examId===anRepExamId && s.studentId===anRepStId);
   // 학생이 찍은 답이 있고 정답도 있으면 자동 채점 결과로 채웁니다
-  const key=(exam&&exam.answerKey)||{};
+  const key=examKey(exam);
   const ans=(sub&&sub.answers)||null;
   if(ans && Object.keys(key).length){
     const g=gradeOmr(key, ans);
@@ -2341,6 +2341,56 @@ function anLoadOX(){
   anOX={}; anProbs(exam).forEach(p=>{ anOX[String(p.no)] = !wrong.has(String(p.no)); });
 }
 function anPickExam(id){ anRepExamId=id; anOX=null; rGrades(); }
+// 반을 잘못 골라 등록하는 일이 잦다. 성적 관리 탭까지 안 가고 여기서 바로 고친다.
+async function anMoveExam(id, cid){
+  const e=getExams().find(x=>x.id===id); if(!e || !cid || cid===e.classId) return;
+  const cls=CLASSES.find(c=>c.id===cid); if(!cls) return;
+  const subs=getExamSubs().filter(x=>x.examId===id);
+  if(subs.length && !confirm(`이 시험에 이미 답안 ${subs.length}건이 있어요.` + String.fromCharCode(10) +
+     `반을 ${cls.name}으로 옮기면 그 답안은 새 반 학생 것이 아니라 그대로 남아요. 계속할까요?`)) return;
+  try{
+    await updateExam(id, { classId:cid, className:cls.name });
+    showToast(`"${e.title}" 를 ${anClsLabel(cls.name)}으로 옮겼어요`,'success');
+    rGrades();
+  }catch(err){ showToast('반 변경 실패: '+err.message,'error'); }
+}
+async function anSetMax100(id){
+  try{ await updateExam(id, { maxScore: AN_MAX_DEFAULT }); showToast('만점을 100점으로 맞췄어요 — 배점이 난이도 비율대로 다시 나뉘어요 📐','success'); rGrades(); }
+  catch(err){ showToast('실패: '+err.message,'error'); }
+}
+async function anDelExam(id){
+  const e=getExams().find(x=>x.id===id); if(!e) return;
+  const subs=getExamSubs().filter(x=>x.examId===id);
+  const warn = subs.length ? String.fromCharCode(10)+`학생 답안 ${subs.length}건도 같이 지워집니다.` : '';
+  if(!confirm(`"${e.title}" (${e.className||''}) 시험을 지울까요?`+warn)) return;
+  try{
+    await deleteExam(id);
+    if(anRepExamId===id){ anRepExamId=''; anRepStId=''; anOX=null; }
+    showToast('시험을 지웠어요','warning');
+    rGrades();
+  }catch(err){ showToast('삭제 실패: '+err.message,'error'); }
+}
+// 예전에 등록한 시험은 만점이 배점 합계(71점 같은)로 박혀 있다. 지금은 100점 기준이라 맞춰준다.
+//   배점 자체는 저장하지 않고 난이도 가중치로 그때그때 나누므로, 만점만 바꾸면 전부 다시 계산된다.
+function examsNeedingMax(){
+  return getExams().filter(e=>anProbs(e).length && Number(e.maxScore)!==AN_MAX_DEFAULT);
+}
+async function doFixMaxScores(){
+  const list=examsNeedingMax();
+  if(!list.length){ showToast('모든 시험이 이미 100점 만점이에요','success'); return; }
+  const lines=list.map(e=>`· ${e.title} (${e.className||''}) ${e.maxScore||'-'}점 → 100점`).join(String.fromCharCode(10));
+  if(!confirm(`시험 ${list.length}건의 만점을 100점으로 맞출까요?`+String.fromCharCode(10)+String.fromCharCode(10)+lines+String.fromCharCode(10)+String.fromCharCode(10)+'배점은 난이도 비율대로 다시 나뉘고, 이미 매긴 점수도 100점 기준으로 다시 계산돼요.')) return;
+  let done=0, failed=0;
+  for(const e of list){
+    try{ await updateExam(e.id, { maxScore: AN_MAX_DEFAULT }); done++; }catch(err){ failed++; }
+  }
+  showToast(`${done}건을 100점 만점으로 맞췄어요${failed?` · ${failed}건 실패`:''} 📐`, failed?'warning':'success');
+  rGrades();
+}
+// 이 시험을 학생이 답을 찍을 수 있는 상태인가 — 정답이 하나도 없으면 학생 화면에 입력칸이 안 뜬다
+function anExamReady(e){
+  return { keys:Object.keys(examKey(e)).length, students:getStudentsByClass(e.classId).filter(isActiveStudent).length };
+}
 function anPickStudent(id){ anRepStId=id; anOX=null; rGrades(); }
 function anToggleOX(no){
   no=String(no); if(!anOX) anLoadOX();
@@ -2419,19 +2469,25 @@ function anReportHtml(){
   if(!probs.length) return '<div style="padding:12px">채점할 문항이 없어요 (전부 범위 밖으로 표시됨).</div>';
   if(!anOX) anLoadOX();
   const ox=anOX;
-  const key=(exam.answerKey)||{};
+  const key=examKey(exam);
   const sub=getExamSubs().find(s=>s.examId===anRepExamId && s.studentId===anRepStId);
   const ans=(sub&&sub.answers)||{};
-  const guessed=guessedSet(sub);
-  // 찍어서 맞은 건 '아는 것'이 아니다. 점수는 그대로 두되 실질 정답률을 따로 낸다.
+  const guessed=guessedSet(sub), late=lateSet(sub);
+  const shaky=no=>guessed.has(no)||late.has(no);       // 찍었거나 시간 넘겨 푼 것
+  // 찍어서 맞은 건 '아는 것'이 아니다. 점수는 그대로 두되 실질 점수를 따로 낸다.
   const luckyProbs=probs.filter(p=>ox[String(p.no)] && guessed.has(String(p.no)));
-  const realCorrect=probs.filter(p=>ox[String(p.no)] && !guessed.has(String(p.no))).length;
+  const lateProbs=probs.filter(p=>ox[String(p.no)] && late.has(String(p.no)) && !guessed.has(String(p.no)));
+  const shakyProbs=probs.filter(p=>ox[String(p.no)] && shaky(String(p.no)));
+  const realCorrect=probs.filter(p=>ox[String(p.no)] && !shaky(String(p.no))).length;
   const total=probs.length, correct=probs.filter(p=>ox[String(p.no)]).length;
   const wrongProbs=probs.filter(p=>!ox[String(p.no)]);
   const rate=Math.round(correct/total*100);
   // 점수는 맞은 문항의 배점 합. 배점이 안 적혀 있으면 난이도로 매긴 값을 쓴다.
   const sc=scoreFromOX(exam, ox);
   const score=sc.score, maxScore=sc.total;
+  // 실질 점수 — 찍었거나 시간 넘겨 푼 문항을 틀린 것으로 놓고 같은 배점으로 다시 잰다
+  const oxReal={}; probs.forEach(p=>{ const k=String(p.no); oxReal[k]= !!ox[k] && !shaky(k); });
+  const realScore=scoreFromOX(exam, oxReal).score;
   const kindLbl=anKindTitle(exam.kind);
   const cell=(l,v,c)=>`<div style="flex:1;min-width:74px;text-align:center;background:${AN_C.bg};border-radius:10px;padding:9px 6px">
     <div style="font-size:11px;color:${AN_C.muted};margin-bottom:2px">${l}</div><div style="font-size:20px;font-weight:800;color:${c}">${v}</div></div>`;
@@ -2443,14 +2499,17 @@ function anReportHtml(){
       <div style="font-size:12px;color:${AN_C.muted};margin-top:3px">${anEsc(st.name)} 학생 · ${anEsc(anClsLabel(exam.className))}${exam.range?' · 범위 '+anEsc(exam.range):''}</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
-      ${cell('점수', score+'/'+maxScore, AN_C.pri)}${cell('정답률', rate+'%', rate>=80?AN_C.green:(rate>=50?AN_C.orange:AN_C.red))}
+      ${cell('점수', score+'/'+maxScore, AN_C.pri)}${shakyProbs.length?cell('실질 점수', realScore+'/'+maxScore, '#B45309'):''}${cell('정답률', rate+'%', rate>=80?AN_C.green:(rate>=50?AN_C.orange:AN_C.red))}
       ${cell('맞은 문항', correct+'개', AN_C.green)}${cell('틀린 문항', (total-correct)+'개', AN_C.red)}${cell('전체', total+'문항', AN_C.muted)}
     </div>
     <div style="font-size:11px;color:${AN_C.muted};margin-bottom:14px">점수는 맞은 문항의 배점을 더한 값이에요 (만점 ${maxScore}점).${skipped.length?` 범위 밖 ${skipped.length}문항은 아직 안 배운 단원이라 뺐어요.`:''}</div>
-    ${luckyProbs.length?`<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;margin-bottom:14px">
-      <div style="font-size:12.5px;font-weight:800;color:#B45309;margin-bottom:3px">🎲 찍어서 맞은 문항 ${luckyProbs.length}개 — ${luckyProbs.map(p=>anEsc(p.no)).join(', ')}번</div>
-      <div style="font-size:12px;color:#92400E;line-height:1.6">정답률은 ${rate}%지만, 찍은 걸 빼면 <strong>실질 ${Math.round(realCorrect/total*100)}%</strong>예요.
-        점수는 그대로 뒀어요(실제 시험도 맞은 건 맞은 거니까). 다만 이 문항들은 <strong>다시 풀어봐야</strong> 해요.</div>
+    ${shakyProbs.length?`<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;margin-bottom:14px">
+      ${luckyProbs.length?`<div style="font-size:12.5px;font-weight:800;color:#B45309;margin-bottom:3px">🎲 찍어서 맞은 문항 ${luckyProbs.length}개 — ${luckyProbs.map(p=>anEsc(p.no)).join(', ')}번</div>`:''}
+      ${lateProbs.length?`<div style="font-size:12.5px;font-weight:800;color:#6D28D9;margin-bottom:3px">⏱ 시간 넘겨서 푼 문항 ${lateProbs.length}개 — ${lateProbs.map(p=>anEsc(p.no)).join(', ')}번</div>`:''}
+      <div style="font-size:12px;color:#92400E;line-height:1.6">
+        받은 점수는 <strong>${score}점</strong>, 이 문항들을 빼고 다시 재면 <strong>실질 ${realScore}점</strong>이에요 (정답률 ${rate}% → ${Math.round(realCorrect/total*100)}%).
+        점수는 그대로 뒀어요 — 실제 시험도 맞은 건 맞은 거니까요. 다만 이 문항들은 <strong>다시 풀어봐야</strong> 합니다.
+        ${lateProbs.length?`<br>시간 안에 못 푼 게 ${lateProbs.length}개면 <strong>속도</strong>가 문제일 수 있어요 — 쉬운 문항부터 시간을 재고 푸는 연습이 필요해요.`:''}</div>
     </div>`:''}
 
     <div style="font-size:13px;font-weight:800;margin-bottom:6px">✅ 정오표</div>
@@ -2491,7 +2550,7 @@ function anReportHtml(){
         <td style="padding:6px;border:1px solid ${AN_C.border};line-height:1.45">${anEsc(p.solution||'-')}</td>
         <td style="padding:6px;border:1px solid ${AN_C.border};text-align:center;font-weight:700">${anEsc(kv||'-')}</td>
         <td style="padding:6px;border:1px solid ${AN_C.border};text-align:center;color:${okq?AN_C.text:AN_C.red};font-weight:700">${anEsc(av||'-')}</td>
-        <td style="padding:6px;border:1px solid ${AN_C.border};text-align:center;font-weight:800;color:${okq?AN_C.green:AN_C.red}">${okq?'O':'X'}${(okq&&guessed.has(n))?'<div style="font-size:9px;color:#B45309;font-weight:800">찍음</div>':''}</td>
+        <td style="padding:6px;border:1px solid ${AN_C.border};text-align:center;font-weight:800;color:${okq?AN_C.green:AN_C.red}">${okq?'O':'X'}${(okq&&guessed.has(n))?'<div style="font-size:9px;color:#B45309;font-weight:800">찍음</div>':''}${(okq&&late.has(n)&&!guessed.has(n))?'<div style="font-size:9px;color:#6D28D9;font-weight:800">시간↑</div>':''}</td>
       </tr>`; }).join('')}</tbody>
     </table>
 
@@ -2499,6 +2558,7 @@ function anReportHtml(){
       <div style="font-size:13px;font-weight:800;color:${AN_C.pri};margin-bottom:6px">🔎 종합 진단 — 다음에 무엇을 하면 될까요</div>
       ${anDiagnosis(probs, ox).map(t=>`<div style="font-size:12.5px;line-height:1.7;margin-bottom:3px">· ${t}</div>`).join('')}
       ${luckyProbs.length?`<div style="font-size:12.5px;line-height:1.7;margin-bottom:3px">· <b>찍어서 맞은 ${luckyProbs.length}문항</b>(${luckyProbs.map(p=>anEsc(p.no)).join(', ')}번)은 오답과 똑같이 다시 풀어보세요 — 다음엔 안 맞을 수 있어요.</div>`:''}
+      ${lateProbs.length?`<div style="font-size:12.5px;line-height:1.7;margin-bottom:3px">· <b>시간을 넘겨 푼 ${lateProbs.length}문항</b>(${lateProbs.map(p=>anEsc(p.no)).join(', ')}번) — 푸는 방법은 알아요. <b>속도</b>만 올리면 실제 점수가 ${score-realScore}점 오릅니다.</div>`:''}
     </div>
     ${exam.analysisSummary?`<div style="margin-top:12px;font-size:11.5px;color:${AN_C.muted};line-height:1.6">📊 시험지 총평: ${anEsc(exam.analysisSummary)}</div>`:''}
     <div style="margin-top:10px;font-size:10.5px;color:${AN_C.muted}">⚠️ 단원·능력·난이도·해결 방법은 AI 분석이라 가끔 부정확할 수 있어요. 선생님이 확인 후 사용해주세요.</div>
@@ -2514,10 +2574,20 @@ let akExamId='', akDraft=null;      // 정답 입력 중인 시험 / 편집 중�
 // 분석서 문항에 적힌 정답을 정답표 모양으로 바꾼다.
 //   분석서에 정답이 있는데 따로 또 입력하게 두면 자동 채점이 안 돌아간다.
 // 학생이 '찍었다'고 표시한 번호. 점수엔 안 넣고 '맞았지만 모르는 문제'를 짚는 데 쓴다.
-function guessedSet(sub){
+function nosSet(v){
   const o=new Set();
-  String((sub&&sub.guessedNos)||'').split(',').forEach(x=>{ const k=x.trim(); if(k) o.add(k); });
+  String(v||'').split(',').forEach(x=>{ const k=x.trim(); if(k) o.add(k); });
   return o;
+}
+function guessedSet(sub){ return nosSet(sub&&sub.guessedNos); }
+// 시험 시간이 지난 뒤에 푼 문항. 실제 시험이면 못 맞혔을 문제라 찍은 것과 같이 뺀다.
+function lateSet(sub){ return nosSet(sub&&sub.lateNos); }
+// 채점에 쓸 정답표 — 따로 저장해 둔 게 있으면 그걸, 없으면 분석서에 적힌 정답을 쓴다.
+//   예전에 등록한 시험은 answerKey가 비어 있어서 학생 화면에 답 입력칸이 통째로 안 떴다.
+//   분석서에 정답이 다 들어 있는데도 그랬다.
+function examKey(e){
+  const k=(e&&e.answerKey)||{};
+  return Object.keys(k).length ? k : answerKeyFromAnalysis(e);
 }
 function answerKeyFromAnalysis(e){
   const out={};
@@ -2605,7 +2675,7 @@ function examChoices(e){ const n=parseInt(e&&e.choices,10); return (n>=2&&n<=9)?
 function examNos(e){
   const probs=anProbs(e);
   if(probs.length) return probs.map(p=>String(p.no).trim()).filter(Boolean);
-  const key=(e&&e.answerKey)||{};
+  const key=examKey(e);
   const ks=Object.keys(key);
   if(ks.length) return ks.sort((a,b)=>(parseFloat(a)-parseFloat(b))||(a>b?1:-1));
   const n=parseInt((e&&e.qCount)||0,10);
@@ -2660,7 +2730,7 @@ function omrIsChoice(ans, choices){
   return /^[1-9]$/.test(v) && Number(v)<=choices;
 }
 function omrTypeMap(exam){
-  const key=(exam&&exam.answerKey)||{}, ch=examChoices(exam), byNo={};
+  const key=examKey(exam), ch=examChoices(exam), byNo={};
   anProbs(exam).forEach(p=>{ byNo[String(p.no).trim()]=String(p.answer==null?'':p.answer).trim(); });
   const out={};
   examNos(exam).forEach(no=>{
@@ -2916,19 +2986,43 @@ function examAnalysisTabHtml(){
     <div class="card" style="border-left:4px solid var(--green)">
       <div class="card-title">📋 ③ 학생별 분석서 만들기 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(정오표를 찍으면 분석서가 완성돼요)</span></div>
       ${withAn.length?`
+        ${examsNeedingMax().length?`<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:10px;padding:9px 11px;margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:12.5px;color:#9A3412">📐 만점이 100점이 아닌 시험이 <strong>${examsNeedingMax().length}건</strong> 있어요 (예전 방식으로 등록된 것)</span>
+          <button class="btn btn-orange btn-sm" style="margin-left:auto;padding:3px 9px;font-size:11px" onclick="doFixMaxScores()">전부 100점으로 맞추기</button>
+        </div>`:''}
         <div class="form-group"><label class="form-label">분석된 시험</label>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
-            ${withAn.map(e=>`<button class="btn ${e.id===anRepExamId?'btn-primary':'btn-outline'} btn-sm" onclick="anPickExam('${e.id}')">${(AN_KINDS.find(k=>k[0]===e.kind)||[,'📄'])[1].split(' ')[0]} ${anEsc(e.title)} <span style="opacity:.7">${anEsc(e.className||'')} · ${anProbs(e).length}문항</span></button>`).join('')}
+            ${withAn.map(e=>`<button class="btn ${e.id===anRepExamId?'btn-primary':'btn-outline'} btn-sm" onclick="anPickExam('${e.id}')">${(AN_KINDS.find(k=>k[0]===e.kind)||[,'📄'])[1].split(' ')[0]} ${anEsc(e.title)} <span style="opacity:.75;font-size:11px">${anEsc(e.className||'')}</span> <span style="opacity:.7">${anEsc(e.className||'')} · ${anProbs(e).length}문항</span></button>`).join('')}
           </div>
         </div>
-        ${exam?`<div class="form-group"><label class="form-label">학생 (${anEsc(exam.className||'')})</label>
+        ${exam?(function(){ const st=anExamReady(exam); return `
+        <div style="background:var(--bg);border-radius:10px;padding:9px 11px;margin-bottom:10px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="font-size:12px;color:var(--text-muted)">이 시험</span>
+            <strong style="font-size:13px">${anEsc(exam.title)}</strong>
+            <span style="font-size:12px;color:var(--text-muted)">반 바꾸기</span>
+            <select class="form-select" style="width:auto;padding:3px 8px;font-size:12px" onchange="anMoveExam('${exam.id}', this.value)">
+              ${CLASSES.map(c=>`<option value="${c.id}" ${c.id===exam.classId?'selected':''}>${anEsc(c.name)} (${getStudentsByClass(c.id).filter(isActiveStudent).length}명)</option>`).join('')}
+            </select>
+            <span style="font-size:12px;color:var(--text-muted)">만점</span>
+            <strong style="font-size:12px;color:${Number(exam.maxScore)===AN_MAX_DEFAULT?'var(--text)':'var(--orange)'}">${examMaxScore(exam)}점</strong>
+            ${Number(exam.maxScore)===AN_MAX_DEFAULT?'':`<button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px" onclick="anSetMax100('${exam.id}')">100점으로</button>`}
+            <button class="btn btn-red btn-sm" style="margin-left:auto;padding:2px 9px;font-size:11px" onclick="anDelExam('${exam.id}')">🗑 시험 지우기</button>
+          </div>
+          <div style="font-size:11.5px;margin-top:6px;color:${(st.keys&&st.students)?'var(--green)':'var(--orange)'}">
+            ${st.keys&&st.students
+              ? `✅ 학생 ${st.students}명이 성적 탭에서 답을 찍을 수 있어요 (정답 ${st.keys}개 등록됨)`
+              : `⚠️ ${!st.students?'이 반에 재원 학생이 없어요 — 반을 바꿔주세요. ':''}${!st.keys?'정답이 하나도 없어서 학생 화면에 답 입력칸이 안 떠요.':''}`}
+          </div>
+        </div>
+        <div class="form-group"><label class="form-label">학생 (${anEsc(exam.className||'')})</label>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
             ${sts.length?sts.map(s=>{ const done=getExamSubs().some(x=>x.examId===exam.id&&x.studentId===s.id&&x.wrongNos!=null);
               return `<button class="btn ${s.id===anRepStId?'btn-primary':'btn-outline'} btn-sm" onclick="anPickStudent('${s.id}')">${done?'✅ ':''}${anEsc(s.name)}</button>`; }).join('')
               :'<span style="font-size:13px;color:var(--text-muted)">이 반에 학생이 없어요</span>'}
           </div>
           ${assistantOnlyNote(hiddenAn)}
-        </div>`:''}
+        </div>`; })():''}
         <div id="anrep">${anReportPanelHtml()}</div>
       `:`<div style="color:var(--text-muted);padding:12px;font-size:13px">아직 분석된 시험이 없어요. 위에서 시험지를 올려 분석한 뒤 <strong>시험으로 등록</strong>하면 여기에 나타나요.</div>`}
     </div>`;

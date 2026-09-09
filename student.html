@@ -754,6 +754,7 @@ function getExams(){
 //    선생님이 정답을 넣어둔 시험에만 나옵니다.
 let OMR_DRAFT={};   // {examId:{번호:답}}
 let OMR_GUESS={};   // {examId:{번호:true}} — 찍어서 답한 문항
+let OMR_LATE={};    // {examId:{번호:true}} — 시험 시간이 지난 뒤에 푼 문항
 // 📐 배점 — 선생님 화면과 같은 규칙. 난이도를 가중치로 두고 만점에 맞춰 나눈다.
 //   같은 시험인데 학생과 선생님이 다른 점수를 보면 안 되므로 계산을 맞춰둔다.
 const S_POINTS={'하':3,'중하':3,'중':4,'중상':4,'상':5,'최상':5};
@@ -775,8 +776,22 @@ function sScore(e, g){
   probs.forEach(p=>{ const w=sProbWeight(p,ch); sum+=w; if(!wrong.has(String(p.no).trim())) got+=w; });
   return sum>0 ? Math.round(got/sum*max) : null;
 }
+// 채점에 쓸 정답표 — 선생님이 따로 넣어둔 게 있으면 그걸, 없으면 시험지 분석에 적힌 정답.
+//   선생님 화면과 같은 규칙. 예전 시험은 answerKey가 비어 있어 답 입력칸이 안 떴다.
+function examKey(e){
+  const k=(e&&e.answerKey)||{};
+  if(Object.keys(k).length) return k;
+  const out={};
+  ((e&&Array.isArray(e.analysis))?e.analysis:[]).forEach(p=>{
+    if(p&&p.outOfRange) return;                    // 범위 밖은 채점하지 않는다
+    const no=String((p&&p.no)==null?'':p.no).trim();
+    const a=String((p&&p.answer)==null?'':p.answer).trim();
+    if(no&&a) out[no]=a;
+  });
+  return out;
+}
 function omrNos(e){
-  const key=(e&&e.answerKey)||{};
+  const key=examKey(e);
   return Object.keys(key).filter(n=>String(key[n]||'').trim())
     .sort((a,b)=>(parseFloat(a)-parseFloat(b))||(a>b?1:-1));
 }
@@ -784,12 +799,18 @@ function omrChoices(e){ const n=parseInt(e&&e.choices,10); return (n>=2&&n<=9)?n
 function omrPick(examId, no, v){
   const d=OMR_DRAFT[examId]=OMR_DRAFT[examId]||{};
   d[no] = (d[no]===v ? '' : v);
-  if(!d[no]){ const gm=OMR_GUESS[examId]; if(gm) delete gm[no]; }   // 답을 지우면 찍음 표시도 지운다
+  if(!d[no]){ const gm=OMR_GUESS[examId]; if(gm) delete gm[no]; const lm=OMR_LATE[examId]; if(lm) delete lm[no]; }   // 답을 지우면 표시도 같이 지운다
   renderGrades();
 }
 // 확실하지 않은데 답한 문항. 점수는 그대로 두고, 선생님이 '맞았지만 모르는 문제'를 볼 수 있게 한다.
 function omrGuess(examId, no){
   const g=OMR_GUESS[examId]=OMR_GUESS[examId]||{};
+  if(g[no]) delete g[no]; else g[no]=true;
+  renderGrades();
+}
+// 시간 안에 못 풀고 나중에 푼 문항. 실제 시험이면 못 맞혔을 문제라 찍은 것과 같이 다룬다.
+function omrLate(examId, no){
+  const g=OMR_LATE[examId]=OMR_LATE[examId]||{};
   if(g[no]) delete g[no]; else g[no]=true;
   renderGrades();
 }
@@ -806,22 +827,27 @@ function omrPadHtml(e){
   const sub=S_EXAMSUBS.find(s=>s.examId===e.id);
   const saved=(sub&&sub.answers)||{};
   const d=OMR_DRAFT[e.id]||(OMR_DRAFT[e.id]=Object.assign({},saved));
-  const sg=OMR_GUESS[e.id]||(OMR_GUESS[e.id]=(function(){ const o={}; String((sub&&sub.guessedNos)||'').split(',').forEach(x=>{ const k=x.trim(); if(k) o[k]=true; }); return o; })());
+  const mk=(v)=>{ const o={}; String(v||'').split(',').forEach(x=>{ const k=x.trim(); if(k) o[k]=true; }); return o; };
+  const sg=OMR_GUESS[e.id]||(OMR_GUESS[e.id]=mk(sub&&sub.guessedNos));
+  const sl=OMR_LATE[e.id]||(OMR_LATE[e.id]=mk(sub&&sub.lateNos));
   const done=nos.filter(n=>String(d[n]||'').trim()).length;
   const guessN=nos.filter(n=>sg[n]).length;
+  const lateN=nos.filter(n=>sl[n]).length;
   return `<div style="background:var(--bg);border-radius:12px;padding:12px;margin-top:10px">
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
       <span style="font-size:14px;font-weight:800">🅰️ 답 찍기</span>
       <span class="badge ${done===nos.length?'b-green':'b-yellow'}">${done}/${nos.length}</span>
       <span style="font-size:11px;color:var(--text-muted)">종이에 표시한 대로 눌러주세요</span>
       ${guessN?`<span class="badge b-yellow">찍음 ${guessN}</span>`:''}
-      <span style="font-size:11px;color:var(--text-muted);width:100%">확실하지 않고 찍은 문제는 <strong>찍</strong>을 눌러주세요. 점수는 그대로예요 — 나중에 그 문제만 다시 볼 수 있게요.</span>
+      ${lateN?`<span class="badge b-yellow">시간 넘김 ${lateN}</span>`:''}
+      <span style="font-size:11px;color:var(--text-muted);width:100%">확실하지 않고 <strong>찍은</strong> 문제는 <strong>찍</strong>, 시험 <strong>시간이 지난 뒤에</strong> 푼 문제는 <strong>⏱</strong>을 눌러주세요.
+        점수는 그대로예요 — 실제 시험처럼 다시 재본 점수를 따로 보여드려요.</span>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:6px">${nos.map(n=>`
       <div style="border:1px solid var(--border);border-radius:9px;padding:5px 7px;min-width:56px;text-align:center;background:var(--surface)">
         <div style="font-size:11px;font-weight:800;color:var(--text-sub);margin-bottom:3px">${n}</div>
         <div style="display:flex;gap:2px;justify-content:center">${(function(){
-      const key=(e&&e.answerKey)||{};
+      const key=examKey(e);
       // 주관식은 답을 옮겨 적기 어려워서 O/X만 고르게 한다
       const opts = omrIsChoiceAns(key[n], ch) ? Array.from({length:ch},(_,k)=>String(k+1)) : ['O','X'];
       return opts.map(v=>{ const on=String(d[n]||'').toUpperCase()===v;
@@ -829,7 +855,10 @@ function omrPadHtml(e){
       return `<button type="button" style="border:none;border-radius:6px;padding:2px 6px;font-size:12px;font-weight:${/^[0-9]$/.test(v)?'400':'800'};cursor:pointer;font-family:inherit;${on?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="omrPick('${e.id}','${String(n).replace(/'/g,'')}','${v}')">${lbl}</button>`;
         }).join('');
       })()}</div>
-        <button type="button" title="찍어서 답했어요" style="margin-top:3px;border:none;border-radius:5px;padding:1px 6px;font-size:10px;font-weight:800;cursor:pointer;font-family:inherit;${sg[n]?'background:var(--orange,#F59E0B);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="omrGuess('${e.id}','${String(n).replace(/'/g,'')}')">찍</button>
+        <div style="display:flex;gap:3px;justify-content:center;margin-top:3px">
+          <button type="button" title="찍어서 답했어요" style="border:none;border-radius:5px;padding:1px 6px;font-size:10px;font-weight:800;cursor:pointer;font-family:inherit;${sg[n]?'background:var(--orange,#F59E0B);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="omrGuess('${e.id}','${String(n).replace(/'/g,'')}')">찍</button>
+          <button type="button" title="시험 시간이 지난 뒤에 풀었어요" style="border:none;border-radius:5px;padding:1px 6px;font-size:10px;font-weight:800;cursor:pointer;font-family:inherit;${sl[n]?'background:#8B5CF6;color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="omrLate('${e.id}','${String(n).replace(/'/g,'')}')">⏱</button>
+        </div>
       </div>`).join('')}</div>
   </div>`;
 }
@@ -852,7 +881,7 @@ async function submitExamAnswer(examId){
   const e = S_EXAMS.find(x=>x.id===examId);
   const answers = Object.assign({}, OMR_DRAFT[examId]||{});
   Object.keys(answers).forEach(k=>{ if(!String(answers[k]||'').trim()) delete answers[k]; });
-  const key=(e&&e.answerKey)||{};
+  const key=examKey(e);
   const hasKey=Object.keys(key).length>0;
   const g=hasKey?gradeOmr(key, answers):null;
   const max=(e&&e.maxScore)||100;
@@ -863,7 +892,9 @@ async function submitExamAnswer(examId){
     score: sScore(e, g),
     wrongNos: g ? g.wrong.join(', ') : '',
     // 찍어서 답한 문항 — 점수엔 안 넣고, 맞았어도 다시 봐야 할 문제로 남긴다
-    guessedNos: Object.keys(OMR_GUESS[examId]||{}).filter(k=>String(answers[k]||'').trim()).join(', ')
+    guessedNos: Object.keys(OMR_GUESS[examId]||{}).filter(k=>String(answers[k]||'').trim()).join(', '),
+    // 시험 시간이 지난 뒤에 푼 문항 — 실제 시험이면 못 맞혔을 문제
+    lateNos: Object.keys(OMR_LATE[examId]||{}).filter(k=>String(answers[k]||'').trim()).join(', ')
   };
   const exist=S_EXAMSUBS.find(x=>x.examId===examId);
   if(exist) await db.collection('examSubs').doc(exist.id).update(base);
