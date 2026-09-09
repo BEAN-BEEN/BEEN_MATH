@@ -1860,12 +1860,14 @@ function renderAnalysis(data){
     <div style="margin-bottom:6px">${uComp}</div>
     <div style="margin-bottom:10px">${comp} ${AN_DIFFS.filter(d=>dCounts[d]).map(d=>`<span class="badge ${(d==='상'||d==='최상')?'b-red':((d==='하'||d==='중하')?'b-green':'b-yellow')}" style="margin:2px">난이도 ${d} ${dCounts[d]}문항</span>`).join('')}</div>
     <div class="table-wrap"><table>
-      <thead><tr><th style="width:44px">번호</th><th style="min-width:110px">대단원</th><th style="min-width:120px">중단원</th><th style="width:52px">범위<div style="font-weight:400;font-size:9.5px;color:var(--text-muted)">밖</div></th><th style="width:104px">출제 의도</th><th style="min-width:120px">세부 유형</th><th style="width:74px">난이도</th><th style="width:62px">가중치<div style="font-weight:400;font-size:9.5px;color:var(--text-muted)">→ 배점</div></th><th style="min-width:180px">해결 방법</th></tr></thead>
+      <thead><tr><th style="width:44px">번호</th><th style="min-width:110px">대단원</th><th style="min-width:120px">중단원</th><th style="width:78px">형식</th><th style="width:52px">범위<div style="font-weight:400;font-size:9.5px;color:var(--text-muted)">밖</div></th><th style="width:104px">출제 의도</th><th style="min-width:120px">세부 유형</th><th style="width:74px">난이도</th><th style="width:62px">가중치<div style="font-weight:400;font-size:9.5px;color:var(--text-muted)">→ 배점</div></th><th style="min-width:180px">해결 방법</th></tr></thead>
       <tbody>${probs.map((p,i)=>`<tr>
         <td><input class="form-input an-f" data-i="${i}" data-k="no" value="${anEsc(p.no||'').replace(/"/g,'&quot;')}" style="width:40px;padding:3px 5px;font-size:12px;text-align:center;font-weight:700"></td>
         <td><input class="form-input an-f" data-i="${i}" data-k="bigUnit" value="${anEsc(anBig(p)).replace(/"/g,'&quot;')}" style="width:100%;padding:3px 6px;font-size:12px"></td>
         <td><input class="form-input an-f" data-i="${i}" data-k="smallUnit" list="anu-${i}" value="${anEsc(anSmall(p)).replace(/"/g,'&quot;')}" style="width:100%;padding:3px 6px;font-size:12px" placeholder="중단원">
           ${(function(){ const u=anUnitsOf(anBig(p)); return u.length?`<datalist id="anu-${i}">${u.map(x=>`<option value="${anEsc(x)}">`).join('')}</datalist>`:''; })()}</td>
+        <td><select class="form-select an-f" data-i="${i}" data-k="qType" onchange="anRefreshTable()" style="width:100%;padding:3px 4px;font-size:11.5px" title="주관식으로 두면 학생은 맞음·틀림(O/X)만 고릅니다">
+          ${AN_QTYPES.map(t=>`<option value="${t}" ${(p.qType||'')===t?'selected':''}>${t||('자동 · '+probType(p,null,5))}</option>`).join('')}</select></td>
         <td style="text-align:center"><input type="checkbox" class="an-f" data-i="${i}" data-k="outOfRange" ${p.outOfRange?'checked':''} onchange="anRefreshTable()" title="진도가 안 나간 단원이면 켜세요 — 점수·정답률에서 빠집니다"></td>
         <td title="${anEsc(p.abilityReason||'').replace(/"/g,'&quot;')}"><select class="form-select an-f" data-i="${i}" data-k="ability" style="width:100%;padding:3px 4px;font-size:12px">${anOptions(AN_ABILITIES, p.ability)}</select>${p.isKiller?'<div style="font-size:10px;color:var(--red);font-weight:800;margin-top:2px">⚡ 킬러</div>':''}</td>
         <td><input class="form-input an-f" data-i="${i}" data-k="abilityDetail" value="${anEsc(p.abilityDetail||'').replace(/"/g,'&quot;')}" style="width:100%;padding:3px 6px;font-size:11.5px" placeholder="세부 유형"></td>
@@ -1884,6 +1886,8 @@ function renderAnalysis(data){
           ${probs.length-scoredProbs(probs).length?`<span style="color:var(--orange);font-weight:700">· 범위 밖 ${probs.length-scoredProbs(probs).length}문항 제외</span>`:''}
           <span style="color:var(--text-muted)">(가중치를 고치면 배점도 같이 움직여요)</span></span>
         <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px" onclick="doResetPoints()">난이도로 다시 매기기</button>
+        <span style="font-size:11px;color:var(--text-muted)">· 주관식은 뒤에 몰려 있죠</span>
+        ${[0,1,2,3,4].map(k=>`<button class="btn btn-outline btn-sm" style="padding:2px 7px;font-size:11px" onclick="anTailSubjective(${k})">${k?`뒤 ${k}문항`:'전부 객관식'}</button>`).join('')}
       </div>`; })()}
     ${(function(){ const errs=anValidate(probs); if(!errs.length) return '';
       return `<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:10px;padding:10px 12px;margin:8px 0">
@@ -1966,6 +1970,8 @@ function analysisPromptText(){
     '- difficultyBasis: 초기에는 predicted_rubric',
     '- isKiller: true 또는 false',
     '- solution: 핵심 풀이 방법 1~2문장. 필요한 좌표 설정, 조건식, 공식과 결론을 포함한다.',
+    '- qType: 객관식 | 주관식 — 시험지에 보이는 그대로. 확실하지 않으면 빈 문자열',
+    '         (주관식 정답이 1~5 숫자면 사이트가 객관식으로 잘못 볼 수 있으니 꼭 적어준다)',
     '- answer: 객관식은 1~5의 번호 문자열, 주관식은 값 문자열',
     '- points: 배점. 시험지에 적혀 있을 때만 그 숫자를 쓴다. 없으면 빈 문자열로 두면 된다',
     '         (없으면 사이트가 난이도로 가중치를 주고 만점 100점에 맞춰 나눈다)',
@@ -2066,6 +2072,8 @@ function mkAnalysisRows(arr){
     isKiller:p.isKiller===true,
     points:(p.points==null||p.points==='')?'':(Number(p.points)||''),
     outOfRange:p.outOfRange===true,
+    qType:(p.qType==='객관식'||p.qType==='주관식')?p.qType:'',
+    subjective:p.subjective===true,
     solution:p.solution||'', answer:String(p.answer==null?'':p.answer).trim(),
     unit:p.unit||''
   }));
@@ -2307,6 +2315,15 @@ function anTitleFrom(rows, source){
 // 배점을 난이도 기준으로 다시 매긴다 (손으로 고친 값도 초기화된다)
 // 표에서 고친 값을 담아 다시 그린다. 배점은 다른 문항에도 영향을 주므로 표 전체를 새로 그려야 한다.
 //   onchange(=칸을 벗어날 때)만 쓴다 — oninput으로 하면 타자 도중 커서가 튄다.
+// 주관식은 거의 항상 시험지 뒤쪽에 몰려 있다. 하나씩 고르지 않게 한 번에 바꿔준다.
+function anTailSubjective(k){
+  const rows=collectAnalysis();
+  if(!rows.length) return;
+  rows.forEach((p,i)=>{ p.qType = (i>=rows.length-k) ? '주관식' : '객관식'; });
+  if(lastAnalysis) lastAnalysis.problems=rows;
+  renderAnalysis(lastAnalysis);
+  showToast(k?`뒤 ${k}문항을 주관식으로 바꿨어요 — 학생은 맞음·틀림만 고릅니다`:'전부 객관식으로 바꿨어요','success');
+}
 function anRefreshTable(){
   const rows=collectAnalysis();
   if(lastAnalysis) lastAnalysis.problems=rows;
@@ -2353,6 +2370,24 @@ async function anMoveExam(id, cid){
     showToast(`"${e.title}" 를 ${anClsLabel(cls.name)}으로 옮겼어요`,'success');
     rGrades();
   }catch(err){ showToast('반 변경 실패: '+err.message,'error'); }
+}
+// 이미 등록한 시험의 형식을 고친다. 48개를 하나씩 열어 고칠 수는 없으니 회차마다 한 번에.
+//   주관식은 거의 항상 시험지 뒤쪽에 몰려 있어서 '뒤 N문항' 방식이면 대부분 맞는다.
+async function anSetTailSubjective(id, k){
+  const e=getExams().find(x=>x.id===id); if(!e) return;
+  const probs=anProbs(e); if(!probs.length) return;
+  const rows=probs.map((p,i)=>Object.assign({}, p, { qType: (i>=probs.length-k) ? '주관식' : '객관식' }));
+  try{
+    await updateExam(id, { analysis: rows });
+    showToast(k?`뒤 ${k}문항을 주관식으로 바꿨어요 — 학생은 맞음·틀림만 고릅니다`:'전부 객관식으로 바꿨어요','success');
+    rGrades();
+  }catch(err){ showToast('실패: '+err.message,'error'); }
+}
+// 이 시험이 지금 객관식 몇 개 / 주관식 몇 개로 잡혀 있나
+function anTypeCount(e){
+  const tm=omrTypeMap(e), nos=examNos(e);
+  const sub=nos.filter(no=>tm[no]==='주관식');
+  return { obj:nos.length-sub.length, sub:sub.length, subNos:sub };
 }
 async function anSetMax100(id){
   try{ await updateExam(id, { maxScore: AN_MAX_DEFAULT }); showToast('만점을 100점으로 맞췄어요 — 배점이 난이도 비율대로 다시 나뉘어요 📐','success'); rGrades(); }
@@ -2610,7 +2645,7 @@ const AN_MAX_DEFAULT=100;
 function probWeight(p, choices){
   const v=Number(p&&p.points);
   if(isFinite(v)&&v>0) return v;
-  if(!omrIsChoice(p&&p.answer, choices||5)) return AN_POINTS_SUBJECTIVE;
+  if(isSubjective(p, choices)) return AN_POINTS_SUBJECTIVE;   // 서술형은 배점이 크다
   return AN_POINTS[String((p&&p.difficulty)||'').trim()] || 4;
 }
 // 진도가 안 나가서 학생이 아예 안 푸는 문항. 점수·정답률·진단에서 모두 뺀다.
@@ -2724,18 +2759,29 @@ async function akSave(){
 // 🅱️ OMR 답안지 — 학생이 답을 적을 종이. 분석서에 있는 정답을 보고
 //   보기 번호(1~보기 수)면 객관식, 값이나 식이면 주관식으로 만든다.
 //   정답이 아직 없으면 객관식으로 둔다(대부분이 객관식이라).
+// 문항 형식 — 선생님이 정해둔 게 있으면 그대로, 없으면 정답 모양으로 짐작한다.
+//   짐작은 자주 틀린다. 주관식 정답이 '3'이면 객관식으로 보인다.
+//   AN_QTYPES의 빈 값 = 자동(짐작)
+const AN_QTYPES=['','객관식','주관식'];
+function probType(p, ans, choices){
+  const t=String((p&&p.qType)||'').trim();
+  if(t==='객관식'||t==='주관식') return t;
+  if(p&&p.subjective===true) return '주관식';        // 예전 필드
+  return omrIsChoice(ans==null?(p&&p.answer):ans, choices||5) ? '객관식' : '주관식';
+}
+function isSubjective(p, choices){ return probType(p, null, choices)==='주관식'; }
 function omrIsChoice(ans, choices){
   const v=String(ans==null?'':ans).trim();
   if(!v) return true;
   return /^[1-9]$/.test(v) && Number(v)<=choices;
 }
 function omrTypeMap(exam){
-  const key=examKey(exam), ch=examChoices(exam), byNo={};
-  anProbs(exam).forEach(p=>{ byNo[String(p.no).trim()]=String(p.answer==null?'':p.answer).trim(); });
+  const key=examKey(exam), ch=examChoices(exam), byNo={}, pByNo={};
+  anProbs(exam).forEach(p=>{ const k=String(p.no).trim(); byNo[k]=String(p.answer==null?'':p.answer).trim(); pByNo[k]=p; });
   const out={};
   examNos(exam).forEach(no=>{
     const fromKey=String(key[no]==null?'':key[no]).trim();
-    out[no]= omrIsChoice(fromKey||byNo[no]||'', ch) ? '객관식' : '주관식';
+    out[no]= probType(pByNo[no], fromKey||byNo[no]||'', ch);
   });
   return out;
 }
@@ -3009,6 +3055,14 @@ function examAnalysisTabHtml(){
             ${Number(exam.maxScore)===AN_MAX_DEFAULT?'':`<button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px" onclick="anSetMax100('${exam.id}')">100점으로</button>`}
             <button class="btn btn-red btn-sm" style="margin-left:auto;padding:2px 9px;font-size:11px" onclick="anDelExam('${exam.id}')">🗑 시험 지우기</button>
           </div>
+          ${(function(){ const tc=anTypeCount(exam); return `
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:7px;padding-top:7px;border-top:1px solid var(--border)">
+            <span style="font-size:12px;color:var(--text-muted)">문항 형식</span>
+            <span style="font-size:12px">객관식 <strong>${tc.obj}</strong> · 주관식 <strong style="color:#B45309">${tc.sub}</strong>${tc.sub?` <span style="color:var(--text-muted)">(${tc.subNos.join(', ')}번)</span>`:''}</span>
+            <span style="font-size:11px;color:var(--text-muted);margin-left:4px">뒤에서</span>
+            ${[0,1,2,3,4].map(k=>`<button class="btn btn-outline btn-sm" style="padding:2px 7px;font-size:11px" onclick="anSetTailSubjective('${exam.id}',${k})">${k?k+'문항':'없음'}</button>`).join('')}
+            <span style="font-size:11px;color:var(--text-muted)">주관식</span>
+          </div>`; })()}
           <div style="font-size:11.5px;margin-top:6px;color:${(st.keys&&st.students)?'var(--green)':'var(--orange)'}">
             ${st.keys&&st.students
               ? `✅ 학생 ${st.students}명이 성적 탭에서 답을 찍을 수 있어요 (정답 ${st.keys}개 등록됨)`

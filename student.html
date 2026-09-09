@@ -820,10 +820,23 @@ function omrIsChoiceAns(ans, choices){
   if(!v) return true;
   return /^[1-9]$/.test(v) && Number(v)<=choices;
 }
+// 문항 형식 — 선생님이 정해둔 게 있으면 그대로. 선생님 화면과 같은 규칙.
+function sTypeMap(e){
+  const key=examKey(e), ch=omrChoices(e), out={}, pm={};
+  ((e&&Array.isArray(e.analysis))?e.analysis:[]).forEach(p=>{ pm[String((p&&p.no)==null?'':p.no).trim()]=p; });
+  omrNos(e).forEach(no=>{
+    const p=pm[no], t=String((p&&p.qType)||'').trim();
+    out[no] = (t==='객관식'||t==='주관식') ? t
+      : ((p&&p.subjective===true) ? '주관식'
+      : (omrIsChoiceAns(key[no], ch) ? '객관식' : '주관식'));
+  });
+  return out;
+}
 function omrPadHtml(e){
   const nos=omrNos(e);
   if(!nos.length) return '';
   const ch=omrChoices(e), circ=['①','②','③','④','⑤','⑥','⑦','⑧','⑨'];
+  const types=sTypeMap(e);
   const sub=S_EXAMSUBS.find(s=>s.examId===e.id);
   const saved=(sub&&sub.answers)||{};
   const d=OMR_DRAFT[e.id]||(OMR_DRAFT[e.id]=Object.assign({},saved));
@@ -837,7 +850,7 @@ function omrPadHtml(e){
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
       <span style="font-size:14px;font-weight:800">🅰️ 답 찍기</span>
       <span class="badge ${done===nos.length?'b-green':'b-yellow'}">${done}/${nos.length}</span>
-      <span style="font-size:11px;color:var(--text-muted)">종이에 표시한 대로 눌러주세요</span>
+      <span style="font-size:11px;color:var(--text-muted)">종이에 표시한 대로 눌러주세요 · <strong>주관식</strong>은 채점해서 맞으면 O, 틀리면 X</span>
       ${guessN?`<span class="badge b-yellow">찍음 ${guessN}</span>`:''}
       ${lateN?`<span class="badge b-yellow">시간 넘김 ${lateN}</span>`:''}
       <span style="font-size:11px;color:var(--text-muted);width:100%">확실하지 않고 <strong>찍은</strong> 문제는 <strong>찍</strong>, 시험 <strong>시간이 지난 뒤에</strong> 푼 문제는 <strong>⏱</strong>을 눌러주세요.
@@ -845,11 +858,10 @@ function omrPadHtml(e){
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:6px">${nos.map(n=>`
       <div style="border:1px solid var(--border);border-radius:9px;padding:5px 7px;min-width:56px;text-align:center;background:var(--surface)">
-        <div style="font-size:11px;font-weight:800;color:var(--text-sub);margin-bottom:3px">${n}</div>
+        <div style="font-size:11px;font-weight:800;color:var(--text-sub);margin-bottom:3px">${n}${types[n]==='주관식'?'<div style="font-size:8.5px;font-weight:700;color:#B45309">주관식</div>':''}</div>
         <div style="display:flex;gap:2px;justify-content:center">${(function(){
-      const key=examKey(e);
-      // 주관식은 답을 옮겨 적기 어려워서 O/X만 고르게 한다
-      const opts = omrIsChoiceAns(key[n], ch) ? Array.from({length:ch},(_,k)=>String(k+1)) : ['O','X'];
+      // 주관식은 답을 옮겨 적기 어려워서 맞음(O)·틀림(X)만 고르게 한다
+      const opts = types[n]==='객관식' ? Array.from({length:ch},(_,k)=>String(k+1)) : ['O','X'];
       return opts.map(v=>{ const on=String(d[n]||'').toUpperCase()===v;
           const lbl = /^[0-9]$/.test(v) ? circ[Number(v)-1] : v;
       return `<button type="button" style="border:none;border-radius:6px;padding:2px 6px;font-size:12px;font-weight:${/^[0-9]$/.test(v)?'400':'800'};cursor:pointer;font-family:inherit;${on?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="omrPick('${e.id}','${String(n).replace(/'/g,'')}','${v}')">${lbl}</button>`;
