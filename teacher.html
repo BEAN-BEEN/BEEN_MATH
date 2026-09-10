@@ -2499,15 +2499,18 @@ function anReportHtml(){
   const st=getStudents().find(s=>s.id===anRepStId);
   if(!exam||!st) return '';
   const allProbs=anProbs(exam); if(!allProbs.length) return '';
-  const probs=scoredProbs(allProbs);            // 점수·정답률은 범위 안 문항만
-  const skipped=allProbs.filter(isOutOfRange);
+  const _sub0=getExamSubs().find(s=>s.examId===anRepExamId && s.studentId===anRepStId);
+  const _skip0=skipSet(_sub0);                  // 학생이 '범위 아님'이라고 표시한 번호
+  const outOf=p=>isOutOfRange(p)||_skip0.has(String(p.no));
+  const probs=allProbs.filter(p=>!outOf(p));    // 점수·정답률은 범위 안 문항만
+  const skipped=allProbs.filter(outOf);
   if(!probs.length) return '<div style="padding:12px">채점할 문항이 없어요 (전부 범위 밖으로 표시됨).</div>';
   if(!anOX) anLoadOX();
   const ox=anOX;
   const key=examKey(exam);
   const sub=getExamSubs().find(s=>s.examId===anRepExamId && s.studentId===anRepStId);
   const ans=(sub&&sub.answers)||{};
-  const guessed=guessedSet(sub), late=lateSet(sub);
+  const guessed=guessedSet(sub), late=lateSet(sub), skipped2=skipSet(sub);
   const shaky=no=>guessed.has(no)||late.has(no);       // 찍었거나 시간 넘겨 푼 것
   // 찍어서 맞은 건 '아는 것'이 아니다. 점수는 그대로 두되 실질 점수를 따로 낸다.
   const luckyProbs=probs.filter(p=>ox[String(p.no)] && guessed.has(String(p.no)));
@@ -2518,11 +2521,11 @@ function anReportHtml(){
   const wrongProbs=probs.filter(p=>!ox[String(p.no)]);
   const rate=Math.round(correct/total*100);
   // 점수는 맞은 문항의 배점 합. 배점이 안 적혀 있으면 난이도로 매긴 값을 쓴다.
-  const sc=scoreFromOX(exam, ox);
+  const sc=scoreFromOX(exam, ox, _skip0);
   const score=sc.score, maxScore=sc.total;
   // 실질 점수 — 찍었거나 시간 넘겨 푼 문항을 틀린 것으로 놓고 같은 배점으로 다시 잰다
   const oxReal={}; probs.forEach(p=>{ const k=String(p.no); oxReal[k]= !!ox[k] && !shaky(k); });
-  const realScore=scoreFromOX(exam, oxReal).score;
+  const realScore=scoreFromOX(exam, oxReal, _skip0).score;
   const kindLbl=anKindTitle(exam.kind);
   const cell=(l,v,c)=>`<div style="flex:1;min-width:74px;text-align:center;background:${AN_C.bg};border-radius:10px;padding:9px 6px">
     <div style="font-size:11px;color:${AN_C.muted};margin-bottom:2px">${l}</div><div style="font-size:20px;font-weight:800;color:${c}">${v}</div></div>`;
@@ -2550,7 +2553,7 @@ function anReportHtml(){
     <div style="font-size:13px;font-weight:800;margin-bottom:6px">✅ 정오표</div>
     <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">
       ${allProbs.map(p=>{ const okq=ox[String(p.no)];
-        if(isOutOfRange(p)) return `<span style="min-width:38px;text-align:center;padding:5px 7px;border-radius:8px;font-size:12px;font-weight:700;background:#F1F5F9;color:${AN_C.muted}">${anEsc(p.no)} –</span>`;
+        if(outOf(p)) return `<span style="min-width:38px;text-align:center;padding:5px 7px;border-radius:8px;font-size:12px;font-weight:700;background:#F1F5F9;color:${AN_C.muted}">${anEsc(p.no)} –</span>`;
         return `<span style="min-width:38px;text-align:center;padding:5px 7px;border-radius:8px;font-size:12px;font-weight:800;background:${okq?'#DCFCE7':'#FEE2E2'};color:${okq?AN_C.green:AN_C.red}">${anEsc(p.no)} ${okq?'O':'X'}</span>`; }).join('')}
     </div>
 
@@ -2570,12 +2573,12 @@ function anReportHtml(){
         <th style="padding:6px;border:1px solid ${AN_C.border};width:44px">내 답</th>
         <th style="padding:6px;border:1px solid ${AN_C.border};width:30px">정오</th>
       </tr></thead>
-      <tbody>${allProbs.map(p=>{ const n=String(p.no); const okq=ox[n]; const skip=isOutOfRange(p);
+      <tbody>${allProbs.map(p=>{ const n=String(p.no); const okq=ox[n]; const skip=outOf(p);
         const kv=key[n]!=null?String(key[n]):''; const av=ans[n]!=null?String(ans[n]):'';
         if(skip) return `<tr style="background:#F8FAFC;color:${AN_C.muted}">
         <td style="padding:6px;border:1px solid ${AN_C.border};text-align:center;font-weight:800">${anEsc(n)}</td>
         <td style="padding:6px;border:1px solid ${AN_C.border}"><strong>${anEsc(anBig(p))}</strong>${anSmall(p)?`<div style="font-size:11px">${anEsc(anSmall(p))}</div>`:''}</td>
-        <td colspan="7" style="padding:6px;border:1px solid ${AN_C.border};text-align:center;font-size:11px">범위 밖 — 아직 안 배운 단원이라 점수에서 뺐어요</td></tr>`;
+        <td colspan="7" style="padding:6px;border:1px solid ${AN_C.border};text-align:center;font-size:11px">범위 밖 — 아직 안 배운 단원이라 점수에서 뺐어요${_skip0.has(n)&&!isOutOfRange(p)?' (학생이 표시)':''}</td></tr>`;
         return `<tr style="background:${okq?"#fff":"#FEF7F7"}">
         <td style="padding:6px;border:1px solid ${AN_C.border};text-align:center;font-weight:800">${anEsc(n)}</td>
         <td style="padding:6px;border:1px solid ${AN_C.border}"><strong>${anEsc(anBig(p))}</strong>${anSmall(p)?`<div style="color:${AN_C.muted};font-size:11px">${anEsc(anSmall(p))}</div>`:''}</td>
@@ -2617,6 +2620,8 @@ function nosSet(v){
 function guessedSet(sub){ return nosSet(sub&&sub.guessedNos); }
 // 시험 시간이 지난 뒤에 푼 문항. 실제 시험이면 못 맞혔을 문제라 찍은 것과 같이 뺀다.
 function lateSet(sub){ return nosSet(sub&&sub.lateNos); }
+// 학생이 '이건 우리 범위 아니에요'라고 표시한 문항. 안 배운 걸 오답으로 세면 진단이 어긋난다.
+function skipSet(sub){ return nosSet(sub&&sub.skipNos); }
 // 채점에 쓸 정답표 — 따로 저장해 둔 게 있으면 그걸, 없으면 분석서에 적힌 정답을 쓴다.
 //   예전에 등록한 시험은 answerKey가 비어 있어서 학생 화면에 답 입력칸이 통째로 안 떴다.
 //   분석서에 정답이 다 들어 있는데도 그랬다.
@@ -2696,8 +2701,11 @@ function probPoints(p, e){
 }
 function examTotalPoints(e){ return scoredProbs(anProbs(e)).length ? examMaxScore(e) : 0; }
 // 점수 = 맞은 문항의 가중치 몫 (만점 기준). 반올림은 마지막에 한 번만.
-function scoreFromOX(e, ox){
-  const probs=scoredProbs(anProbs(e)); if(!probs.length) return {score:0, got:0, total:0};
+// skip = 학생이 '우리 범위 아님'이라고 표시한 번호(Set). 그 문항은 만점에서도 빠진다.
+function scoreFromOX(e, ox, skip){
+  let probs=scoredProbs(anProbs(e));
+  if(skip && skip.size) probs=probs.filter(p=>!skip.has(String(p.no)));
+  if(!probs.length) return {score:0, got:0, total:0};
   const ch=examChoices(e), max=examMaxScore(e);
   const sum=probs.reduce((a,p)=>a+probWeight(p,ch),0);
   if(!(sum>0)) return {score:0, got:0, total:max};
@@ -4096,13 +4104,14 @@ async function doCheckAllOffline(aid){
 //   마감 지난 것 먼저, 그다음 마감이 가까운 순.
 function hwMissingList(){
   const today=new Date().toISOString().slice(0,10);
-  const mon=thisMonday();
+  const from=weekMonday(-1);        // 지난 주 월요일 — 여기까지가 아직 챙길 수 있는 범위
   return getAssignments()
     .filter(a=>{
       const st=a.startDate||a.createdAt||'', due=a.dueDate||'';
       if(st && st>today) return false;                  // 아직 내주지도 않은 숙제는 미제출이 아니다
-      if(due && due<today) return true;                 // 마감 지남 — 언제 낸 숙제든 급하다
-      return (st&&st>=mon) || (due&&due>=mon);          // 이번 주
+      const d=hwDateOf(a);
+      if(d && d<from) return false;                     // 지지난 주보다 오래된 건 뺀다 (다 보면 너무 많다)
+      return true;
     })
     .map(a=>{
       const subs=getSubsByAssignment(a.id), sts=hwStudents(a);
@@ -4137,11 +4146,12 @@ function dashMissingHtml(){
   const total=list.reduce((n,x)=>n+x.missing.length,0);
   if(!total) return `<div class="card" style="margin:0;order:-2;border-left:4px solid var(--green)">
     <div style="font-size:14px;font-weight:800;color:var(--green)">📮 숙제 미제출 없음 ✓</div>
-    <div style="font-size:12px;color:var(--text-muted);margin-top:3px">이번 주 낼 숙제를 다 냈어요.</div></div>`;
+    <div style="font-size:12px;color:var(--text-muted);margin-top:3px">지난주부터 낸 숙제를 다 받았어요.</div></div>`;
   const over=list.filter(x=>x.overdue).reduce((n,x)=>n+x.missing.length,0);
   return `<div class="card" style="margin:0;order:-2;border:2px solid var(--red)">
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
       <span style="font-size:16px;font-weight:800">📮 숙제 미제출</span>
+      <span style="font-size:11px;color:var(--text-muted)">지난주부터</span>
       <span class="badge b-red">${total}명</span>
       ${over?`<span class="badge b-orange">마감 지남 ${over}명</span>`:''}
       <button class="btn btn-outline btn-sm" style="margin-left:auto;padding:3px 9px;font-size:11px" onclick="copyMissing(-1)">📋 전체 명단 복사</button>

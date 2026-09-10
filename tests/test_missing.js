@@ -96,13 +96,26 @@ ok('퇴원한 학생은 안 센다', () => {
 });
 
 console.log('\n마감 지난 것이 사라지지 않는다');
-ok('지난주에 마감된 미제출도 계속 보인다', () => {
+ok('지난주에 낸 미제출은 계속 보인다', () => {
   // 예전에는 hwInWeek(이번 주)만 봐서, 제일 급한 게 월요일이면 조용히 사라졌다
-  setup([A('old', 'c1', '지난주 숙제', ymd(-14), ymd(-8))],
+  setup([A('old', 'c1', '지난주 숙제', T.weekMonday(-1), ymd(-2))],
     [], [ST('s1', '김민서', 'c1')]);
   const list = T.hwMissingList();
-  assert.strictEqual(list.length, 1, '지난주 마감이 사라짐');
+  assert.strictEqual(list.length, 1, '지난주 숙제가 사라짐');
   assert.strictEqual(list[0].overdue, true);
+});
+ok('지지난 주보다 오래된 건 안 보인다', () => {
+  // 전 기간을 다 보여주면 90건이 넘어서 오늘 챙길 것을 못 찾는다
+  setup([A('ancient', 'c1', '한 달 전 숙제', T.weekMonday(-5), T.weekMonday(-4))],
+    [], [ST('s1', '김민서', 'c1')]);
+  assert.strictEqual(T.hwMissingList().length, 0, '너무 오래된 게 그대로 남음');
+});
+ok('지난주 월요일이 경계 — 그날 낸 건 보인다', () => {
+  setup([
+    A('inRange', 'c1', '지난주 월요일', T.weekMonday(-1), ymd(-1)),
+    A('outRange', 'c1', '지지난주 월요일', T.weekMonday(-2), ymd(-8))
+  ], [], [ST('s1', '김민서', 'c1')]);
+  assert.strictEqual(T.hwMissingList().map(x => x.a.id).join(','), 'inRange');
 });
 ok('마감 지난 것이 맨 위로 온다', () => {
   setup([
@@ -205,7 +218,7 @@ ok('보드가 기본으로 펼쳐져 있다', () => {
   assert.strictEqual(T.__get('hwBoardOpen'), true);
 });
 ok('보드도 마감 지난 것을 보여준다', () => {
-  setup([A('old', 'c1', '지난주 숙제', ymd(-14), ymd(-8))], [], [ST('s1', '김민서', 'c1')]);
+  setup([A('old', 'c1', '지난주 숙제', T.weekMonday(-1), ymd(-2))], [], [ST('s1', '김민서', 'c1')]);
   const h = T.hwMissingBoardHtml();
   assert.ok(h.indexOf('지난주 숙제') >= 0, '지난 숙제가 안 보임');
   assert.ok(h.indexOf('김민서') >= 0);
