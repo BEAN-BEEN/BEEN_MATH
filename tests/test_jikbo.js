@@ -92,10 +92,11 @@ ok("주말 낀 월요일(11/23) 시험 → 금·토·일 3일", () => {
   assert.strictEqual(both({ startDate: '2026-11-20', endDate: '2026-11-26', mathDate: '2026-11-23' }),
     '11-20(금) 11-21(토) 11-22(일)');
 });
-ok("주말 낀 화요일(11/24) 시험 → 금·토·일·월 4일", () => {
+ok("주말 낀 화요일(11/24) 시험 → 일요일은 쉰다 (월요일에 다른 과목 시험)", () => {
   assert.strictEqual(new Date('2026-11-24T00:00:00').getDay(), 2, '11/24가 화요일이 아님');
+  // 11/23(월)은 다음 날이 수학이라 직보. 11/22(일)은 다음 날 월요일에 다른 과목 시험이라 쉰다.
   assert.strictEqual(both({ startDate: '2026-11-20', endDate: '2026-11-26', mathDate: '2026-11-24' }),
-    '11-20(금) 11-21(토) 11-22(일) 11-23(월)');
+    '11-20(금) 11-21(토) 11-23(월)');
 });
 ok("월요일이 공휴일이어도 화요일 시험이면 4일 그대로", () => {
   // 신성고와 같은 모양 — 월이 공휴일이든 평일이든 금요일까지 간다
@@ -127,11 +128,52 @@ ok("수학시험 당일은 직보에서 빠진다", () => {
   ['10-05', '10-06'].forEach(d => assert.ok(got.indexOf(d) < 0, d + '(수학시험일)이 직보로 잡힘'));
 });
 
+console.log('\n다른 과목 시험 전날은 쉰다');
+// 과천중앙고·백운고 2학기 중간 — 10/1(목)~10/7(수), 수학 10/7(수)
+//   10/6(화)에 다른 과목 시험이 있으니 10/5(월·대체공휴일)은 쉬고 10/6에 직보한다
+const GWACHEON = { startDate: '2026-10-01', endDate: '2026-10-07', mathDate: '2026-10-07' };
+ok('10/5(월)은 쉬고 10/6(화)에 직보한다', () => {
+  assert.strictEqual(both(GWACHEON), '10-02(금) 10-03(토) 10-04(일) 10-06(화)');
+});
+ok('쉬는 날을 따로 뽑아 보여준다', () => {
+  const rest = T.jikboRestDatesOf(GWACHEON);
+  assert.strictEqual(rest.join(','), '2026-10-05', '쉬는 날이 안 잡힘: ' + rest.join(','));
+});
+ok('내일이 수학이면 쉬지 않는다', () => {
+  const mathSet = new Set(['2026-10-07']);
+  assert.strictEqual(T.jikboRestDay(GWACHEON, '2026-10-06', mathSet), false);
+});
+ok('내일이 다른 과목 시험이면 쉰다', () => {
+  const mathSet = new Set(['2026-10-07']);
+  assert.strictEqual(T.jikboRestDay(GWACHEON, '2026-10-05', mathSet), true);
+});
+ok('시험 기간 안이어도 주말·공휴일은 시험 보는 날이 아니다', () => {
+  // 10/5는 대체공휴일 — 기간 안이지만 시험을 안 본다. 그래서 10/4(일)은 쉬지 않는다.
+  assert.strictEqual(T.jikboIsExamDay(GWACHEON, '2026-10-05'), false);
+  assert.strictEqual(T.jikboIsExamDay(GWACHEON, '2026-10-06'), true);
+  assert.strictEqual(T.jikboRestDay(GWACHEON, '2026-10-04', new Set(['2026-10-07'])), false);
+});
+ok('시험 기간 밖은 아무 영향 없다', () => {
+  assert.strictEqual(T.jikboIsExamDay(GWACHEON, '2026-09-30'), false);
+  assert.strictEqual(T.jikboIsExamDay(GWACHEON, '2026-10-08'), false);
+});
+ok('시험 기간이 없으면 예전처럼 동작한다', () => {
+  assert.strictEqual(T.jikboIsExamDay({ mathDate: '2026-10-07' }, '2026-10-06'), false);
+});
+ok('신성고는 그대로 4일 (월요일이 공휴일이라 화요일 전날이 아님)', () => {
+  assert.strictEqual(both(SINSUNG), '10-02(금) 10-03(토) 10-04(일) 10-05(월)');
+  assert.strictEqual(T.jikboRestDatesOf(SINSUNG).length, 0, '신성고에 쉬는 날이 생김');
+});
+ok('선생님·학생 화면이 같은 날짜를 본다', () => {
+  // 두 파일에 규칙 사본이 따로 있어서 한쪽만 고치면 어긋난다
+  [GWACHEON, SINSUNG].forEach(e => { both(e); });
+});
+
 console.log('\n수학시험이 여러 날 / 직접 지정');
 ok("수학이 여러 날이면 각각 앞을 따로 계산한다", () => {
   const e = { startDate: '2026-11-20', endDate: '2026-11-27', mathDates: [{ date: '2026-11-24' }, { date: '2026-11-27' }] };
-  // 11/24(화) → 금·토·일·월 / 11/27(금) → 목(11/26)
-  assert.strictEqual(both(e), '11-20(금) 11-21(토) 11-22(일) 11-23(월) 11-26(목)');
+  // 11/24(화) → 금·토·월 (일요일은 월요일 시험 때문에 쉼) / 11/27(금) → 목(11/26)
+  assert.strictEqual(both(e), '11-20(금) 11-21(토) 11-23(월) 11-26(목)');
 });
 ok("직보 시작일을 지정하면 그 규칙이 우선", () => {
   assert.strictEqual(both({ startDate: '2026-10-01', endDate: '2026-10-08', mathDate: '2026-10-06', jikboStart: '2026-10-03' }),

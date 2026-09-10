@@ -1415,8 +1415,22 @@ function _jbMathDates(e){ return (Array.isArray(e.mathDates)&&e.mathDates.length
 //     · 주말 낀 화요일 시험 → 금·토·일·월 (4일)
 //     · 신성고 10월: 수학 10/6(화), 10/5 월이 공휴일 → 10/2 금·10/3 토·10/4 일·10/5 월 (4일)
 //   쉬는 날이 아예 없으면 자연히 '전날 하루'가 된다.
+//   단, 바로 다음 날 다른 과목 시험이 있으면 그날은 쉰다 — 그 과목을 공부해야 하니까.
+//     예) 10/7(수) 수학, 10/6(화) 다른 과목 → 10/5(월)은 쉬고 10/6(화)에 직보.
 //   시간: 토·일·공휴일 12시 / 금요일 3시 / 그 밖의 평일 2시.
 function _jbIsOff(ds){ const dow=new Date(ds+'T00:00:00').getDay(); return dow===0||dow===6||!!holidayName(ds); }
+// 그날 학교에서 실제로 시험을 보는가 (기간 안이어도 주말·공휴일엔 안 본다)
+function _jbIsExamDay(e, ds){
+  if(!e || !e.startDate || !e.endDate) return false;
+  if(ds < e.startDate || ds > e.endDate) return false;
+  return !_jbIsOff(ds);
+}
+// 다음 날이 '다른 과목' 시험이면 그날은 쉰다. 다음 날이 수학이면 그게 직보하는 날이다.
+function _jbRestDay(e, ds, mathSet){
+  const next=_jbAddDays(ds,1);
+  if(mathSet && mathSet.has(next)) return false;
+  return _jbIsExamDay(e, next);
+}
 function _jbDates(e){ const mds=_jbMathDates(e).filter(Boolean).sort(); if(!mds.length) return []; const set=new Set();
   if(e.jikboStart){ const last=mds[mds.length-1]; let d=e.jikboStart; while(d<last){ set.add(d); d=_jbAddDays(d,1);} }
   else {
@@ -1430,7 +1444,9 @@ function _jbDates(e){ const mds=_jbMathDates(e).filter(Boolean).sort(); if(!mds.
       }
     });
   }
-  mds.forEach(md=>set.delete(md)); return [...set]; }
+  mds.forEach(md=>set.delete(md));
+  const mathSet=new Set(mds);
+  return [...set].filter(d=>!_jbRestDay(e, d, mathSet)); }
 function myJikbo(){
   // 부담임 반(X/Y/Z)만 있는 학생은 직보 제외 — 담임 반이 하나라도 있으면 표시
   const _hr=c=>c.role?c.role==='담임':!/[XYZ]/.test(c.name||'');

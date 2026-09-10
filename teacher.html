@@ -6503,9 +6503,27 @@ function bogangCheckHtml(){
 //     · 주말 낀 화요일 시험 → 금·토·일·월 (4일)
 //     · 신성고 10월: 수학 10/6(화), 10/5 월이 공휴일 → 10/2 금·10/3 토·10/4 일·10/5 월 (4일)
 //   쉬는 날이 아예 없으면 자연히 '전날 하루'가 된다.
+//   단, 바로 다음 날 다른 과목 시험이 있으면 그날은 쉰다 — 그 과목을 공부해야 하니까.
+//     예) 10/7(수) 수학, 10/6(화) 다른 과목 → 10/5(월)은 쉬고 10/6(화)에 직보.
 //   시간: 토·일·공휴일 12시 / 금요일 3시 / 그 밖의 평일 2시.
 function jikboAdd(ds,k){ const d=new Date(ds+'T00:00:00'); d.setDate(d.getDate()+k); const p=x=>String(x).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; }
 function jikboIsOff(ds){ const dow=new Date(ds+'T00:00:00').getDay(); return dow===0||dow===6||!!holidayName(ds); }
+// 그날 학교에서 실제로 시험을 보는가.
+//   시험 기간 안이라도 주말·공휴일엔 시험을 안 본다 (기간만 그 위를 덮고 있을 뿐).
+function jikboIsExamDay(e, ds){
+  if(!e || !e.startDate || !e.endDate) return false;
+  if(ds < e.startDate || ds > e.endDate) return false;
+  return !jikboIsOff(ds);
+}
+// 🛑 직보를 쉬는 날 — 바로 다음 날 '다른 과목' 시험이 있으면 그날은 그 과목을 공부해야 한다.
+//   과천중앙고·백운고 10월: 10/7(수) 수학, 10/6(화) 다른 과목 시험, 10/5(월) 대체공휴일.
+//   10/5는 화요일 시험 공부를 해야 해서 쉬고, 10/6은 수요일 수학을 위해 직보한다.
+//   내일이 '수학' 시험이면 바로 그게 직보하는 날이므로 쉬지 않는다.
+function jikboRestDay(e, ds, mathSet){
+  const next=jikboAdd(ds,1);
+  if(mathSet && mathSet.has(next)) return false;
+  return jikboIsExamDay(e, next);
+}
 // 직보 시간 — 토·일·공휴일 12시 / 금요일 3시 /
 //   그 밖의 평일은 그날 학교 시험이 있으면 2시(시험 끝나고 옴), 없으면 5시(학교 마치고 옴).
 function jikboTime(ds, e){
@@ -6534,7 +6552,26 @@ function jikboDatesOf(e){
     });
   }
   mds.forEach(md=>set.delete(md));
-  return [...set].sort();
+  const mathSet=new Set(mds);
+  return [...set].filter(d=>!jikboRestDay(e, d, mathSet)).sort();
+}
+// 규칙상 일부러 쉬는 날 — 왜 빠졌는지 화면에서 보여주려고 따로 뽑아둔다
+function jikboRestDatesOf(e){
+  const mds=examMathDates(e).map(m=>m.date).filter(Boolean).sort();
+  if(!mds.length) return [];
+  const mathSet=new Set(mds);
+  const all=new Set();
+  mds.forEach(md=>{
+    let d=jikboAdd(md,-1);
+    for(let i=0;i<9;i++){
+      all.add(d);
+      const prev=jikboAdd(d,-1);
+      if(!jikboIsOff(d) && !jikboIsOff(prev)) break;
+      d=prev;
+    }
+  });
+  mds.forEach(md=>all.delete(md));
+  return [...all].filter(d=>jikboRestDay(e, d, mathSet)).sort();
 }
 async function doAutoMakeups(){
   const today=new Date().toISOString().slice(0,10);
@@ -6550,8 +6587,14 @@ async function doAutoMakeups(){
       plans.push({date:mkDate, school:e.school, grade:e.grade||'', time:jikboTime(mkDate, e), why});
     });
   });
+  // 왜 빠졌는지 안 보이면 '왜 월요일이 없지?' 하고 손으로 다시 만들게 된다
+  const rests=[];
+  visibleSchoolExams().forEach(e=>{
+    jikboRestDatesOf(e).forEach(d=>{ if(d>=today) rests.push(`${d} ${e.school}`); });
+  });
   if(!plans.length){ showToast('자동 생성할 다가오는 수학 시험이 없어요','warning'); return; }
-  if(!confirm(`다가오는 수학시험 기준으로 직보 ${plans.length}일을 자동 생성할까요?\n· 토·일·공휴일 → 12시\n· 금요일 → 3시\n· 그 밖의 평일: 그날 학교시험 O → 2시 / X → 5시\n(주말이 끼면 그 앞 금요일까지 잡아요)\n(자동으로 만든 건 지금 규칙에 맞게 고쳐집니다)`)) return;
+  const restMsg = rests.length ? `\n\n🛑 쉬는 날 (다음날 다른 과목 시험):\n${rests.map(r=>'· '+r).join('\n')}` : '';
+  if(!confirm(`다가오는 수학시험 기준으로 직보 ${plans.length}일을 자동 생성할까요?\n· 토·일·공휴일 → 12시\n· 금요일 → 3시\n· 그 밖의 평일: 그날 학교시험 O → 2시 / X → 5시\n(주말이 끼면 그 앞 금요일까지 잡아요)\n(자동으로 만든 건 지금 규칙에 맞게 고쳐집니다)${restMsg}`)) return;
   let created=0, fixed=0, skipped=0;
   for(const p of plans){
     const note=`수학시험 직보 (${p.why})`;
