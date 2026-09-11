@@ -1585,14 +1585,17 @@ function classHomeCardsHtml(pending){
   const currBlock=cid=>{
     if(S_CURRICULUM===null) return `<div style="font-size:12px;color:var(--text-muted);padding:6px 0">진도 불러오는 중…</div>`;
     const now=planOf(cid,thisMon), prev=planOf(cid,lastMon);
-    if(!now && !prev) return '';
+    // 계획보다 '실제로 나간 진도'가 정확하다. 적힌 게 있으면 그걸 보여준다.
+    const nowLog=sProgOfWeek(cid,thisMon), prevLog=sProgOfWeek(cid,lastMon);
+    const logTxt=ls=>ls.map(l=>`${_wkMd(l.date)} ${l.content}`).join(' · ');
+    if(!now && !prev && !nowLog.length && !prevLog.length) return '';
     const box=(head,ws,txt,hi)=>`<div style="background:${hi?'var(--primary-light)':'var(--bg)'};border-radius:10px;padding:9px 11px">
         <div style="font-size:11px;font-weight:800;color:${hi?'var(--primary)':'var(--text-muted)'}">${head} <span style="font-weight:600;opacity:.8">${_wkMd(ws)}~${_wkMd(_wkAdd(ws,6))}</span></div>
         <div style="font-size:13px;font-weight:700;margin-top:3px;line-height:1.35">${txt?esc(txt):'<span style="color:var(--text-muted);font-weight:500">아직 등록 전</span>'}</div>
       </div>`;
     return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px">
-      ${box('📖 오늘 진도',thisMon,now,true)}
-      ${box('↩️ 지난 주 진도',lastMon,prev,false)}
+      ${box(nowLog.length?'📓 이번 주 나간 진도':'📖 이번 주 진도',thisMon,nowLog.length?logTxt(nowLog):now,true)}
+      ${box(prevLog.length?'📓 지난 주 나간 진도':'↩️ 지난 주 진도',lastMon,prevLog.length?logTxt(prevLog):prev,false)}
     </div>`;
   };
   const cards=(S_CLASSES||[]).map(c=>{
@@ -2866,14 +2869,28 @@ function schoolHomeCardHtml(){
   </div>`;   // 📝 모의고사는 맨 위 2단 D-day에서만 (중복 표시 제거)
 }
 // 📚 진도표 (우리 반 주차별 계획, 읽기전용) — 처음 열 때 lazy load
-let S_CURRICULUM=null, S_CURR_TERM=null;
+let S_CURRICULUM=null, S_CURR_TERM=null, S_PROGLOG=[];
 async function loadCurrForStudent(){
   try{
     const [c,t]=await Promise.all([db.collection('curriculum').get(), db.collection('settings').doc('curriculumTerm').get()]);
     const ids=myClassIds();
     S_CURRICULUM=c.docs.map(d=>({id:d.id,...d.data()})).filter(x=>ids.includes(x.classId));
     S_CURR_TERM=t.exists?t.data():{startDate:'',weeks:13};
+    // 📓 강의 일지 — 실제로 나간 진도. 내 반 것만 받는다 (in 은 한 번에 10개까지)
+    try{
+      const parts=[];
+      for(let i=0;i<ids.length;i+=10){ const chunk=ids.slice(i,i+10); if(chunk.length) parts.push(db.collection('progressLog').where('classId','in',chunk).get()); }
+      const snaps=await Promise.all(parts);
+      S_PROGLOG=[].concat(...snaps.map(sn=>sn.docs.map(d=>({id:d.id,...d.data()}))));
+    }catch(e){ S_PROGLOG=[]; }
   }catch(e){ S_CURRICULUM=[]; S_CURR_TERM={startDate:'',weeks:13}; }
+}
+// 한 반의 한 주 동안 실제로 나간 진도 (날짜순) — 선생님 진도표와 같은 기준
+function sProgOfWeek(classId, weekStart){
+  const we=_wkAdd(weekStart,6);
+  return (S_PROGLOG||[])
+    .filter(p=>p.classId===classId && p.date>=weekStart && p.date<=we && String(p.content||'').trim())
+    .sort((a,b)=>String(a.date).localeCompare(String(b.date)));
 }
 function renderCurriculum(){
   const el=document.getElementById('curriculumContent'); if(!el) return;
@@ -2890,10 +2907,11 @@ function renderCurriculum(){
     let rows='';
     for(let i=0;i<weeks;i++){ const ws=addD(start,i*7), we=addD(ws,6), cur=ws===thisMon;
       const plan=(S_CURRICULUM||[]).find(x=>x.classId===c.id && x.weekStart===ws);
-      rows+=`<tr ${cur?'style="background:var(--primary-light)"':''}><td style="text-align:center;font-weight:800">${i+1}${cur?'<div style="font-size:9px;color:var(--primary)">이번주</div>':''}</td><td style="white-space:nowrap;font-size:11px;color:var(--text-muted)">${md(ws)}~${md(we)}</td><td style="font-size:13px">${((plan&&plan.content)?plan.content:'-').replace(/</g,'&lt;')}</td></tr>`;
+      const logs=sProgOfWeek(c.id, ws);
+      rows+=`<tr ${cur?'style="background:var(--primary-light)"':''}><td style="text-align:center;font-weight:800">${i+1}${cur?'<div style="font-size:9px;color:var(--primary)">이번주</div>':''}</td><td style="white-space:nowrap;font-size:11px;color:var(--text-muted)">${md(ws)}~${md(we)}</td><td style="font-size:13px">${((plan&&plan.content)?plan.content:'-').replace(/</g,'&lt;')}${logs.length?`<div style="margin-top:3px;font-size:11.5px;line-height:1.5;color:#047857">${logs.map(l=>`✓ ${md(l.date)} ${String(l.content).replace(/</g,'&lt;')}`).join('<br>')}</div>`:''}</td></tr>`;
     }
     return `<div class="card"><div class="card-title">📚 ${clsLabel(c.name).replace(/</g,'&lt;')} 진도표${c.subject?` <span style="font-size:12px;color:var(--text-muted);font-weight:400">${(c.subject||'').replace(/</g,'&lt;')}</span>`:''}${(clsDayLabel(c)||c.slot||(c.startTime&&c.endTime))?` <span style="font-size:12px;color:var(--primary);font-weight:600">${clsDayLabel(c)||''}${c.slot?' '+c.slot:''}${(c.startTime&&c.endTime)?` ${c.startTime}~${c.endTime}`:''}</span>`:''}</div>
-      <div class="table-wrap"><table style="width:100%;font-size:13px"><thead><tr><th style="width:48px">주차</th><th style="width:96px">날짜</th><th style="text-align:left">진도</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+      <div class="table-wrap"><table style="width:100%;font-size:13px"><thead><tr><th style="width:48px">주차</th><th style="width:96px">날짜</th><th style="text-align:left">진도 <span style="font-weight:400;font-size:11px;color:var(--text-muted)">· <span style="color:#047857">✓ 실제로 나간 진도</span></span></th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
   }).join('');
 }
 function renderReport() {

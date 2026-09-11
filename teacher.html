@@ -5046,9 +5046,15 @@ function todayRosterHtml(todayCls, subs){
           <span style="font-size:11px;color:var(--text-muted)">지난 수업${prevCD?`(${prevCD.slice(5)})`:''}: <b style="color:${testedPrev?'var(--green)':'var(--text-muted)'}">${prevCD?(testedPrev?'봄':'안 봄'):'-'}</b></span>
         </div>
       </div>
+      ${(function(){ const plan=curPlan(c.id, mondayOf(todayStr)); const planTxt=String((plan&&plan.content)||'').trim(); const logged=String((progOf(c.id,todayStr)||{}).content||'').trim(); return `
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:5px">
+        <span style="font-size:11px;color:${logged?'var(--green)':'var(--primary)'};font-weight:800;flex-shrink:0;min-width:74px">📓 ${logged?'나간 진도 ✓':'나간 진도'}</span>
+        <input class="form-input" value="${esc(logged)}" placeholder="${planTxt?esc('계획: '+planTxt):'오늘 나간 진도 — 진도표에 그대로 떠요'}" style="flex:1;padding:4px 8px;font-size:12px;${logged?'':'border-color:var(--primary)'}" onchange="doSaveClassProg('${c.id}',this.value)">
+        ${(!logged && planTxt)?`<button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px;flex-shrink:0" title="이번 주 진도표 계획을 그대로 적어요" onclick="doProgFromPlan('${c.id}')">계획대로</button>`:''}
+      </div>`; })()}
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
-        <span style="font-size:11px;color:var(--text-muted);flex-shrink:0">💬 수업 코멘트</span>
-        <input class="form-input" value="${esc((progOf(c.id,todayStr)||{}).comment)}" placeholder="오늘 수업 메모 (진도표에도 저장돼요)" style="flex:1;padding:4px 8px;font-size:12px" onchange="doSaveClassComment('${c.id}',this.value)">
+        <span style="font-size:11px;color:var(--text-muted);flex-shrink:0;min-width:74px">💬 메모</span>
+        <input class="form-input" value="${esc((progOf(c.id,todayStr)||{}).comment)}" placeholder="수업 중 특이사항 (강의 일지에 같이 남아요)" style="flex:1;padding:4px 8px;font-size:12px" onchange="doSaveClassComment('${c.id}',this.value)">
       </div>
       <details ${dashClsCollapsed[c.id]?'':'open'} ontoggle="dashClsCollapsed['${c.id}']=!this.open">
         <summary style="cursor:pointer;font-size:11px;color:var(--text-muted);padding:3px 0">학생 명단 접기/펼치기 · 빠진 학생만 결석을 눌러주세요</summary>
@@ -5298,6 +5304,33 @@ async function doToggleUnit(classId, unitId, studentId){
   CLASSCHECK_CACHE[classId]=Object.assign({units:[],marks:{},testLog:{}}, cur, {id:classId, units, marks});
   try{ await db.collection('classCheck').doc(classId).set({units, marks, ts:Date.now()},{merge:true}); rDashboard(); }
   catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+// 📓 강의 일지 — 반·날짜마다 '오늘 나간 진도'. progressLog.content 에 저장한다.
+//   진도표의 주차 칸(계획) 아래에 실제로 나간 진도가 뜬다. 학생도 자기 반 것을 본다.
+async function doSaveClassProg(classId, val){
+  const day=dashDay(), id=classId+'_'+day;        // 보고 있는 날짜에 저장 (지난 수업도 채울 수 있게)
+  const cls=CLASSES.find(x=>x.id===classId), content=(val||'').trim();
+  const ex=PROGLOG_CACHE.find(p=>p.id===id);
+  if(ex) ex.content=content; else PROGLOG_CACHE.push({id, classId, className:cls?.name||'', date:day, content, comment:''});
+  try{
+    await db.collection('progressLog').doc(id).set({classId, className:cls?.name||'', date:day, content, ts:Date.now()},{merge:true});
+    showToast(content?`${mdLabel(day)} 강의 일지 저장 — 진도표에 반영됐어요 📓`:'강의 일지를 비웠어요','success');
+  }catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+// 이번 주 계획을 그대로 오늘 일지로 (대부분은 계획대로 나가니까)
+async function doProgFromPlan(classId){
+  const plan=curPlan(classId, mondayOf(dashDay()));
+  const txt=String((plan&&plan.content)||'').trim();
+  if(!txt){ showToast('이번 주 진도표에 적힌 계획이 없어요','warning'); return; }
+  await doSaveClassProg(classId, txt);
+  rDashboard();
+}
+// 한 반의 한 주 동안 실제로 나간 진도 (날짜순)
+function progLogsOfWeek(classId, weekStart){
+  const we=addDays(weekStart,6);
+  return PROGLOG_CACHE
+    .filter(p=>p.classId===classId && p.date>=weekStart && p.date<=we && (String(p.content||'').trim()||String(p.comment||'').trim()))
+    .sort((a,b)=>String(a.date).localeCompare(String(b.date)));
 }
 // 💬 반별 수업 코멘트 — 대시보드에서 바로 입력, 진도표(progressLog)에 저장
 async function doSaveClassComment(classId, val){
@@ -6916,6 +6949,48 @@ function currCellKey(e, el){
   if(document.activeElement===el && el.value!==el.defaultValue) el.dispatchEvent(new Event('change'));   // 이동 전 저장
   next.focus(); next.select();
 }
+// 📓 강의 일지 목록 — 진도표에서 보고 있는 반들의 최근 기록을 날짜순으로 정리
+let journalWeeks=4;
+function journalListHtml(classes){
+  const ids=(classes||[]).map(c=>c.id);
+  if(!ids.length) return '';
+  const from=addDays(mondayOf(''), -7*(journalWeeks-1));
+  const rows=PROGLOG_CACHE
+    .filter(p=>ids.includes(p.classId) && p.date>=from && (String(p.content||'').trim()||String(p.comment||'').trim()))
+    .sort((a,b)=>String(b.date).localeCompare(String(a.date)) || String(a.className||'').localeCompare(String(b.className||'')));
+  const W=['일','월','화','수','목','금','토'];
+  const esc=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  // 수업이 있었는데 일지가 비어 있는 날 — 빠뜨린 걸 바로 알 수 있게
+  const today=new Date().toISOString().slice(0,10);
+  const missed=[];
+  (classes||[]).forEach(c=>{
+    for(let d=from; d<today; d=addDays(d,1)){
+      const key=['sun','mon','tue','wed','thu','fri','sat'][new Date(d+'T00:00:00').getDay()];
+      if(!clsHasDay(c,key) || !isClassActive(c, d)) continue;
+      const lg=progOf(c.id,d);
+      if(!lg || !String(lg.content||'').trim()) missed.push({c,d});
+    }
+  });
+  return `<div class="card" style="margin-top:12px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <div class="card-title" style="margin:0">📓 강의 일지</div>
+      <span style="font-size:12px;color:var(--text-muted)">최근 ${journalWeeks}주 · 위에서 고른 반</span>
+      <span style="margin-left:auto;display:flex;gap:4px">${[2,4,8].map(w=>`<button class="btn btn-sm" style="padding:2px 8px;font-size:11px;${journalWeeks===w?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="journalWeeks=${w};rCurriculum()">${w}주</button>`).join('')}</span>
+    </div>
+    ${missed.length?`<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:9px;padding:8px 11px;margin-bottom:9px;font-size:12px;color:#9A3412">
+      ✏️ 수업은 있었는데 일지가 빈 날 <strong>${missed.length}건</strong> — ${missed.slice(0,6).map(x=>`${esc(x.c.name)} ${mdLabel(x.d)}`).join(', ')}${missed.length>6?` 외 ${missed.length-6}건`:''}
+      <div style="font-size:11px;margin-top:3px;color:#B45309">대시보드에서 ‹ › 로 그 날짜로 가서 적으면 돼요</div></div>`:''}
+    ${rows.length?`<div class="table-wrap"><table style="width:100%;font-size:12.5px">
+      <thead><tr><th style="width:78px">날짜</th><th style="width:110px">반</th><th style="text-align:left">나간 진도</th><th style="text-align:left">메모</th></tr></thead>
+      <tbody>${rows.map(r=>`<tr>
+        <td style="white-space:nowrap">${mdLabel(r.date)}(${W[new Date(r.date+'T00:00:00').getDay()]})</td>
+        <td><span class="chip">${esc(r.className||'')}</span></td>
+        <td style="font-weight:600">${esc(r.content)||'<span style="color:var(--text-muted);font-weight:400">-</span>'}</td>
+        <td style="color:var(--text-sub)">${esc(r.comment)}</td>
+      </tr>`).join('')}</tbody></table></div>`
+      :'<div style="color:var(--text-muted);font-size:13px;padding:10px 0">아직 적은 일지가 없어요. 대시보드 반 카드의 <strong>📓 나간 진도</strong>에 적으면 여기와 진도표에 쌓여요.</div>'}
+  </div>`;
+}
 function rCurriculum(){
   if(!CLASSES.length){ document.getElementById('curriculumContent').innerHTML='<div class="card" style="text-align:center;padding:30px;color:var(--text-muted)">먼저 반을 만들어주세요 (관리 → 반별 관리)</div>'; return; }
   if(!CURR_TERM.startDate) CURR_TERM.startDate=mondayOf('');
@@ -6935,7 +7010,7 @@ function rCurriculum(){
       <td style="white-space:nowrap;font-size:11px;color:var(--text-muted);background:${cur?'#E7EAFE':(exW.length?'#FEE2E2':'var(--bg)')}">${mdLabel(ws)}~${mdLabel(we)}
         ${exW.length?`<div title="${exW.join(', ')} 시험기간" style="font-size:10px;font-weight:800;color:#B91C1C;margin-top:2px">📕 시험 ${exW.slice(0,3).join('·')}${exW.length>3?` +${exW.length-3}`:''}</div>`:''}
         ${holW.length?`<div style="font-size:10px;font-weight:700;color:#EA580C;margin-top:1px">🇰🇷 ${holW.map(x=>mdLabel(x.d)+' '+x.n).join(', ')}</div>`:''}</td>
-      ${classes.map((c,ci)=>{ const p=curPlan(c.id,ws); return `<td style="padding:1px;${cur?'background:#F3F5FF':''}"><input value="${esc(p?.content||'')}" data-r="${i}" data-c="${ci}" onchange="doSaveCurrCell('${c.id}','${ws}',this.value)" onkeydown="currCellKey(event,this)" placeholder="-" style="width:100%;min-width:150px;border:1px solid transparent;border-radius:6px;padding:6px 7px;font-size:12px;background:transparent" onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='transparent'"></td>`; }).join('')}
+      ${classes.map((c,ci)=>{ const p=curPlan(c.id,ws); const logs=progLogsOfWeek(c.id,ws); return `<td style="padding:1px;vertical-align:top;${cur?'background:#F3F5FF':''}"><input value="${esc(p?.content||'')}" data-r="${i}" data-c="${ci}" onchange="doSaveCurrCell('${c.id}','${ws}',this.value)" onkeydown="currCellKey(event,this)" placeholder="-" style="width:100%;min-width:150px;border:1px solid transparent;border-radius:6px;padding:6px 7px;font-size:12px;background:transparent" onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='transparent'">${logs.length?`<div style="padding:2px 5px 3px;font-size:10.5px;line-height:1.45;color:#047857">${logs.map(l=>`<div title="${esc(l.comment||'')}">✓ ${mdLabel(l.date)} ${(String(l.content||'').trim()?String(l.content).replace(/</g,'&lt;'):'<span style="color:var(--text-muted)">(메모만)</span>')}</div>`).join('')}</div>`:''}</td>`; }).join('')}
     </tr>`;
   }
   document.getElementById('curriculumContent').innerHTML=`
@@ -6960,7 +7035,9 @@ function rCurriculum(){
         </tr></thead>
         <tbody>${body}</tbody>
       </table></div>
-    </div>`:`<div class="card" style="text-align:center;padding:26px;color:var(--text-muted)">표시할 반을 위에서 체크하세요 (담임반/부담임반/전체 또는 반 이름 클릭)</div>`}`;
+      <div style="font-size:11px;color:var(--text-muted);padding:6px 4px 2px">칸 아래 <span style="color:#047857;font-weight:700">✓ 날짜 진도</span>는 대시보드에서 적은 <strong>실제로 나간 진도</strong>예요. 윗칸은 계획.</div>
+    </div>`:`<div class="card" style="text-align:center;padding:26px;color:var(--text-muted)">표시할 반을 위에서 체크하세요 (담임반/부담임반/전체 또는 반 이름 클릭)</div>`}
+    ${journalListHtml(classes)}`;
 }
 function studentStats(st){
   if(!st) return {hwRate:'-',retryRate:'-',attRate:'-',recent:'-',lateRate:'-',punct:{total:0,onTime:0,lateCount:0,missing:0,onTimeRate:null,lateRate:null}};
