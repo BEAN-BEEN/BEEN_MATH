@@ -125,8 +125,9 @@ ok("같은 기준으로 걸러진다", () => {
   set('EXAMSUBS_CACHE', []);
   set('anRepExamId', 'e1');
   const h = sb.examAnalysisTabHtml();
-  assert.ok(/anPickStudent\('s3'\)/.test(h), '★ 담임 반도 있는 학생이 빠짐');
-  assert.ok(!/anPickStudent\('s2'\)/.test(h), '부담임 반만 다니는 학생이 남아 있음');
+  // 응시자 표는 반마다 시험 문서가 달라서 anPickStudentIn(시험, 학생) 으로 연다
+  assert.ok(/anPickStudent(In)?\((?:'e1',)?'s3'\)/.test(h), '★ 담임 반도 있는 학생이 빠짐');
+  assert.ok(!/anPickStudent(In)?\((?:'e1',)?'s2'\)/.test(h), '부담임 반만 다니는 학생이 남아 있음');
 });
 
 console.log('\n모의고사 명단에 반이 보이는가');

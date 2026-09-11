@@ -199,10 +199,10 @@ ok('시험을 바꾸면 고른 학생이 풀린다', () => {
 });
 ok('칩에 반 이름이 한 번만 나온다', () => {
   const html = fs.readFileSync(path.join(ROOT, 'teacher.html'), 'utf8');
-  const i = html.indexOf('anExamChipOrder(withAn).map(');
+  const i = html.indexOf('anPaperGroups().map(');
   assert.ok(i >= 0, '칩 코드를 못 찾음');
-  const line = html.slice(i, html.indexOf('\n', i));
-  assert.strictEqual((line.match(/e\.className/g) || []).length, 1, '반 이름이 중복됨');
+  const block = html.slice(i, html.indexOf(".join('')}", i));
+  assert.strictEqual((block.match(/className/g) || []).length, 1, '반 이름이 중복됨');
 });
 ok('이름에 태그가 있어도 안 샌다', () => {
   seed([{ examId: 'e1', studentId: 'x', studentName: '<img src=x>', answers: { '1': '1' } }]);

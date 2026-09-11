@@ -2509,6 +2509,140 @@ function anRosterHtml(exam){
     </div>`:''}
   </div>`;
 }
+// 🧾 같은 시험지 묶기 — 여러 반에 등록하면 반마다 exams 문서가 따로 생긴다.
+//   시험명과 문항 수가 같으면 같은 시험지로 본다. 반을 넘어 학년 전체로 비교하려고.
+function anPaperKey(e){ return String((e&&e.title)||'').replace(/\s+/g,' ').trim()+'#'+anProbs(e).length; }
+function anPaperOf(e){ if(!e) return []; const k=anPaperKey(e); return anExamsWithAnalysis().filter(x=>anPaperKey(x)===k); }
+function anPaperGroups(){
+  const m=new Map();
+  anExamsWithAnalysis().forEach(e=>{ const k=anPaperKey(e); if(!m.has(k)) m.set(k,{key:k, title:e.title, exams:[]}); m.get(k).exams.push(e); });
+  const cnt={}; getExamSubs().forEach(x=>{ cnt[x.examId]=(cnt[x.examId]||0)+1; });
+  const arr=[...m.values()].map(g=>Object.assign(g,{
+    took:g.exams.reduce((t,e)=>t+(cnt[e.id]||0),0),
+    latest:g.exams.reduce((t,e)=>{ const v=String(e.createdAt||e.date||''); return v>t?v:t; },'')
+  }));
+  // 응시자가 있는 시험지부터, 그다음 최근 등록 순
+  return arr.sort((a,b)=>((b.took>0)-(a.took>0)) || b.latest.localeCompare(a.latest) || String(a.title).localeCompare(String(b.title)));
+}
+// 📋 시험지 한 장의 응시자 — 이 시험지를 본 모든 반을 한 표에. 점수 순 등수와 반별 평균.
+let anPaperOpenMissing=false;
+function anPaperRosterHtml(exam){
+  const docs=anPaperOf(exam);
+  if(!docs.length) return '';
+  const rows=[];
+  const doneAll=new Set();
+  docs.forEach(d=>getExamSubs().filter(x=>x.examId===d.id).forEach(x=>{
+    doneAll.add(x.studentId);
+    const st=getStudents().find(q=>q.id===x.studentId) || {id:x.studentId, name:x.studentName||'(이름 없음)'};
+    rows.push({ st, sub:x, doc:d, r:examResultOf(d, x) });
+  }));
+  rows.sort((a,b)=>b.r.score-a.r.score || b.r.real-a.r.real || String(a.st.name).localeCompare(String(b.st.name)));
+  // 같은 점수는 같은 등수
+  let prev=null, rk=0; rows.forEach((x,i)=>{ if(x.r.score!==prev){ rk=i+1; prev=x.r.score; } x.rank=rk; });
+  // 반별 — 부담임 반만 다니는 학생은 빼고(담임 반도 있으면 남긴다), 다른 반에서 이미 본 학생은 미응시로 안 센다
+  const seen=new Set();
+  const perCls=docs.map(d=>{
+    const mine=rows.filter(x=>x.doc.id===d.id);
+    const roster=getStudentsByClass(d.classId).filter(isHomeroomStudent);
+    const miss=roster.filter(q=>!doneAll.has(q.id) && !seen.has(q.id));
+    miss.forEach(q=>seen.add(q.id));
+    const avg=mine.length?Math.round(mine.reduce((t,x)=>t+x.r.score,0)/mine.length):null;
+    return { d, mine, roster, miss, avg };
+  });
+  const total=perCls.reduce((t,c)=>t+c.roster.length,0);
+  const avgAll=rows.length?Math.round(rows.reduce((t,x)=>t+x.r.score,0)/rows.length):null;
+  const missN=perCls.reduce((t,c)=>t+c.miss.length,0);
+  const multi=docs.length>1;
+  const color=v=>v>=80?'var(--green)':(v>=60?'var(--orange)':'var(--red)');
+  const when=v=>{ const t=String(v||''); const m=t.match(/(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})/); return m?`${+m[2]}/${+m[3]}`:t.slice(0,10); };
+  const open=anPaperOpenMissing || !rows.length;
+  return `<div style="margin-bottom:12px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+      <span style="font-size:15px;font-weight:800">📋 응시한 학생</span>
+      <span class="badge ${rows.length?'b-green':'b-gray'}">${rows.length}명</span>
+      <span style="font-size:12px;color:var(--text-muted)">/ ${multi?`${docs.length}개 반 `:''}${total}명</span>
+      ${avgAll!=null?`<span style="font-size:12px;color:var(--text-muted);margin-left:4px">${multi?'전체 ':''}평균 <strong style="color:var(--text)">${avgAll}점</strong></span>`:''}
+    </div>
+    ${multi?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${perCls.map(c=>`<span style="font-size:11.5px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:3px 8px">
+        <strong>${anEsc(c.d.className||'')}</strong> <span style="color:var(--text-muted)">${c.mine.length}/${c.roster.length}명</span>
+        ${c.avg!=null?` · 평균 <strong style="color:${color(c.avg)}">${c.avg}</strong>`:''}</span>`).join('')}</div>`:''}
+    ${rows.length?`<div class="table-wrap"><table style="width:100%;font-size:13px">
+      <thead><tr>
+        <th style="width:40px">등수</th><th style="text-align:left">이름</th>${multi?'<th style="text-align:left;width:92px">반</th>':''}
+        <th style="width:56px">점수</th><th style="width:56px" title="찍었거나 시간 넘겨 푼 걸 빼고 다시 잰 점수">실질</th>
+        <th style="width:62px">맞음</th><th style="text-align:left">틀린 번호</th>
+        <th style="width:78px" title="찍음 · 시간 넘김 · 범위 아님">찍·⏱·범</th><th style="width:50px">제출</th><th style="width:70px"></th>
+      </tr></thead>
+      <tbody>${rows.map(x=>{ const on=x.st.id===anRepStId && x.doc.id===anRepExamId; const r=x.r;
+        return `<tr style="cursor:pointer;${on?'background:var(--primary-light)':''}" onclick="anPickStudentIn('${x.doc.id}','${x.st.id}')">
+          <td style="text-align:center;font-weight:800;color:${x.rank<=3?'var(--primary)':'var(--text-muted)'}">${x.rank}</td>
+          <td style="font-weight:700">${anEsc(x.st.name)}</td>
+          ${multi?`<td><span class="chip" style="font-size:11px">${anEsc(x.doc.className||'')}</span></td>`:''}
+          <td style="text-align:center;font-weight:800;color:${color(r.score)}">${r.score}</td>
+          <td style="text-align:center;color:${r.real<r.score?'#B45309':'var(--text-muted)'};font-weight:${r.real<r.score?'700':'400'}">${r.real<r.score?r.real:'-'}</td>
+          <td style="text-align:center;font-size:12px">${r.correct}/${r.n}</td>
+          <td style="font-size:12px;color:var(--red)">${r.wrongNos.length?r.wrongNos.join(', '):'<span style="color:var(--green)">없음 🎉</span>'}</td>
+          <td style="text-align:center;font-size:11.5px;color:var(--text-muted)">${[r.guess,r.late,r.skip].map(v=>v||'·').join(' ')}</td>
+          <td style="text-align:center;font-size:11.5px;color:var(--text-muted)">${when(x.sub.submittedAt)}</td>
+          <td><button class="btn ${on?'btn-primary':'btn-outline'} btn-sm" style="padding:2px 8px;font-size:11px" onclick="event.stopPropagation();anPickStudentIn('${x.doc.id}','${x.st.id}')">분석서 →</button></td>
+        </tr>`; }).join('')}</tbody></table></div>`
+      :'<div style="font-size:13px;color:var(--text-muted);padding:8px 0">아직 답안을 낸 학생이 없어요. 학생 홈 맨 위 <strong>📝 답안지 넣을 시험</strong>에 떠 있어요.</div>'}
+    ${missN?`<div style="margin-top:10px;background:var(--bg);border-radius:10px;padding:9px 11px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;cursor:pointer" onclick="anPaperOpenMissing=!anPaperOpenMissing;rGrades()">
+        <span style="font-size:12.5px;font-weight:800;color:var(--red)">📮 아직 안 낸 학생 ${missN}명</span>
+        <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px" onclick="event.stopPropagation();anCopyMissingPaper('${exam.id}')">📋 명단 복사</button>
+        <span style="margin-left:auto;font-size:11px;color:var(--text-muted)">${open?'접기 ▴':'펼치기 ▾'}</span>
+      </div>
+      ${open?perCls.filter(c=>c.miss.length).map(c=>`<div style="margin-top:7px">
+        ${multi?`<div style="font-size:11.5px;font-weight:700;color:var(--text-sub);margin-bottom:3px">${anEsc(c.d.className||'')} ${c.miss.length}명</div>`:''}
+        <div style="display:flex;gap:5px;flex-wrap:wrap">${c.miss.map(q=>`<button class="btn ${(q.id===anRepStId&&c.d.id===anRepExamId)?'btn-primary':'btn-outline'} btn-sm" style="padding:2px 8px;font-size:12px" title="답안 없이 정오표를 직접 찍어 분석서를 만들 수 있어요" onclick="anPickStudentIn('${c.d.id}','${q.id}')">${anEsc(q.name)}</button>`).join('')}</div>
+      </div>`).join('')+'<div style="font-size:11px;color:var(--text-muted);margin-top:6px">이름을 누르면 종이 답안을 보고 정오표를 직접 찍을 수 있어요.</div>':''}
+    </div>`:''}
+  </div>`;
+}
+// 표에서 학생을 누르면 — 그 학생 반의 시험 문서로 분석서를 연다
+function anPickStudentIn(examId, stId){
+  anRepExamId=examId; anRepStId=stId; anOX=null; rGrades();
+  setTimeout(()=>{ const el=document.getElementById('anrep'); if(el) el.scrollIntoView({behavior:'smooth',block:'start'}); }, 80);
+}
+// 시험지 전체의 미응시 명단 — 반별로 줄을 나눠 카톡에 붙이게
+function anCopyMissingPaper(id){
+  const e=getExams().find(x=>x.id===id); if(!e) return;
+  const docs=anPaperOf(e);
+  const doneAll=new Set(); docs.forEach(d=>getExamSubs().filter(x=>x.examId===d.id).forEach(x=>doneAll.add(x.studentId)));
+  const seen=new Set();
+  const lines=docs.map(d=>{
+    const miss=getStudentsByClass(d.classId).filter(isHomeroomStudent).filter(q=>!doneAll.has(q.id)&&!seen.has(q.id));
+    miss.forEach(q=>seen.add(q.id));
+    return miss.length?`[${d.className||''}] ${miss.map(q=>q.name).join(', ')}`:'';
+  }).filter(Boolean);
+  if(!lines.length){ showToast('다 냈어요 🎉','success'); return; }
+  const txt=`${e.title||''} 답안 아직 안 낸 사람`+NL_T+lines.join(NL_T)+NL_T+'학생 홈 맨 위 📝 답안지 넣을 시험에서 넣어주세요!';
+  const ok=()=>showToast('명단을 복사했어요 — 카톡에 붙여넣으세요 📋','success');
+  try{ if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(ok,()=>prompt('아래를 복사하세요',txt)); else prompt('아래를 복사하세요',txt); }
+  catch(err){ prompt('아래를 복사하세요',txt); }
+}
+// 같은 시험지는 만점·문항 형식도 같아야 반끼리 비교가 공정하다 — 한 반만 고치면 같은 답에 점수가 달라진다
+async function anSetMax100Paper(id){
+  const e=getExams().find(x=>x.id===id); if(!e) return;
+  const docs=anPaperOf(e).filter(d=>Number(d.maxScore)!==AN_MAX_DEFAULT);
+  try{ for(const d of docs) await updateExam(d.id, { maxScore: AN_MAX_DEFAULT });
+    showToast(`${docs.length}개 반 모두 100점 만점으로 맞췄어요 📐`,'success'); rGrades(); }
+  catch(err){ showToast('실패: '+err.message,'error'); }
+}
+async function anSetTailSubjectivePaper(id, k){
+  const e=getExams().find(x=>x.id===id); if(!e) return;
+  const docs=anPaperOf(e);
+  try{
+    for(const d of docs){
+      const probs=anProbs(d);   // 반마다 범위 밖 표시가 다를 수 있어서 각자 자기 분석을 고친다
+      const rows=probs.map((p,i)=>Object.assign({}, p, { qType:(i>=probs.length-k)?'주관식':'객관식' }));
+      await updateExam(d.id, { analysis: rows });
+    }
+    showToast(`${docs.length>1?docs.length+'개 반 모두 ':''}${k?`뒤 ${k}문항을 주관식으로`:'전부 객관식으로'} 바꿨어요`,'success');
+    rGrades();
+  }catch(err){ showToast('실패: '+err.message,'error'); }
+}
 // 이 시험을 아직 안 낸 학생 명단 — 카톡에 바로 붙여넣게
 function anCopyMissingExam(id){
   const e=getExams().find(x=>x.id===id); if(!e) return;
@@ -3131,7 +3265,7 @@ function examAnalysisTabHtml(){
     </div>
     ${answerKeyPanelHtml()}
     <div class="card" style="border-left:4px solid var(--green)">
-      <div class="card-title">📋 ③ 응시 결과 · 학생별 분석서 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(시험을 고르면 응시한 학생이 바로 보여요 · 이름을 누르면 분석서)</span></div>
+      <div class="card-title">📋 ③ 응시 결과 · 학생별 분석서 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(시험지를 고르면 그 시험을 본 모든 반 학생이 한 표에 · 이름을 누르면 분석서)</span></div>
       ${withAn.length?`
         ${examsNeedingMax().length?`<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:10px;padding:9px 11px;margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span style="font-size:12.5px;color:#9A3412">📐 만점이 100점이 아닌 시험이 <strong>${examsNeedingMax().length}건</strong> 있어요 (예전 방식으로 등록된 것)</span>
@@ -3139,7 +3273,9 @@ function examAnalysisTabHtml(){
         </div>`:''}
         <div class="form-group"><label class="form-label">분석된 시험</label>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
-            ${anExamChipOrder(withAn).map(e=>{ const took=getExamSubs().filter(x=>x.examId===e.id).length; return `<button class="btn ${e.id===anRepExamId?'btn-primary':'btn-outline'} btn-sm" onclick="anPickExam('${e.id}')">${(AN_KINDS.find(k=>k[0]===e.kind)||[,'📄'])[1].split(' ')[0]} ${anEsc(e.title)} <span style="opacity:.75;font-size:11px">${anEsc(e.className||'')} · ${anProbs(e).length}문항</span>${took?` <span style="background:${e.id===anRepExamId?'rgba(255,255,255,.3)':'var(--green-light,#DCFCE7)'};color:${e.id===anRepExamId?'#fff':'var(--green)'};border-radius:6px;padding:0 5px;font-size:10.5px;font-weight:800">응시 ${took}</span>`:''}</button>`; }).join('')}
+            ${anPaperGroups().map(g=>{ const sel=exam && anPaperKey(exam)===g.key; const first=g.exams[0];
+              return `<button class="btn ${sel?'btn-primary':'btn-outline'} btn-sm" onclick="anPickExam('${first.id}')">${(AN_KINDS.find(k=>k[0]===first.kind)||[,'📄'])[1].split(' ')[0]} ${anEsc(g.title)}
+                <span style="opacity:.75;font-size:11px">${g.exams.length>1?g.exams.length+'개 반':anEsc(first.className||'')} · ${anProbs(first).length}문항</span>${g.took?` <span style="background:${sel?'rgba(255,255,255,.3)':'var(--green-light,#DCFCE7)'};color:${sel?'#fff':'var(--green)'};border-radius:6px;padding:0 5px;font-size:10.5px;font-weight:800">응시 ${g.took}</span>`:''}</button>`; }).join('')}
           </div>
         </div>
         ${exam?(function(){ const st=anExamReady(exam); return `
@@ -3147,13 +3283,14 @@ function examAnalysisTabHtml(){
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <span style="font-size:12px;color:var(--text-muted)">이 시험</span>
             <strong style="font-size:13px">${anEsc(exam.title)}</strong>
+            ${(function(){ const docs=anPaperOf(exam); if(docs.length<2) return ''; return `<span style="font-size:11.5px;color:var(--text-muted);margin-left:2px">· 관리할 반</span>${docs.map(d=>`<button class="btn btn-sm" style="padding:1px 7px;font-size:11px;${d.id===exam.id?'background:var(--primary);color:#fff':'background:var(--surface);color:var(--text-sub);border:1px solid var(--border)'}" onclick="anPickExam('${d.id}')">${anEsc(d.className||'')}</button>`).join('')}`; })()}
             <span style="font-size:12px;color:var(--text-muted)">반 바꾸기</span>
             <select class="form-select" style="width:auto;padding:3px 8px;font-size:12px" onchange="anMoveExam('${exam.id}', this.value)">
               ${CLASSES.map(c=>`<option value="${c.id}" ${c.id===exam.classId?'selected':''}>${anEsc(c.name)} (${getStudentsByClass(c.id).filter(isActiveStudent).length}명)</option>`).join('')}
             </select>
             <span style="font-size:12px;color:var(--text-muted)">만점</span>
             <strong style="font-size:12px;color:${Number(exam.maxScore)===AN_MAX_DEFAULT?'var(--text)':'var(--orange)'}">${examMaxScore(exam)}점</strong>
-            ${Number(exam.maxScore)===AN_MAX_DEFAULT?'':`<button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px" onclick="anSetMax100('${exam.id}')">100점으로</button>`}
+            ${anPaperOf(exam).every(d=>Number(d.maxScore)===AN_MAX_DEFAULT)?'':`<button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px" onclick="anSetMax100Paper('${exam.id}')">${anPaperOf(exam).length>1?'반 모두 ':''}100점으로</button>`}
             <button class="btn btn-red btn-sm" style="margin-left:auto;padding:2px 9px;font-size:11px" onclick="anDelExam('${exam.id}')">🗑 시험 지우기</button>
           </div>
           ${(function(){ const tc=anTypeCount(exam); return `
@@ -3161,8 +3298,8 @@ function examAnalysisTabHtml(){
             <span style="font-size:12px;color:var(--text-muted)">문항 형식</span>
             <span style="font-size:12px">객관식 <strong>${tc.obj}</strong> · 주관식 <strong style="color:#B45309">${tc.sub}</strong>${tc.sub?` <span style="color:var(--text-muted)">(${tc.subNos.join(', ')}번)</span>`:''}</span>
             <span style="font-size:11px;color:var(--text-muted);margin-left:4px">뒤에서</span>
-            ${[0,1,2,3,4].map(k=>`<button class="btn btn-outline btn-sm" style="padding:2px 7px;font-size:11px" onclick="anSetTailSubjective('${exam.id}',${k})">${k?k+'문항':'없음'}</button>`).join('')}
-            <span style="font-size:11px;color:var(--text-muted)">주관식</span>
+            ${[0,1,2,3,4].map(k=>`<button class="btn btn-outline btn-sm" style="padding:2px 7px;font-size:11px" onclick="anSetTailSubjectivePaper('${exam.id}',${k})">${k?k+'문항':'없음'}</button>`).join('')}
+            <span style="font-size:11px;color:var(--text-muted)">주관식${anPaperOf(exam).length>1?' <span style="opacity:.8">(이 시험지를 본 반 모두)</span>':''}</span>
           </div>`; })()}
           <div style="font-size:11.5px;margin-top:6px;color:${(st.keys&&st.students)?'var(--green)':'var(--orange)'}">
             ${st.keys&&st.students
@@ -3170,7 +3307,7 @@ function examAnalysisTabHtml(){
               : `⚠️ ${!st.students?'이 반에 재원 학생이 없어요 — 반을 바꿔주세요. ':''}${!st.keys?'정답이 하나도 없어서 학생 화면에 답 입력칸이 안 떠요.':''}`}
           </div>
         </div>
-        ${anRosterHtml(exam)}
+        ${anPaperRosterHtml(exam)}
         ${assistantOnlyNote(hiddenAn)}`; })():''}
         <div id="anrep">${anReportPanelHtml()}</div>
       `:`<div style="color:var(--text-muted);padding:12px;font-size:13px">아직 분석된 시험이 없어요. 위에서 시험지를 올려 분석한 뒤 <strong>시험으로 등록</strong>하면 여기에 나타나요.</div>`}
