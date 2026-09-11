@@ -2357,7 +2357,12 @@ function anLoadOX(){
   const wrong=new Set(anParseNos(sub&&sub.wrongNos));
   anOX={}; anProbs(exam).forEach(p=>{ anOX[String(p.no)] = !wrong.has(String(p.no)); });
 }
-function anPickExam(id){ anRepExamId=id; anOX=null; rGrades(); }
+// 응시한 학생이 있는 시험을 앞으로 — 볼 게 있는 시험부터. 그다음 최근 등록 순.
+function anExamChipOrder(list){
+  const cnt={}; getExamSubs().forEach(x=>{ cnt[x.examId]=(cnt[x.examId]||0)+1; });
+  return list.slice().sort((a,b)=>((cnt[b.id]||0)>0)-((cnt[a.id]||0)>0) || String(b.createdAt||b.date||'').localeCompare(String(a.createdAt||a.date||'')) || String(a.title||'').localeCompare(String(b.title||'')));
+}
+function anPickExam(id){ anRepExamId=id; anRepStId=''; anOX=null; rGrades(); }
 // 반을 잘못 골라 등록하는 일이 잦다. 성적 관리 탭까지 안 가고 여기서 바로 고친다.
 async function anMoveExam(id, cid){
   const e=getExams().find(x=>x.id===id); if(!e || !cid || cid===e.classId) return;
@@ -2426,7 +2431,95 @@ async function doFixMaxScores(){
 function anExamReady(e){
   return { keys:Object.keys(examKey(e)).length, students:getStudentsByClass(e.classId).filter(isActiveStudent).length };
 }
-function anPickStudent(id){ anRepStId=id; anOX=null; rGrades(); }
+function anPickStudent(id){ anRepStId=id; anOX=null; rGrades();
+  setTimeout(()=>{ const el=document.getElementById('anrep'); if(el) el.scrollIntoView({behavior:'smooth',block:'start'}); }, 80); }
+// 한 학생의 결과 — 분석서(anReportHtml)와 같은 규칙으로 센다. 표와 분석서 숫자가 달라지면 안 된다.
+function examResultOf(exam, sub){
+  const key=examKey(exam), ans=(sub&&sub.answers)||{};
+  const skip=skipSet(sub), guessed=guessedSet(sub), late=lateSet(sub);
+  const probs=anProbs(exam).filter(p=>!isOutOfRange(p) && !skip.has(String(p.no)));
+  const ox={};
+  if(Object.keys(key).length && Object.keys(ans).length){
+    const w=new Set(gradeOmr(key, ans).wrong.map(String));
+    probs.forEach(p=>{ ox[String(p.no)]=!w.has(String(p.no)); });
+  } else {
+    const w=new Set(anParseNos(sub&&sub.wrongNos).map(String));
+    probs.forEach(p=>{ ox[String(p.no)]=!w.has(String(p.no)); });
+  }
+  const shaky=k=>guessed.has(k)||late.has(k);
+  const oxReal={}; probs.forEach(p=>{ const k=String(p.no); oxReal[k]=!!ox[k] && !shaky(k); });
+  const sc=scoreFromOX(exam, ox, skip);
+  const correct=probs.filter(p=>ox[String(p.no)]).length;
+  const nGuess=probs.filter(p=>ox[String(p.no)] && guessed.has(String(p.no))).length;
+  const nLate=probs.filter(p=>ox[String(p.no)] && late.has(String(p.no)) && !guessed.has(String(p.no))).length;
+  return { score:sc.score, total:sc.total, real:scoreFromOX(exam, oxReal, skip).score,
+           correct, n:probs.length, guess:nGuess, late:nLate, skip:skip.size,
+           wrongNos:probs.filter(p=>!ox[String(p.no)]).map(p=>String(p.no)) };
+}
+// 📋 응시자 성적표 — 시험을 고르면 누가 봤는지 한 번에. 누르면 그 학생 분석서.
+let anRosterOpenMissing=false;
+function anRosterHtml(exam){
+  // 부담임 반만 다니는 학생은 이 반 시험을 안 본다. 담임 반이 하나라도 있으면 남긴다 (선생님이 정한 규칙).
+  const inClass=getStudentsByClass(exam.classId).filter(isHomeroomStudent);
+  const subs=getExamSubs().filter(x=>x.examId===exam.id);
+  const byId={}; subs.forEach(x=>{ byId[x.studentId]=x; });
+  // 응시자는 답안이 있는 학생 — 반을 옮긴 학생도 답안이 있으면 보여준다
+  const took=subs.map(x=>{
+    const st=getStudents().find(s=>s.id===x.studentId) || {id:x.studentId, name:x.studentName||'(이름 없음)'};
+    return { st, sub:x, r:examResultOf(exam, x) };
+  }).sort((a,b)=>b.r.score-a.r.score || String(a.st.name).localeCompare(String(b.st.name)));
+  const missing=inClass.filter(s=>!byId[s.id]);
+  const avg=took.length?Math.round(took.reduce((t,x)=>t+x.r.score,0)/took.length):null;
+  const W=['일','월','화','수','목','금','토'];
+  const when=v=>{ const t=String(v||''); const m=t.match(/(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})/); return m?`${+m[2]}/${+m[3]}`:t.slice(0,10); };
+  const rowColor=sc=>sc>=80?'var(--green)':(sc>=60?'var(--orange)':'var(--red)');
+  return `<div style="margin-bottom:12px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <span style="font-size:15px;font-weight:800">📋 응시한 학생</span>
+      <span class="badge ${took.length?'b-green':'b-gray'}">${took.length}명</span>
+      <span style="font-size:12px;color:var(--text-muted)">/ ${anEsc(anClsLabel(exam.className||''))} ${inClass.length}명</span>
+      ${avg!=null?`<span style="font-size:12px;color:var(--text-muted);margin-left:4px">평균 <strong style="color:var(--text)">${avg}점</strong></span>`:''}
+    </div>
+    ${took.length?`<div class="table-wrap"><table style="width:100%;font-size:13px">
+      <thead><tr>
+        <th style="text-align:left">이름</th><th style="width:62px">점수</th><th style="width:62px" title="찍었거나 시간 넘겨 푼 걸 빼고 다시 잰 점수">실질</th>
+        <th style="width:70px">맞음</th><th style="text-align:left">틀린 번호</th>
+        <th style="width:92px" title="찍음 · 시간 넘김 · 범위 아님">찍·⏱·범</th><th style="width:56px">제출</th><th style="width:74px"></th>
+      </tr></thead>
+      <tbody>${took.map(x=>{ const on=x.st.id===anRepStId; const r=x.r;
+        return `<tr style="cursor:pointer;${on?'background:var(--primary-light)':''}" onclick="anPickStudent('${x.st.id}')">
+          <td style="font-weight:700">${anEsc(x.st.name)}</td>
+          <td style="text-align:center;font-weight:800;color:${rowColor(r.score)}">${r.score}</td>
+          <td style="text-align:center;color:${r.real<r.score?'#B45309':'var(--text-muted)'};font-weight:${r.real<r.score?'700':'400'}">${r.real<r.score?r.real:'-'}</td>
+          <td style="text-align:center;font-size:12px">${r.correct}/${r.n}</td>
+          <td style="font-size:12px;color:var(--red)">${r.wrongNos.length?r.wrongNos.join(', '):'<span style="color:var(--green)">없음 🎉</span>'}</td>
+          <td style="text-align:center;font-size:11.5px;color:var(--text-muted)">${[r.guess,r.late,r.skip].map(v=>v||'·').join(' ')}</td>
+          <td style="text-align:center;font-size:11.5px;color:var(--text-muted)">${when(x.sub.submittedAt)}</td>
+          <td><button class="btn ${on?'btn-primary':'btn-outline'} btn-sm" style="padding:2px 8px;font-size:11px" onclick="event.stopPropagation();anPickStudent('${x.st.id}')">분석서 →</button></td>
+        </tr>`; }).join('')}</tbody></table></div>`
+      :'<div style="font-size:13px;color:var(--text-muted);padding:8px 0">아직 답안을 낸 학생이 없어요. 학생 홈 맨 위 <strong>📝 답안지 넣을 시험</strong>에 떠 있어요.</div>'}
+    ${missing.length?`<div style="margin-top:10px;background:var(--bg);border-radius:10px;padding:9px 11px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;cursor:pointer" onclick="anRosterOpenMissing=!anRosterOpenMissing;rGrades()">
+        <span style="font-size:12.5px;font-weight:800;color:var(--red)">📮 아직 안 낸 학생 ${missing.length}명</span>
+        <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px" onclick="event.stopPropagation();anCopyMissingExam('${exam.id}')">📋 명단 복사</button>
+        <span style="margin-left:auto;font-size:11px;color:var(--text-muted)">${(anRosterOpenMissing||!took.length)?'접기 ▴':'펼치기 ▾'}</span>
+      </div>
+      ${(anRosterOpenMissing||!took.length)?`<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:7px">${missing.map(s=>`<button class="btn ${s.id===anRepStId?'btn-primary':'btn-outline'} btn-sm" style="padding:2px 8px;font-size:12px" title="답안 없이 정오표를 직접 찍어 분석서를 만들 수 있어요" onclick="anPickStudent('${s.id}')">${anEsc(s.name)}</button>`).join('')}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:5px">이름을 누르면 종이 답안을 보고 정오표를 직접 찍을 수 있어요.</div>`:''}
+    </div>`:''}
+  </div>`;
+}
+// 이 시험을 아직 안 낸 학생 명단 — 카톡에 바로 붙여넣게
+function anCopyMissingExam(id){
+  const e=getExams().find(x=>x.id===id); if(!e) return;
+  const done=new Set(getExamSubs().filter(x=>x.examId===id).map(x=>x.studentId));
+  const miss=getStudentsByClass(e.classId).filter(isActiveStudent).filter(s=>!done.has(s.id));
+  if(!miss.length){ showToast('다 냈어요 🎉','success'); return; }
+  const txt=`[${e.className||''}] ${e.title||''} 답안 아직 안 낸 사람: ${miss.map(s=>s.name).join(', ')}`+NL_T+'학생 홈 맨 위 📝 답안지 넣을 시험에서 넣어주세요!';
+  const ok=()=>showToast('명단을 복사했어요 — 카톡에 붙여넣으세요 📋','success');
+  try{ if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(ok,()=>prompt('아래를 복사하세요',txt)); else prompt('아래를 복사하세요',txt); }
+  catch(err){ prompt('아래를 복사하세요',txt); }
+}
 function anToggleOX(no){
   no=String(no); if(!anOX) anLoadOX();
   anOX[no]=!anOX[no];
@@ -3038,7 +3131,7 @@ function examAnalysisTabHtml(){
     </div>
     ${answerKeyPanelHtml()}
     <div class="card" style="border-left:4px solid var(--green)">
-      <div class="card-title">📋 ③ 학생별 분석서 만들기 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(정오표를 찍으면 분석서가 완성돼요)</span></div>
+      <div class="card-title">📋 ③ 응시 결과 · 학생별 분석서 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(시험을 고르면 응시한 학생이 바로 보여요 · 이름을 누르면 분석서)</span></div>
       ${withAn.length?`
         ${examsNeedingMax().length?`<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:10px;padding:9px 11px;margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span style="font-size:12.5px;color:#9A3412">📐 만점이 100점이 아닌 시험이 <strong>${examsNeedingMax().length}건</strong> 있어요 (예전 방식으로 등록된 것)</span>
@@ -3046,7 +3139,7 @@ function examAnalysisTabHtml(){
         </div>`:''}
         <div class="form-group"><label class="form-label">분석된 시험</label>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
-            ${withAn.map(e=>`<button class="btn ${e.id===anRepExamId?'btn-primary':'btn-outline'} btn-sm" onclick="anPickExam('${e.id}')">${(AN_KINDS.find(k=>k[0]===e.kind)||[,'📄'])[1].split(' ')[0]} ${anEsc(e.title)} <span style="opacity:.75;font-size:11px">${anEsc(e.className||'')}</span> <span style="opacity:.7">${anEsc(e.className||'')} · ${anProbs(e).length}문항</span></button>`).join('')}
+            ${anExamChipOrder(withAn).map(e=>{ const took=getExamSubs().filter(x=>x.examId===e.id).length; return `<button class="btn ${e.id===anRepExamId?'btn-primary':'btn-outline'} btn-sm" onclick="anPickExam('${e.id}')">${(AN_KINDS.find(k=>k[0]===e.kind)||[,'📄'])[1].split(' ')[0]} ${anEsc(e.title)} <span style="opacity:.75;font-size:11px">${anEsc(e.className||'')} · ${anProbs(e).length}문항</span>${took?` <span style="background:${e.id===anRepExamId?'rgba(255,255,255,.3)':'var(--green-light,#DCFCE7)'};color:${e.id===anRepExamId?'#fff':'var(--green)'};border-radius:6px;padding:0 5px;font-size:10.5px;font-weight:800">응시 ${took}</span>`:''}</button>`; }).join('')}
           </div>
         </div>
         ${exam?(function(){ const st=anExamReady(exam); return `
@@ -3077,14 +3170,8 @@ function examAnalysisTabHtml(){
               : `⚠️ ${!st.students?'이 반에 재원 학생이 없어요 — 반을 바꿔주세요. ':''}${!st.keys?'정답이 하나도 없어서 학생 화면에 답 입력칸이 안 떠요.':''}`}
           </div>
         </div>
-        <div class="form-group"><label class="form-label">학생 (${anEsc(exam.className||'')})</label>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">
-            ${sts.length?sts.map(s=>{ const done=getExamSubs().some(x=>x.examId===exam.id&&x.studentId===s.id&&x.wrongNos!=null);
-              return `<button class="btn ${s.id===anRepStId?'btn-primary':'btn-outline'} btn-sm" onclick="anPickStudent('${s.id}')">${done?'✅ ':''}${anEsc(s.name)}</button>`; }).join('')
-              :'<span style="font-size:13px;color:var(--text-muted)">이 반에 학생이 없어요</span>'}
-          </div>
-          ${assistantOnlyNote(hiddenAn)}
-        </div>`; })():''}
+        ${anRosterHtml(exam)}
+        ${assistantOnlyNote(hiddenAn)}`; })():''}
         <div id="anrep">${anReportPanelHtml()}</div>
       `:`<div style="color:var(--text-muted);padding:12px;font-size:13px">아직 분석된 시험이 없어요. 위에서 시험지를 올려 분석한 뒤 <strong>시험으로 등록</strong>하면 여기에 나타나요.</div>`}
     </div>`;
