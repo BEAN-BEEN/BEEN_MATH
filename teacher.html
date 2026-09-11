@@ -3471,7 +3471,10 @@ function rDashboard(){
     <div class="card" style="border:2px solid var(--primary);background:linear-gradient(180deg,var(--primary-light),var(--surface));margin:0;order:9">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px">
         <div class="card-title" style="margin:0;font-size:17px">📚 숙제 · 오답 · 복습 <span style="font-size:12px;color:var(--text-muted);font-weight:400">— 빠짐없이 끝까지 챙겨요</span></div>
-        <button class="btn btn-primary btn-sm" onclick="goHw('homework')">숙제 관리로 →</button>
+        <span style="display:flex;gap:6px">
+          <button class="btn btn-outline btn-sm" onclick="openHwShot('')" title="학생에게 캡처해서 보낼 숙제 화면">📸 숙제 캡처</button>
+          <button class="btn btn-primary btn-sm" onclick="goHw('homework')">숙제 관리로 →</button>
+        </span>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px" id="hwHeroGrid">
         <div onclick="goHw('homework')" style="cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center">
@@ -4647,6 +4650,13 @@ function oapRosterHtml(a, subs, sts){
 let hwShotClassId='', hwShotScope='week';
 const HW_SHOT_SCOPES=[['week','이번 주'],['next','앞으로 낼 것'],['all','전체']];
 function openHwShot(classId){
+  // 반을 안 정하고 열면 — 대시보드에서 보고 있는 날 수업하는 반을 먼저 (방금 숙제 낸 반일 가능성이 크다)
+  if(!classId){
+    const day=(typeof dashDay==='function')?dashDay():new Date().toISOString().slice(0,10);
+    const key=['sun','mon','tue','wed','thu','fri','sat'][new Date(day+'T00:00:00').getDay()];
+    const todayCls=CLASSES.find(c=>clsHasDay(c,key) && isClassActive(c, day));
+    classId=todayCls?todayCls.id:'';
+  }
   hwShotClassId = classId || (CLASSES[0]&&CLASSES[0].id) || '';
   hwShotScope='week';
   renderHwShot();
@@ -5126,9 +5136,10 @@ function openQuickHw(){
       <button type="button" class="btn btn-outline btn-sm" onclick="qhwDue(7)">+1주</button>
       <input class="form-input" id="qhw-due" type="date" style="flex:1;min-width:150px">
     </div>
-    <div style="display:flex;gap:8px;margin-top:16px">
-      <button class="btn btn-outline" style="flex:1;justify-content:center;padding:13px;font-size:14px" onclick="doQuickSaveHw(false)">💾 저장만 (알림 없음)</button>
-      <button class="btn btn-primary" style="flex:1;justify-content:center;padding:13px;font-size:14px" onclick="doQuickSaveHw(true)">📨 저장 + 알림</button>
+    <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+      <button class="btn btn-outline" style="flex:1;min-width:120px;justify-content:center;padding:13px;font-size:14px" onclick="doQuickSaveHw(false)">💾 저장만</button>
+      <button class="btn btn-outline" style="flex:1;min-width:120px;justify-content:center;padding:13px;font-size:14px;border-color:var(--primary);color:var(--primary)" onclick="doQuickSaveHw(false,true)">📸 저장 + 캡처</button>
+      <button class="btn btn-primary" style="flex:1;min-width:120px;justify-content:center;padding:13px;font-size:14px" onclick="doQuickSaveHw(true)">📨 저장 + 알림</button>
     </div>
     <div style="font-size:12px;color:var(--text-muted);margin-top:8px;text-align:center">출제일은 오늘 · 사진 최대 30장<br>미리 입력해두고, 나중에 숙제 목록에서 <strong>📨 알림</strong>을 눌러 보낼 수 있어요</div>`;
   qhwClassId=null;
@@ -5138,7 +5149,8 @@ function closeQuickHw(){ document.getElementById('quickHwModal').style.display='
 function qhwPickClass(cid){ qhwClassId=cid; document.querySelectorAll('#qhw-cls-chips [data-cid]').forEach(b=>{ b.className='btn btn-'+(b.dataset.cid===cid?'primary':'outline')+' btn-sm'; }); }
 function qhwDue(days){ const d=new Date(); d.setDate(d.getDate()+days); const p=n=>String(n).padStart(2,'0'); const el=document.getElementById('qhw-due'); if(el) el.value=`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; }
 // notify=true 면 저장하면서 알림까지, false 면 조용히 저장만 (미리 만들어두는 용도)
-async function doQuickSaveHw(notify){
+// shot=true 면 저장하고 바로 그 반 캡처 화면을 연다 — 입력 → 캡처 → 카톡을 한 번에
+async function doQuickSaveHw(notify, shot){
   if(!qhwClassId){ showToast('반을 선택해주세요','error'); return; }
   const v=id=>{ const el=document.getElementById(id); return el?el.value:''; };
   const title=v('qhw-title').trim();
@@ -5157,9 +5169,11 @@ async function doQuickSaveHw(notify){
     notifiedAt:'' };
   try{
     const id=await saveAssignment(data);
+    const savedCls=qhwClassId;
     closeQuickHw();
-    showToast(notify?`"${title}" 등록 + 알림 보냄 📨`:`"${title}" 저장됨 (알림은 아직 안 보냈어요) 💾`,'success');
+    showToast(notify?`"${title}" 등록 + 알림 보냄 📨`:(shot?`"${title}" 저장 — 아래 흰 부분을 캡처해서 보내세요 📸`:`"${title}" 저장됨 (알림은 아직 안 보냈어요) 💾`),'success');
     if(curSec==='homework') rHomework(); else if(curSec==='dashboard') rDashboard();
+    if(shot) openHwShot(savedCls);
     if(notify) await doNotifyNewHw(id, true);
   }catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
@@ -5260,9 +5274,10 @@ function todayRosterHtml(todayCls, subs){
         ${line('🕘','지난 진도', el(plPrev&&plPrev.content))}
         ${line('📘','검사 숙제', asgnDetail(a), true)}
         ${line('🗂','지난 숙제', prevAsgn?`${asgnDetail(prevAsgn)}<span style="font-size:10px;color:var(--text-muted)">마감 ${(prevAsgn.dueDate||'').slice(5)}</span>`:'')}
-        <div style="display:flex;gap:6px;font-size:12px;padding:3px 0;border-top:1px dashed var(--border);margin-top:3px">
+        <div style="display:flex;gap:6px;font-size:12px;padding:3px 0;border-top:1px dashed var(--border);margin-top:3px;align-items:center">
           <span style="min-width:62px;color:var(--text-muted);font-size:11px;flex-shrink:0">✍️ 오늘 출제</span>
           <span style="flex:1">${newToday?`<span style="color:var(--green);font-weight:700">✓ 입력함</span> <span style="font-size:11px;color:var(--text-sub)">${el(newToday.title)}</span>`:`<span style="color:var(--red);font-weight:700">아직 입력 안 함</span> <button class="btn btn-primary btn-sm" style="padding:1px 8px;font-size:11px;margin-left:4px" onclick="openQuickHw();qhwPickClass('${c.id}')">➕ 숙제 입력</button>`}</span>
+          <button class="btn btn-outline btn-sm" style="padding:1px 8px;font-size:11px;flex-shrink:0" title="이 반 숙제를 학생에게 보낼 캡처 화면으로" onclick="openHwShot('${c.id}')">📸 캡처</button>
         </div>
         <div style="display:flex;gap:6px;font-size:12px;padding:3px 0;align-items:center;flex-wrap:wrap">
           <span style="min-width:62px;color:var(--text-muted);font-size:11px;flex-shrink:0">📝 테스트</span>
