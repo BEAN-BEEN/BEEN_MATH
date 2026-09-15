@@ -444,7 +444,7 @@ function isNaesinStudent(s){ return isHomeroomStudent(s); }   // 예전 이름 (
 // 부담임 반만 다녀서 빠진 인원 — 명단 아래에 몇 명 뺐는지 알려줄 때 쓴다
 function assistantOnlyCount(list){ return (list||[]).filter(x=>isActiveStudent(x) && !isHomeroomStudent(x)).length; }
 function assistantOnlyNote(cnt){
-  return cnt?`<div style="font-size:11px;color:var(--text-muted);margin-top:6px">🙈 부담임 반만 다니는 학생 ${cnt}명은 뺐어요. (담임 반이 하나라도 있으면 그대로 나와요 · 반 역할은 <strong>시간표 관리</strong>에서 바꿔요)</div>`:'';
+  return cnt?`<div style="font-size:11px;color:var(--text-muted);margin-top:6px">🙈 부담임 반만 다니거나 반이 없는 학생 ${cnt}명은 뺐어요. (담임 반이 하나라도 있으면 그대로 나와요 · 반 역할은 <strong>시간표 관리</strong>에서 바꿔요)</div>`:'';
 }
 function getActiveStudents(){ return STUDENTS_CACHE.filter(isActiveStudent); }
 function getStudentsByClass(cid, includeInactive){
@@ -6695,13 +6695,26 @@ function calendarCardHtml(){
     <div style="font-size:12px;color:var(--text-muted);margin-top:10px">🔶 보강·직보 추가는 <strong>내신 관리 → 직보 일정</strong>에서 해요.</div>
   </div>`;
 }
+// 이 보강이 '학교 전체'를 대상으로 잡힌 것인가 = 직보.
+//   반 이름이나 학생 이름으로 잡은 보강은 쌤이 직접 고른 것이라 그대로 둔다.
+//   makeupRoster가 대상을 찾는 순서(이름 → 학교 → 반)를 그대로 따라간다.
+// 🙈 직보에 안 부르는 학생 — 부담임 반만 다니거나, 반이 아예 없는 학생.
+//   담임 반이 하나라도 있으면 부담임 반을 같이 다녀도 그대로 부른다.
+//   (isHomeroomStudent과 같은 기준 — 내신 인원 집계와 어긋나지 않게 그걸 그대로 쓴다)
+function isJikboSkip(s){ return !isHomeroomStudent(s); }
+function makeupIsSchoolWide(m){
+  if(!m || !m.school) return false;
+  const nm=String(m.className||'').trim();
+  if(nm && STUDENTS_CACHE.some(s=>isActiveStudent(s) && s.name===nm)) return false;
+  return true;
+}
 // 🙋 보강 참석 명단 — 선생님이 '온다고 한 학생'을 체크. 참석자는 makeup 문서의 attendees(학생ID 배열)에 저장
 let mkRosterOpenId=null;
 function makeupRoster(m){
   const active=STUDENTS_CACHE.filter(isActiveStudent);
   const nm=(m.className||'').trim();
   if(nm){ const byName=active.filter(s=>s.name===nm); if(byName.length) return byName; }   // 개인 이름이면 그 학생
-  if(m.school){ const ms=normSchool(m.school); const r=active.filter(s=>(s.school||'')===ms); if(r.length) return r; }  // 직보=학교 전체
+  if(m.school){ const ms=normSchool(m.school); const r=active.filter(s=>normSchool(s.school||'')===ms); if(r.length) return r; }  // 직보=학교 전체
   if(nm){
     const cls=CLASSES.find(c=>c.name===nm);                                                  // 반 이름이면 그 반
     if(cls) return active.filter(s=>((s.classIds)||(s.classId?[s.classId]:[])).includes(cls.id));
@@ -6718,7 +6731,10 @@ async function doToggleMakeupAttendee(mid, sid){
   catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
 function makeupRosterPanel(m){
-  const roster=makeupRoster(m);
+  const all=makeupRoster(m);
+  // 🙈 직보는 부담임 반만 다니는 학생을 부르지 않는다 — 플래너·직보 날짜 계산과 같은 규칙.
+  const hidden=makeupIsSchoolWide(m) ? all.filter(isJikboSkip) : [];
+  const roster=hidden.length ? all.filter(s=>!isJikboSkip(s)) : all;
   const att=Array.isArray(m.attendees)?m.attendees:[];
   const sorted=roster.slice().sort((a,b)=>{ const ca=att.includes(a.id)?0:1, cb=att.includes(b.id)?0:1; return ca-cb || (a.name||'').localeCompare(b.name||''); });
   const coming=roster.filter(s=>att.includes(s.id)).length;
@@ -6730,6 +6746,7 @@ function makeupRosterPanel(m){
     ${roster.length?`<div style="display:flex;flex-wrap:wrap;gap:6px">${sorted.map(s=>{ const on=att.includes(s.id);
       return `<button class="btn btn-sm" style="${on?'background:var(--orange);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="doToggleMakeupAttendee('${m.id}','${s.id}')">${on?'✓ ':''}${s.name}${s.school?`<span style="font-size:10px;opacity:.85"> ${s.school}</span>`:''}</button>`;
     }).join('')}</div>`:`<div style="font-size:13px;color:var(--text-muted)">대상 학생을 못 찾았어요. 보강 '반/대상'을 반 이름이나 학생 이름으로 맞춰주세요.</div>`}
+    ${assistantOnlyNote(hidden.length)}
     <div style="font-size:11px;color:var(--text-muted);margin-top:8px">학생을 누르면 '온다고 함'으로 표시돼요. 다시 누르면 취소.</div>
   </div>`;
 }
@@ -6946,7 +6963,7 @@ async function doAutoMakeups(){
       rests.push(`${d} ${e.school}`);
       getMakeups().forEach(m=>{
         if(m.date!==d || !m.auto) return;
-        if(!(m.school===e.school || String(m.className||'').includes(e.school))) return;
+        if(!(normSchool(m.school||'')===normSchool(e.school||'') || String(m.className||'').includes(e.school))) return;
         if(!stale.some(x=>x.id===m.id)) stale.push(m);
       });
     });
