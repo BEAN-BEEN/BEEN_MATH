@@ -811,20 +811,110 @@ function cmpExamUpcomingFirst(a,b){
   return d || (a.school||'').localeCompare(b.school||'');
 }
 let seEditId=null;
+// ───── 📅 시험 등록 거들기 — 시험은 네 가지, 학년은 고1·2·3, 수학일은 시험기간 안.
+//   매번 '2학기 중간고사'를 손으로 치고 수학일을 달력에서 찾아 누르던 걸 없앤다.
+const SE_TITLES=['1학기 중간고사','1학기 기말고사','2학기 중간고사','2학기 기말고사'];
+const SE_GRADES=['고1','고2','고3'];
+const SE_MATH_LABELS=['수학','공통수학1','공통수학2','확률과 통계','미적분','기하','대수'];
+// 고른 걸 담아두는 곳. 어느 시험 것인지 같이 들고 있어야 화면을 다시 그려도 안 날아간다.
+let sePick={for:undefined, grades:[], math:[]};
+// '고1·2' ↔ ['고1','고2']
+function seGradesOf(v){ return [...new Set(String(v||'').match(/[123]/g)||[])].sort().map(x=>'고'+x); }
+function seGradeLabel(list){ const ns=(list||[]).map(g=>String(g).replace(/\D/g,'')).filter(Boolean).sort(); return ns.length?('고'+ns.join('·')):''; }
+// 시험기간 — 인자를 주면 그걸, 안 주면 지금 폼에 적힌 걸 본다.
+//   폼을 처음 그릴 때는 입력칸이 아직 없어서 수정 중인 시험 값을 넘겨받아야 한다.
+function sePeriod(from, to){
+  if(from!==undefined) return {from:from||'', to:to||''};
+  const a=document.getElementById('se-start'), b=document.getElementById('se-end');
+  return {from:(a&&a.value)||'', to:(b&&b.value)||''};
+}
+function sePeriodDays(from, to){
+  const p=sePeriod(from, to);
+  if(!p.from||!p.to||p.to<p.from) return [];
+  const out=[]; let d=p.from;
+  for(let i=0;i<40 && d<=p.to;i++){ out.push(d); d=jikboAdd(d,1); }   // 40일 넘게 잡히면 잘못 넣은 것
+  return out;
+}
+// 다른 시험을 고르면(또는 새로 쓰면) 고른 걸 새로 채운다. 같은 시험이면 건드리지 않는다.
+function seSync(e){
+  const key=e?e.id:'';
+  if(sePick.for===key) return;
+  sePick={ for:key, grades:seGradesOf(e?e.grade:''), math:(e?examMathDates(e):[]).slice(0,2).map(m=>({label:m.label||'', date:m.date||''})) };
+}
+function seReset(){ sePick={for:undefined, grades:[], math:[]}; }
+// ── 시험명
+function seTitleBoxHtml(cur){
+  const v = cur!=null ? cur : ((document.getElementById('se-title')||{}).value||'');
+  return SE_TITLES.map(t=>`<button class="btn btn-sm" style="padding:5px 11px;font-size:12px;${v===t?'background:var(--primary);color:#fff;font-weight:800':'background:var(--bg);color:var(--text-sub)'}" onclick="seSetTitle('${t}')">${t.replace('고사','')}</button>`).join('');
+}
+function seRedrawTitle(){ const b=document.getElementById('se-title-box'); if(b) b.innerHTML=seTitleBoxHtml(); }
+function seSetTitle(v){ const el=document.getElementById('se-title'); if(el) el.value=v; seRedrawTitle(); }
+// ── 학년 (중복 선택 — 고1·2처럼 같이 보는 학교가 있다)
+function seGradeBoxHtml(){
+  return SE_GRADES.map(g=>{ const on=sePick.grades.includes(g);
+    return `<button class="btn btn-sm" style="padding:5px 13px;font-size:12px;${on?'background:var(--primary);color:#fff;font-weight:800':'background:var(--bg);color:var(--text-sub)'}" onclick="seToggleGrade('${g}')">${on?'✓ ':''}${g}</button>`;
+  }).join('')+`<span style="font-size:11px;color:var(--text-muted);margin-left:6px">${sePick.grades.length?'→ '+seGradeLabel(sePick.grades):'여러 학년이면 같이 눌러요'}</span>`;
+}
+function seToggleGrade(g){
+  const i=sePick.grades.indexOf(g);
+  if(i>=0) sePick.grades.splice(i,1); else sePick.grades.push(g);
+  const b=document.getElementById('se-grade-box'); if(b) b.innerHTML=seGradeBoxHtml();
+}
+// ── 수학 시험일 — 시험기간 안의 날짜를 눌러서 고른다 (①②)
+function seToggleMathDay(ds){
+  const i=sePick.math.findIndex(m=>m.date===ds);
+  if(i>=0) sePick.math.splice(i,1);
+  else if(sePick.math.length<2) sePick.math.push({label:'', date:ds});
+  else sePick.math[1].date=ds;                       // 둘 다 찼으면 ②를 바꾼다
+  seRedrawMath();
+}
+function seSetMathLabel(i,v){ if(sePick.math[i]) sePick.math[i].label=v; }
+function seSetMathDate(i,v){
+  while(sePick.math.length<=i) sePick.math.push({label:'', date:''});
+  sePick.math[i].date=v;
+  sePick.math=sePick.math.filter(m=>m.date);
+  seRedrawMath();
+}
+function seRedrawMath(){ const b=document.getElementById('se-math-box'); if(b) b.innerHTML=seMathBoxHtml(); }
+function seMathBoxHtml(from, to){
+  const days=sePeriodDays(from, to), DOW=['일','월','화','수','목','금','토'];
+  const rows=[0,1].map(i=>{
+    const m=sePick.math[i]||{label:'',date:''};
+    if(i===1 && !m.date && !(sePick.math[0]&&sePick.math[0].date)) return '';   // ①도 안 골랐으면 ②칸은 숨긴다
+    return `<div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap">
+      <span style="font-size:13px;font-weight:800;color:var(--text-muted);width:20px">${i===0?'①':'②'}</span>
+      <input class="form-input" list="se-mlabels" style="width:128px;padding:4px 8px;font-size:12px" placeholder="${i===0?'수학':'수학②(선택)'}" value="${anEsc(m.label||'')}" onchange="seSetMathLabel(${i},this.value.trim())">
+      <input class="form-input" type="date" style="width:152px;padding:4px 8px;font-size:12px" value="${m.date||''}" ${days.length?`min="${days[0]}" max="${days[days.length-1]}"`:''} onchange="seSetMathDate(${i},this.value)">
+      ${m.date?`<button class="btn btn-outline btn-sm" style="padding:3px 9px" onclick="seToggleMathDay('${m.date}')">지우기</button>`:''}
+    </div>`;
+  }).join('');
+  const chips = days.length
+    ? `<div style="display:flex;gap:5px;flex-wrap:wrap">${days.map(d=>{
+        const i=sePick.math.findIndex(m=>m.date===d);
+        const dow=new Date(d+'T00:00:00').getDay(), hol=holidayName(d), off=dow===0||dow===6||!!hol;
+        return `<button class="btn btn-sm" title="${hol||''}" style="padding:5px 10px;font-size:12px;${i>=0?'background:var(--primary);color:#fff;font-weight:800':`background:var(--bg);color:${off?'var(--text-muted)':'var(--text-sub)'}`}" onclick="seToggleMathDay('${d}')">${i>=0?(i===0?'① ':'② '):''}${+d.slice(5,7)}/${+d.slice(8,10)}<span style="font-size:10.5px;opacity:.85;margin-left:3px">${DOW[dow]}</span></button>`;
+      }).join('')}</div>`
+    : `<div style="font-size:12px;color:var(--orange);font-weight:700">📌 위에 시험기간을 넣으면 그 안의 날짜를 눌러서 고를 수 있어요</div>`;
+  return chips + `<datalist id="se-mlabels">${SE_MATH_LABELS.map(l=>`<option value="${l}">`).join('')}</datalist>` + rows;
+}
 function schoolExamCardHtml(){
   // 목록은 재원생 있는 학교만 보여주고, 수정 중인 항목은 숨겨졌더라도 찾을 수 있게 전체에서 찾습니다
   const list=visibleSchoolExams(), editS=seEditId?getSchoolExams().find(e=>e.id===seEditId):null, schools=allSchools();
+  seSync(editS);   // 다른 시험을 고르면 학년·수학일 선택을 그 시험 것으로 바꾼다
   const esc=s=>(s||'').replace(/"/g,'&quot;');
   return `<div class="card" ${editS?'style="border-left:4px solid var(--orange)"':'style="border-left:4px solid var(--primary)"'}>
     <div class="card-title">${editS?'✏️ 내신 일정 수정':'🏫 학교별 내신 시험 일정'} <span style="font-size:12px;color:var(--text-muted);font-weight:400">(학생 ‘학교’와 자동 매칭 → 학생 홈에 D-day)</span></div>
     <div class="form-row-2">
       <div class="form-group"><label class="form-label">학교 *</label><input class="form-input" id="se-school" list="se-schools" value="${editS?esc(editS.school):''}" placeholder="예: 송도고등학교"><datalist id="se-schools">${schools.map(s=>`<option value="${esc(s)}">`).join('')}</datalist></div>
-      <div class="form-group"><label class="form-label">시험명 *</label><input class="form-input" id="se-title" value="${editS?esc(editS.title):''}" placeholder="예: 1학기 중간고사"></div>
+      <div class="form-group"><label class="form-label">시험명 *</label>
+        <div id="se-title-box" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:5px">${seTitleBoxHtml(editS?editS.title:'')}</div>
+        <input class="form-input" id="se-title" value="${editS?esc(editS.title):''}" placeholder="눌러서 고르거나 직접 입력" onchange="seRedrawTitle()"></div>
     </div>
     <div class="form-row-3">
-      <div class="form-group"><label class="form-label">학년(선택)</label><input class="form-input" id="se-grade" value="${editS?esc(editS.grade):''}" placeholder="예: 고1"></div>
-      <div class="form-group"><label class="form-label">시험기간 시작</label><input class="form-input" id="se-start" type="date" value="${editS?(editS.startDate||''):''}"></div>
-      <div class="form-group"><label class="form-label">시험기간 끝</label><input class="form-input" id="se-end" type="date" value="${editS?(editS.endDate||''):''}"></div>
+      <div class="form-group"><label class="form-label">학년(선택)</label>
+        <div id="se-grade-box" style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;min-height:30px">${seGradeBoxHtml()}</div></div>
+      <div class="form-group"><label class="form-label">시험기간 시작</label><input class="form-input" id="se-start" type="date" value="${editS?(editS.startDate||''):''}" onchange="seRedrawMath()"></div>
+      <div class="form-group"><label class="form-label">시험기간 끝</label><input class="form-input" id="se-end" type="date" value="${editS?(editS.endDate||''):''}" onchange="seRedrawMath()"></div>
     </div>
     <div class="form-row-3">
       <div class="form-group"><label class="form-label">교과서</label><input class="form-input" id="se-textbook" list="se-tblist" value="${editS?esc(editS.textbook||''):''}" placeholder="예: 미래엔"><datalist id="se-tblist"><option value="미래엔"><option value="비상(김)"><option value="지학사"><option value="동아(고)"><option value="YBM"><option value="천재(류)"></datalist></div>
@@ -836,12 +926,8 @@ function schoolExamCardHtml(){
       <div class="form-group"><label class="form-label">범위</label><input class="form-input" id="se-scope" value="${editS?esc(editS.scope||''):''}" placeholder="예: 여러 가지 방정식 ~ 행렬"></div>
     </div>
     <div class="form-group">
-      <label class="form-label">수학 시험일 <span style="font-size:11px;color:var(--text-muted)">(과목이 둘이면 둘 다 입력 · 아직 미정이면 비워두고 나중에 ‘수정’으로 확정)</span></label>
-      ${(function(){const ms=editS?examMathDates(editS):[];const m1=ms[0]||{},m2=ms[1]||{};return `
-        <div style="display:flex;gap:14px;flex-wrap:wrap">
-          <div style="display:flex;gap:6px;align-items:center"><input class="form-input" id="se-m1-label" style="width:96px" placeholder="수학①" value="${esc(m1.label||'')}"><input class="form-input" id="se-m1-date" type="date" value="${m1.date||''}"></div>
-          <div style="display:flex;gap:6px;align-items:center"><input class="form-input" id="se-m2-label" style="width:96px" placeholder="수학②(선택)" value="${esc(m2.label||'')}"><input class="form-input" id="se-m2-date" type="date" value="${m2.date||''}"></div>
-        </div>`;})()}
+      <label class="form-label">📐 수학 시험일 <span style="font-size:11px;color:var(--text-muted)">(시험기간 안의 날짜를 눌러요 · 과목이 둘이면 두 개 · 미정이면 비워두고 나중에 ‘수정’으로)</span></label>
+      <div id="se-math-box">${seMathBoxHtml(editS?editS.startDate:'', editS?editS.endDate:'')}</div>
     </div>
     <div class="form-group" style="max-width:320px">
       <label class="form-label">🔶 직보 시작일 <span style="font-size:11px;color:var(--text-muted)">(선택 · 주말부터 시킬 때 그 날짜를 지정)</span></label>
@@ -881,18 +967,25 @@ async function doSetExamMathDate(id, v){
 async function doSaveSchoolExam(){
   const school=normSchool(document.getElementById('se-school').value);
   const title=document.getElementById('se-title').value.trim();
-  const m1d=document.getElementById('se-m1-date').value, m2d=document.getElementById('se-m2-date').value;
   if(!school||!title){ showToast('학교·시험명을 입력해주세요','error'); return; }
   // 수학 날짜는 아직 미정이어도 등록 가능 — 나중에 수정으로 확정
-  const mathDates=[];
-  if(m1d) mathDates.push({label:document.getElementById('se-m1-label').value.trim()||'수학', date:m1d});
-  if(m2d) mathDates.push({label:document.getElementById('se-m2-label').value.trim()||'수학②', date:m2d});
+  const mathDates=sePick.math.filter(m=>m.date)
+    .sort((a,b)=>a.date.localeCompare(b.date))
+    .map((m,i)=>({label:(m.label||'').trim()||(i?'수학②':'수학'), date:m.date}));
+  const m1d=(mathDates[0]||{}).date||'';
+  // 시험기간을 넣었으면 그 밖의 날짜는 막는다 — 거의 손으로 잘못 넣은 것이다
+  const per=sePeriod();
+  if(per.from && per.to){
+    const out=mathDates.filter(m=>m.date<per.from || m.date>per.to);
+    if(out.length){ showToast(`수학 시험일 ${out.map(m=>m.date).join(', ')}이 시험기간(${per.from}~${per.to}) 밖이에요`,'error'); return; }
+  }
   const g=id=>{const el=document.getElementById(id);return el?el.value.trim():'';};
-  const data={school,title,grade:g('se-grade'),startDate:document.getElementById('se-start').value,endDate:document.getElementById('se-end').value,mathDates,mathDate:m1d||'',jikboStart:document.getElementById('se-jikbo').value||'',
+  const data={school,title,grade:seGradeLabel(sePick.grades),startDate:document.getElementById('se-start').value,endDate:document.getElementById('se-end').value,mathDates,mathDate:m1d||'',jikboStart:document.getElementById('se-jikbo').value||'',
     textbook:g('se-textbook'),subMaterial:g('se-submaterial'),teacherMaterial:g('se-teachermat'),qCount:g('se-qcount'),scope:g('se-scope')};
   try{
     if(seEditId){ await updateSchoolExam(seEditId,data); seEditId=null; showToast('내신 일정 수정 완료 ✏️','success'); }
     else{ await addSchoolExam(data); showToast(`${school} 내신 일정 추가 완료 🏫`,'success'); }
+    seReset();   // 다음에 새로 쓸 때 방금 고른 게 남아 있지 않게
     rNaesin();
   }catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
