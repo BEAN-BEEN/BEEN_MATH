@@ -1155,6 +1155,20 @@ function examTimelineHtml(){
   const firstDow=new Date(examCalY,examCalM,1).getDay(), dim=new Date(examCalY,examCalM+1,0).getDate();
   const cells=[]; for(let i=0;i<firstDow;i++) cells.push(null); for(let d=1;d<=dim;d++) cells.push(d); while(cells.length%7) cells.push(null);
   const dowL=['일','월','화','수','목','금','토'];
+  // 🔶 내 직보 — 애들 시험만 보이고 내가 나가는 날이 안 보였다.
+  //   jbOn = 직보 일정에 이미 들어간 것 / jbSoon = 규칙상 잡히는데 아직 안 만든 것.
+  //   자동 생성을 안 눌렀으면 달력이 통째로 비니까 예정도 같이 띄운다.
+  const jbOn={}, jbSoon={};
+  getMakeups().forEach(m=>{
+    if(!m.date) return;
+    const nm = m.school ? shortSchool(m.school) : String(m.className||'보강').replace(/\s*직보\s*$/,'');
+    (jbOn[m.date]=jbOn[m.date]||[]).push(nm);
+  });
+  exams.forEach(e=>jikboDatesOf(e).forEach(d=>{
+    const nm=shortSchool(e.school);
+    if((jbOn[d]||[]).includes(nm)) return;
+    (jbSoon[d]=jbSoon[d]||[]).push(nm);
+  }));
   const cal=cells.map(d=>{
     if(!d) return '<div></div>';
     const ds=`${examCalY}-${pad(examCalM+1)}-${pad(d)}`, dow=new Date(examCalY,examCalM,d).getDay();
@@ -1166,6 +1180,8 @@ function examTimelineHtml(){
       ${hol?`<div style="font-size:10px;font-weight:800;color:#EA580C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🇰🇷 ${hol}</div>`:''}
       ${on.map(e=>`<div title="${esc(e.school+' '+(e.title||''))}" style="font-size:10.5px;font-weight:700;color:#B91C1C;background:#FEE2E2;border-radius:3px;padding:1px 3px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${el(shortSchool(e.school))}</div>`).join('')}
       ${math.map(s=>`<div style="font-size:10px;color:#DC2626;font-weight:800;margin-top:1px">📐 ${el(s)}</div>`).join('')}
+      ${(function(){ const v=[...new Set(jbOn[ds]||[])]; return v.length?`<div title="🔶 내 직보 — ${esc(v.join(', '))}" style="font-size:10px;font-weight:800;color:#fff;background:var(--orange);border-radius:3px;padding:1px 3px;margin-top:2px;line-height:1.35;word-break:keep-all">🔶 ${el(v.join('·'))}</div>`:''; })()}
+      ${(function(){ const v=[...new Set(jbSoon[ds]||[])]; return v.length?`<div title="아직 직보 일정에 없어요 — 🔶 직보 일정 탭에서 ‘시험 전날 직보 자동 생성’을 누르면 들어가요. ${esc(v.join(', '))}" style="font-size:10px;font-weight:800;color:#C2410C;background:#FFF7ED;border:1px dashed #FB923C;border-radius:3px;padding:0 3px;margin-top:2px;line-height:1.35;word-break:keep-all">🔶 ${el(v.join('·'))}</div>`:''; })()}
     </div>`;
   }).join('');
   // ── 바: 학교별 시험기간 (이번 달 기준 가로 막대) + 범위 입력
@@ -1201,7 +1217,7 @@ function examTimelineHtml(){
       ${dowL.map((l,i)=>`<div style="text-align:center;font-size:11px;font-weight:800;color:${i===0?'#EF4444':(i===6?'#2563EB':'var(--text-muted)')}">${l}</div>`).join('')}
       ${cal}
     </div></div>
-    <div style="font-size:11px;color:var(--text-muted);margin-top:8px">📕 빨강=시험기간 · 📐=수학 시험일</div>
+    <div style="font-size:11px;color:var(--text-muted);margin-top:8px">📕 빨강=시험기간 · 📐=수학 시험일 · <span style="color:#C2410C;font-weight:700">🔶=내 직보</span> (점선 테두리는 아직 직보 일정에 안 넣은 날)</div>
     <div style="margin-top:12px">
       ${schoolsMissingExamHtml()}
       <div style="font-size:13px;font-weight:800;margin-bottom:4px">📊 ${examCalM+1}월 학교별 시험기간</div>
@@ -6921,13 +6937,26 @@ async function doAutoMakeups(){
   });
   // 왜 빠졌는지 안 보이면 '왜 월요일이 없지?' 하고 손으로 다시 만들게 된다
   const rests=[];
+  // 쉬는 날인데 예전 규칙으로 만들어진 자동 직보가 남아 있으면 같이 지운다.
+  // 손으로 넣은 보강(auto가 아닌 것)과 지난 날짜는 건드리지 않는다.
+  const stale=[];
   visibleSchoolExams().forEach(e=>{
-    jikboRestDatesOf(e).forEach(d=>{ if(d>=today) rests.push(`${d} ${e.school}`); });
+    jikboRestDatesOf(e).forEach(d=>{
+      if(d<today) return;
+      rests.push(`${d} ${e.school}`);
+      getMakeups().forEach(m=>{
+        if(m.date!==d || !m.auto) return;
+        if(!(m.school===e.school || String(m.className||'').includes(e.school))) return;
+        if(!stale.some(x=>x.id===m.id)) stale.push(m);
+      });
+    });
   });
   if(!plans.length){ showToast('자동 생성할 다가오는 수학 시험이 없어요','warning'); return; }
   const restMsg = rests.length ? `\n\n🛑 쉬는 날 (다음날 다른 과목 시험):\n${rests.map(r=>'· '+r).join('\n')}` : '';
-  if(!confirm(`다가오는 수학시험 기준으로 직보 ${plans.length}일을 자동 생성할까요?\n· 토·일·공휴일 → 12시\n· 금요일 → 3시\n· 그 밖의 평일: 그날 학교시험 O → 2시 / X → 5시\n(주말이 끼면 그 앞 금요일까지 잡아요)\n(자동으로 만든 건 지금 규칙에 맞게 고쳐집니다)${restMsg}`)) return;
-  let created=0, fixed=0, skipped=0;
+  const staleMsg = stale.length ? `\n\n🗑 지울 직보 ${stale.length}건 — 쉬는 날인데 예전 규칙으로 만들어져 있어요:\n${stale.map(m=>'· '+m.date+' '+(m.className||'')).join('\n')}` : '';
+  if(!confirm(`다가오는 수학시험 기준으로 직보 ${plans.length}일을 자동 생성할까요?\n· 토·일·공휴일 → 12시\n· 금요일 → 3시\n· 그 밖의 평일: 그날 학교시험 O → 2시 / X → 5시\n(주말이 끼면 그 앞 금요일까지 잡아요)\n(자동으로 만든 건 지금 규칙에 맞게 고쳐집니다)${restMsg}${staleMsg}`)) return;
+  let created=0, fixed=0, skipped=0, removed=0;
+  for(const m of stale){ try{ await deleteMakeupFS(m.id); removed++; }catch(err){} }
   for(const p of plans){
     const note=`수학시험 직보 (${p.why})`;
     const ex=getMakeups().find(x=>x.date===p.date && (x.school===p.school || (x.className||'').includes(p.school)));
@@ -6948,7 +6977,7 @@ async function doAutoMakeups(){
     if(!cacheAdd('makeups', ref.id, doc)) await loadMakeups();
     created++;
   }
-  const tail=[fixed?`${fixed}건 고침(시간·메모)`:'', skipped?`${skipped}건 그대로`:''].filter(Boolean).join(' · ');
+  const tail=[fixed?`${fixed}건 고침(시간·메모)`:'', removed?`${removed}건 지움(쉬는 날)`:'', skipped?`${skipped}건 그대로`:''].filter(Boolean).join(' · ');
   showToast(`🪄 직보 ${created}건 생성${tail?` (${tail})`:''}`,'success'); rNaesin();
 }
 function rSchedule(){

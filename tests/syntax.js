@@ -6,7 +6,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 
 let bad = 0;
-['teacher.html', 'student.html'].forEach(f => {
+['teacher.html', 'student.html', 'plan.html'].forEach(f => {
   const html = fs.readFileSync(path.join(ROOT, f), 'utf8');
   const out = []; let i = 0;
   for (;;) {

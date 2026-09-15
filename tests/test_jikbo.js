@@ -25,7 +25,10 @@ function load(file) {
     location: { href: '', search: '', replace: () => {} },
     navigator: { userAgent: 'node' }, alert: () => {}, confirm: () => true, prompt: () => '',
     addEventListener: () => {}, removeEventListener: () => {}, matchMedia: () => ({ matches: false, addListener: () => {} }),
-    firebase: { initializeApp: () => {}, firestore: Object.assign(() => ({}), { FieldValue: class {} }), auth: () => ({}), storage: () => ({}) }
+    firebase: { initializeApp: () => {}, firestore: Object.assign(() => ({}), { FieldValue: class {} }), auth: () => ({}), storage: () => ({}) },
+    // firebase-init.js가 주는 것들 — plan.html은 맨 윗줄에서 requireRole을 부른다
+    requireRole: () => {}, bmAuthReady: Promise.resolve(), showToast: () => {},
+    db: { collection: () => ({ get: async () => ({ docs: [] }), doc: () => ({}), add: async () => ({}) }) }
   };
   sb.window = sb; sb.globalThis = sb; sb.self = sb;
   vm.createContext(sb);
@@ -34,13 +37,19 @@ function load(file) {
 }
 const T = load('teacher.html');
 const S = load('student.html');
+const J = load('plan.html');          // 나의 플래너 — 규칙 사본이 여기에도 있다
 const th = fs.readFileSync(ROOT + '/teacher.html', 'utf8');
+const ph = fs.readFileSync(ROOT + '/plan.html', 'utf8');
 
 const DOW = ['일', '월', '화', '수', '목', '금', '토'];
 const lbl = d => d.slice(5) + '(' + DOW[new Date(d + 'T00:00:00').getDay()] + ')';
+// 세 화면이 같은 날짜를 봐야 한다. 플래너는 시험 id로 결과를 기억하니 매번 새 id를 준다.
+let _eid = 0;
 function both(e) {
   const t = T.jikboDatesOf(e).slice().sort(), s = S.__get('_jbDates')(e).slice().sort();
   assert.strictEqual(t.join(','), s.join(','), '선생님(' + t + ')과 학생(' + s + ') 결과가 다름');
+  const j = J.jikboDates(Object.assign({}, e, { id: 'jb' + (++_eid) })).slice().sort();
+  assert.strictEqual(t.join(','), j.join(','), '선생님(' + t + ')과 플래너(' + j + ') 결과가 다름');
   return t.map(lbl).join(' ');
 }
 
@@ -164,9 +173,84 @@ ok('신성고는 그대로 4일 (월요일이 공휴일이라 화요일 전날�
   assert.strictEqual(both(SINSUNG), '10-02(금) 10-03(토) 10-04(일) 10-05(월)');
   assert.strictEqual(T.jikboRestDatesOf(SINSUNG).length, 0, '신성고에 쉬는 날이 생김');
 });
-ok('선생님·학생 화면이 같은 날짜를 본다', () => {
-  // 두 파일에 규칙 사본이 따로 있어서 한쪽만 고치면 어긋난다
+ok('선생님·학생·플래너가 같은 날짜를 본다', () => {
+  // 세 파일에 규칙 사본이 따로 있어서 한쪽만 고치면 어긋난다
   [GWACHEON, SINSUNG].forEach(e => { both(e); });
+});
+
+console.log('\n📒 나의 플래너 — 쌤이 달력에서 본 그대로');
+ok('플래너 스크립트가 끝까지 실행된다', () => {
+  assert.strictEqual(typeof J.jikboDates, 'function', 'jikboDates가 없음');
+  assert.strictEqual(typeof J.jikboTime, 'function', 'jikboTime이 없음');
+});
+// 실제 2학기 중간: 신성·관양 수학 10/6(화) / 과천중앙·백운 수학 10/7(수)
+//   쌤 말씀 — "5일 신성고 관양고 직보, 6일 과천중앙고 백운고 직보"
+const JB_SINSUNG = { id: 'p-sinsung', school: '신성고', startDate: '2026-10-01', endDate: '2026-10-07', mathDate: '2026-10-06' };
+const JB_GWANYANG = { id: 'p-gwanyang', school: '관양고', startDate: '2026-10-02', endDate: '2026-10-08', mathDate: '2026-10-06' };
+const JB_GWACHEON = { id: 'p-gwacheon', school: '과천중앙고', startDate: '2026-10-01', endDate: '2026-10-07', mathDate: '2026-10-07' };
+const JB_BAEKWOON = { id: 'p-baekwoon', school: '백운고', startDate: '2026-10-01', endDate: '2026-10-07', mathDate: '2026-10-07' };
+ok('10/5(월·대체공휴일) — 신성고·관양고', () => {
+  [JB_SINSUNG, JB_GWANYANG].forEach(e => {
+    assert.ok(J.jikboDates(e).includes('2026-10-05'), e.school + '이 10/5에 없음: ' + J.jikboDates(e));
+  });
+});
+ok('10/6(화) — 과천중앙고·백운고', () => {
+  [JB_GWACHEON, JB_BAEKWOON].forEach(e => {
+    assert.ok(J.jikboDates(e).includes('2026-10-06'), e.school + '이 10/6에 없음: ' + J.jikboDates(e));
+  });
+});
+ok('10/5은 과천중앙고·백운고가 쉰다 (6일에 다른 과목 시험)', () => {
+  [JB_GWACHEON, JB_BAEKWOON].forEach(e => {
+    assert.ok(!J.jikboDates(e).includes('2026-10-05'), e.school + '이 쉬는 날인데 10/5에 잡힘');
+  });
+});
+ok('플래너 시간도 선생님 화면과 같다', () => {
+  ['2026-10-02', '2026-10-03', '2026-10-05', '2026-09-30', '2026-11-25'].forEach(d => {
+    assert.strictEqual(J.jikboTime(d, GWACHEON) + '~', T.jikboTime(d, GWACHEON), d + ' 시간이 다름');
+  });
+  assert.strictEqual(J.jikboTime('2026-10-05', GWACHEON), '12:00', '공휴일이 12시가 아님');
+  assert.strictEqual(J.jikboTime('2026-10-02', GWACHEON), '15:00', '금요일이 3시가 아님');
+});
+ok('옛 11시 규칙이 남아 있지 않다', () => {
+  assert.ok(!ph.includes('오전 11시'), '토·일 11시가 그대로 남음');
+  assert.ok(ph.includes('const time = jikboTime(dateStr, e);'), '시간을 규칙에서 안 가져옴');
+});
+ok('시험별로 한 번만 계산한다 (달력이 날짜마다 다시 부른다)', () => {
+  const e = { id: 'p-cache', startDate: '2026-10-01', endDate: '2026-10-07', mathDate: '2026-10-07' };
+  assert.strictEqual(J.jikboDates(e), J.jikboDates(e), '같은 시험인데 매번 새로 계산함');
+});
+ok('시험을 다시 읽어오면 계산해 둔 것도 버린다', () => {
+  assert.ok(ph.includes('_JB_CACHE.clear()'), 'loadAll에서 기억해 둔 걸 안 버림');
+});
+ok('플래너 안내문이 지금 규칙을 설명한다', () => {
+  assert.ok(ph.includes('다음 날 다른 과목 시험이면 그날은 쉬어요'), '쉬는 날 설명이 없음');
+  assert.ok(!ph.includes('주말 뒤에 수학시험'), '옛 규칙 설명이 남아 있음');
+});
+
+console.log('\n📆 내신 관리 달력 — 애들 시험만 보이고 내 직보가 없었다');
+ok('저장된 직보와 아직 안 만든 직보를 나눠 띄운다', () => {
+  assert.ok(th.includes('const jbOn={}, jbSoon={};'), '직보를 안 모음');
+  assert.ok(th.includes('exams.forEach(e=>jikboDatesOf(e).forEach(d=>{'), '예정 직보를 안 계산함');
+  assert.ok(th.includes('🔶=내 직보'), '범례에 직보가 없음');
+});
+ok('이미 직보 일정에 있는 학교는 예정으로 또 띄우지 않는다', () => {
+  assert.ok(th.includes("if((jbOn[d]||[]).includes(nm)) return;"), '중복 제거가 없음');
+});
+
+console.log('\n자동 생성 — 쉬는 날에 남은 옛 직보 정리');
+ok('쉬는 날인데 남아 있는 자동 직보를 찾아낸다', () => {
+  assert.ok(th.includes('if(m.date!==d || !m.auto) return;'), '쉬는 날 정리가 없음');
+});
+ok('손으로 넣은 보강과 지난 날짜는 건드리지 않는다', () => {
+  assert.ok(th.includes('손으로 넣은 보강(auto가 아닌 것)과 지난 날짜는 건드리지 않는다'), '보호 설명이 없음');
+  assert.ok(/jikboRestDatesOf\(e\)\.forEach\(d=>\{\s*if\(d<today\) return;/.test(th), '지난 날짜를 안 거름');
+});
+ok('지우기 전에 무엇을 지우는지 확인창에 적어준다', () => {
+  assert.ok(th.includes('🗑 지울 직보'), '지울 목록 안내가 없음');
+  assert.ok(th.includes('${restMsg}${staleMsg}'), '확인창에 안 붙음');
+});
+ok('결과에 지운 건수를 알려준다', () => {
+  assert.ok(th.includes('건 지움(쉬는 날)'), '지운 건수 안내가 없음');
 });
 
 console.log('\n수학시험이 여러 날 / 직접 지정');
