@@ -2521,8 +2521,8 @@ function anPaperGroups(){
     took:g.exams.reduce((t,e)=>t+(cnt[e.id]||0),0),
     latest:g.exams.reduce((t,e)=>{ const v=String(e.createdAt||e.date||''); return v>t?v:t; },'')
   }));
-  // 응시자가 있는 시험지부터, 그다음 최근 등록 순
-  return arr.sort((a,b)=>((b.took>0)-(a.took>0)) || b.latest.localeCompare(a.latest) || String(a.title).localeCompare(String(b.title)));
+  // 시험명 번호순 (01_, 02_ … 로 붙여 두셔서 그대로 따라간다). 숫자를 숫자로 비교해 10이 2 뒤로 간다.
+  return arr.sort((a,b)=>String(a.title||'').localeCompare(String(b.title||''), 'ko', {numeric:true}) || a.latest.localeCompare(b.latest));
 }
 // 📋 시험지 한 장의 응시자 — 이 시험지를 본 모든 반을 한 표에. 점수 순 등수와 반별 평균.
 let anPaperOpenMissing=false;
@@ -2562,10 +2562,14 @@ function anPaperRosterHtml(exam){
       <span class="badge ${rows.length?'b-green':'b-gray'}">${rows.length}명</span>
       <span style="font-size:12px;color:var(--text-muted)">/ ${multi?`${docs.length}개 반 `:''}${total}명</span>
       ${avgAll!=null?`<span style="font-size:12px;color:var(--text-muted);margin-left:4px">${multi?'전체 ':''}평균 <strong style="color:var(--text)">${avgAll}점</strong></span>`:''}
+      <span style="margin-left:auto;display:inline-flex;background:var(--bg);border-radius:9px;padding:3px">
+        ${[['student','👤 학생별'],['question','🔢 문항별']].map(([v,l])=>`<button class="btn btn-sm" style="padding:3px 10px;font-size:11.5px;${anViewMode===v?'background:var(--primary);color:#fff':'background:transparent;color:var(--text-muted)'}" onclick="anSetView('${v}')">${l}</button>`).join('')}
+      </span>
     </div>
     ${multi?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${perCls.map(c=>`<span style="font-size:11.5px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:3px 8px">
         <strong>${anEsc(c.d.className||'')}</strong> <span style="color:var(--text-muted)">${c.mine.length}/${c.roster.length}명</span>
         ${c.avg!=null?` · 평균 <strong style="color:${color(c.avg)}">${c.avg}</strong>`:''}</span>`).join('')}</div>`:''}
+    ${anViewMode==='question' ? anQuestionViewHtml(exam) : `
     ${rows.length?`<div class="table-wrap"><table style="width:100%;font-size:13px">
       <thead><tr>
         <th style="width:40px">등수</th><th style="text-align:left">이름</th>${multi?'<th style="text-align:left;width:92px">반</th>':''}
@@ -2586,7 +2590,7 @@ function anPaperRosterHtml(exam){
           <td style="text-align:center;font-size:11.5px;color:var(--text-muted)">${when(x.sub.submittedAt)}</td>
           <td><button class="btn ${on?'btn-primary':'btn-outline'} btn-sm" style="padding:2px 8px;font-size:11px" onclick="event.stopPropagation();anPickStudentIn('${x.doc.id}','${x.st.id}')">분석서 →</button></td>
         </tr>`; }).join('')}</tbody></table></div>`
-      :'<div style="font-size:13px;color:var(--text-muted);padding:8px 0">아직 답안을 낸 학생이 없어요. 학생 홈 맨 위 <strong>📝 답안지 넣을 시험</strong>에 떠 있어요.</div>'}
+      :'<div style="font-size:13px;color:var(--text-muted);padding:8px 0">아직 답안을 낸 학생이 없어요. 학생 홈 맨 위 <strong>📝 답안지 넣을 시험</strong>에 떠 있어요.</div>'}`}
     ${missN?`<div style="margin-top:10px;background:var(--bg);border-radius:10px;padding:9px 11px">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;cursor:pointer" onclick="anPaperOpenMissing=!anPaperOpenMissing;rGrades()">
         <span style="font-size:12.5px;font-weight:800;color:var(--red)">📮 아직 안 낸 학생 ${missN}명</span>
@@ -2599,6 +2603,62 @@ function anPaperRosterHtml(exam){
       </div>`).join('')+'<div style="font-size:11px;color:var(--text-muted);margin-top:6px">이름을 누르면 종이 답안을 보고 정오표를 직접 찍을 수 있어요.</div>':''}
     </div>`:''}
   </div>`;
+}
+// 👀 보기 방식 — 학생별(누가 몇 점) / 문항별(1번부터 누가 틀렸나)
+let anViewMode='student';
+function anSetView(v){ anViewMode=v; rGrades(); }
+// 이 시험지를 낸 모든 답안을 한 번만 채점해 둔다 (문항별·학생별이 같은 결과를 쓰게)
+function anPaperResults(exam){
+  const out=[];
+  anPaperOf(exam).forEach(d=>getExamSubs().filter(x=>x.examId===d.id).forEach(x=>{
+    const st=getStudents().find(q=>q.id===x.studentId) || {id:x.studentId, name:x.studentName||'(이름 없음)'};
+    out.push({ st, sub:x, doc:d, r:examResultOf(d, x) });
+  }));
+  return out;
+}
+// 📊 문항별 — 1번부터 순서대로, 누가 틀렸는지. 무엇을 다시 가르칠지 바로 보이게.
+function anQuestionViewHtml(exam){
+  const rows=anPaperResults(exam);
+  const base=anProbs(anPaperOf(exam)[0]||exam).slice()
+    .sort((a,b)=>(parseFloat(a.no)-parseFloat(b.no)) || (String(a.no)>String(b.no)?1:-1));
+  if(!base.length) return '<div style="color:var(--text-muted);padding:10px;font-size:13px">문항 정보가 없어요.</div>';
+  if(!rows.length) return '<div style="color:var(--text-muted);padding:10px;font-size:13px">아직 답안을 낸 학생이 없어요.</div>';
+  const key=examKey(exam), types=omrTypeMap(exam);
+  const stat=base.map(p=>{
+    const no=String(p.no).trim();
+    let total=0, correct=0; const wrong=[], lucky=[];
+    rows.forEach(x=>{
+      // 그 학생 반에서 범위 밖이거나, 학생이 '범위 아님'으로 표시했으면 이 문항은 안 센다
+      if(anProbs(x.doc).some(q=>String(q.no).trim()===no && isOutOfRange(q))) return;
+      if(skipSet(x.sub).has(no)) return;
+      total++;
+      if(x.r.wrongNos.indexOf(no)>=0) wrong.push(x);
+      else { correct++; if(guessedSet(x.sub).has(no)||lateSet(x.sub).has(no)) lucky.push(x); }
+    });
+    return { p, no, total, correct, wrong, lucky, rate: total?Math.round(correct/total*100):null };
+  });
+  const color=v=>v==null?'var(--text-muted)':(v>=80?'var(--green)':(v>=50?'var(--orange)':'var(--red)'));
+  const hardest=stat.filter(x=>x.rate!=null).slice().sort((a,b)=>a.rate-b.rate).slice(0,3).filter(x=>x.rate<70);
+  const big=p=>[p.bigUnit,p.smallUnit].filter(Boolean).join(' > ')||p.unit||'';
+  return `
+    ${hardest.length?`<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:10px;padding:9px 11px;margin-bottom:9px;font-size:12.5px;color:#B91C1C">
+      🔁 다시 짚어야 할 문항 — ${hardest.map(x=>`<strong>${anEsc(x.no)}번</strong> ${x.rate}%`).join(' · ')}</div>`:''}
+    <div class="table-wrap"><table style="width:100%;font-size:13px">
+      <thead><tr>
+        <th style="width:44px">번호</th><th style="width:52px">정답</th><th style="width:46px">배점</th>
+        <th style="text-align:left">단원</th><th style="width:88px">정답률</th><th style="text-align:left">틀린 학생</th>
+      </tr></thead>
+      <tbody>${stat.map(x=>`<tr style="${x.rate!=null&&x.rate<50?'background:#FEF7F7':''}">
+        <td style="text-align:center;font-weight:800">${anEsc(x.no)}${types[x.no]==='주관식'?'<div style="font-size:9px;color:#B45309;font-weight:700">주관식</div>':''}</td>
+        <td style="text-align:center;font-weight:700">${anEsc(key[x.no]||'-')}</td>
+        <td style="text-align:center;font-size:12px;color:var(--text-muted)">${probPoints(x.p, exam)}</td>
+        <td style="font-size:12px">${anEsc(big(x.p))}${x.p.difficulty?`<span style="color:${anDiffColor(x.p.difficulty)};font-weight:700;margin-left:4px">${anEsc(x.p.difficulty)}</span>`:''}</td>
+        <td style="text-align:center"><strong style="color:${color(x.rate)}">${x.rate==null?'-':x.rate+'%'}</strong>
+          <div style="font-size:10.5px;color:var(--text-muted)">${x.correct}/${x.total}</div></td>
+        <td style="font-size:12px">${x.wrong.length?x.wrong.map(w=>`<span style="display:inline-block;background:#FEE2E2;color:var(--red);border-radius:6px;padding:1px 6px;margin:1px 3px 1px 0;font-weight:700;cursor:pointer" onclick="anPickStudentIn('${w.doc.id}','${w.st.id}')">${anEsc(w.st.name)}</span>`).join('')
+          :'<span style="color:var(--green)">다 맞았어요 🎉</span>'}
+          ${x.lucky.length?`<div style="font-size:11px;color:#B45309;margin-top:2px">🎲 찍거나 시간 넘겨 맞음: ${x.lucky.map(w=>anEsc(w.st.name)).join(', ')}</div>`:''}</td>
+      </tr>`).join('')}</tbody></table></div>`;
 }
 // 표에서 학생을 누르면 — 그 학생 반의 시험 문서로 분석서를 연다
 function anPickStudentIn(examId, stId){

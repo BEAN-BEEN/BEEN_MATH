@@ -120,7 +120,7 @@ ok('지난주 월요일이 경계 — 그날 낸 건 보인다', () => {
 ok('마감 지난 것이 맨 위로 온다', () => {
   setup([
     A('soon', 'c1', '이번 주 숙제', ymd(0), ymd(3)),
-    A('over', 'c1', '지난 숙제', ymd(-10), ymd(-2))
+    A('over', 'c1', '지난 숙제', T.weekMonday(-1), ymd(-1))
   ], [], [ST('s1', '김민서', 'c1')]);
   const list = T.hwMissingList();
   assert.strictEqual(list[0].a.id, 'over', '마감 지난 게 위로 안 옴');
@@ -160,7 +160,7 @@ ok('반·과제·마감·이름이 한 덩어리로 나온다', () => {
   assert.ok(t.indexOf('\n') >= 0, '줄바꿈이 없음');
 });
 ok('마감이 지났으면 그렇게 적힌다', () => {
-  setup([A('a1', 'c1', '쎈 3단원', ymd(-10), ymd(-2))], [], [ST('s1', '김민서', 'c1')]);
+  setup([A('a1', 'c1', '쎈 3단원', T.weekMonday(-1), ymd(-1))], [], [ST('s1', '김민서', 'c1')]);
   assert.ok(T.hwMissingText(T.hwMissingList()[0]).indexOf('지남') >= 0);
 });
 ok('전체 복사는 모든 숙제를 담는다', () => {
@@ -192,7 +192,7 @@ ok('미제출이 없으면 복사할 게 없다고 알린다', () => {
 
 console.log('\n대시보드 카드');
 ok('미제출이 있으면 이름과 버튼이 보인다', () => {
-  setup([A('a1', 'c1', '쎈 3단원', ymd(-10), ymd(-2))],
+  setup([A('a1', 'c1', '쎈 3단원', T.weekMonday(-1), ymd(-1))],
     [], [ST('s1', '김민서', 'c1'), ST('s2', '이서준', 'c1')]);
   const h = T.dashMissingHtml();
   assert.ok(h.indexOf('김민서') >= 0 && h.indexOf('이서준') >= 0, '이름이 없음');
