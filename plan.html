@@ -98,8 +98,6 @@
 
   <div class="card" id="jikboCard"></div>
 
-  <div class="card" id="jikboSheet"></div>
-
   <div id="dayDetail"></div>
 
   <div class="card">
@@ -175,7 +173,6 @@ async function loadAll(){
 // ===== 직보(시험 전 직접보강) 자동 생성 =====
 //  규칙: 학생의 수학시험일 전 N일(기본 3) 동안 직보.
 //        그 날이 시험기간 안이면 2시(학교시험 봄), 밖이면 5시.
-const JB_DOW=['월','화','수','목','금','토','일'];
 // 🏫 '부흥고'와 '부흥고등학교'를 같은 학교로 본다 — 선생님 화면과 같은 규칙.
 function normSchool(v){ return (v||'').trim().replace(/고등학교$/,'고'); }
 function dStr(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
@@ -290,12 +287,14 @@ function hasOtherExamNextDay(s, dateStr){
     return !examMathDates(e).map(m=>m.date).includes(next);          // 수학시험일이 아니면 = 타과목
   });
 }
-// 📸 캡처용 직보표 — 달력은 훑어보는 것, 이건 캡처해서 보내는 것.
-//   숫자를 크게 뽑는다. 작은 글씨로 빽빽하면 캡처해도 안 읽힌다.
-//   직보 = 그날 오는 학생, 수업 = 정규수업인데 직보도 안 가고 다음 날 시험도 없는 학생.
-let jbSheetDays=7;
-function jbSheetSet(k){ jbSheetDays=k; rJikboSheet(); }
-// 그날 정규수업에 실제로 올 것 같은 학생 — 직보 가는 학생과 다음 날 시험인 학생은 뺀다
+// 🔶 직보 — 원래대로 주 단위 칸. 캡처해서 보내는 것이라 글씨를 키웠다.
+//   한 칸에 시간 · 학교 · 오는 학생 이름 · 맨 아래 직보/수업/총원.
+//   시험기간이 한 달까지 늘어질 때가 있어서 1~4주를 고를 수 있다.
+let jbWeekStart=null, jbWeeks=2;
+const JB_DOW=['월','화','수','목','금','토','일'];
+function jbSetWeeks(k){ jbWeeks=k; rJikbo(); }
+function jbShift(n){ const d=new Date(jbWeekStart||mondayOf(new Date())); d.setDate(d.getDate()+n); jbWeekStart=mondayOf(d); rJikbo(); }
+// 그날 정규수업에 올 것 같은 학생 — 직보 가는 학생과 다음 날 시험인 학생은 뺀다
 function classComingOn(ds){
   const J=jikboStudentIdsOn(ds), R=regularStudentIdsOn(ds), names=[];
   R.forEach(id=>{
@@ -306,114 +305,67 @@ function classComingOn(ds){
   });
   return names;
 }
-// 그날 수업하는 반 이름 (정규수업만)
-function classNamesOn(ds){
-  const wd=['sun','mon','tue','wed','thu','fri','sat'][new Date(ds+'T00:00:00').getDay()];
-  return P_CLASSES.filter(c=>c.weekday===wd && isClassActive(c,ds) && (!c.type||c.type==='정규')).map(c=>c.name);
+// 직보 하루 칸
+function jikboDayCell(d,i,tStr){
+  const ds=dStr(d);
+  const entries=jikboOn(ds);
+  const N=jikboStudentIdsOn(ds).size, M=classComingOn(ds).length, total=N+M;
+  const isToday=ds===tStr, hol=holidayName(ds);
+  const math=[]; P_EXAMS.forEach(e=>examMathDates(e).forEach(m=>{ const nm=shortSchool(e.school); if(m.date===ds && nm && math.indexOf(nm)<0) math.push(nm); }));
+  let c=`<div style="min-width:0;border:1px solid var(--border);border-radius:9px;overflow:hidden;background:${isToday?'var(--primary-light)':'var(--surface)'}">`;
+  c+=`<div style="text-align:center;padding:6px 3px;background:${(i>=5||hol)?'#FEF2F2':'var(--bg)'};font-weight:800;font-size:15px;color:${i===6?'#EF4444':(i===5?'#2563EB':'var(--text-sub)')}">${JB_DOW[i]}
+    <span style="font-weight:800;color:var(--text);margin-left:3px">${d.getMonth()+1}/${d.getDate()}</span>
+    ${hol?`<div style="font-size:11px;font-weight:700;color:#EA580C">${hol}</div>`:''}
+    ${math.length?`<div style="font-size:11.5px;font-weight:800;color:#DC2626">📐 ${math.join(' ')}</div>`:''}</div>`;
+  c+=`<div style="padding:6px;min-height:52px">`;
+  if(entries.length){
+    entries.forEach(e=>{ c+=`<div style="margin-bottom:7px">
+      <div style="font-size:14px;font-weight:800;color:var(--orange);word-break:keep-all">🔶${e.time} ${shortSchool(e.school)} <span style="font-size:15px">${e.students.length}명</span></div>
+      <div style="font-size:13px;color:var(--text-sub);line-height:1.45;word-break:keep-all">${e.students.join(', ')}</div></div>`; });
+  } else if(!total){ c+='<div style="font-size:13px;color:var(--text-muted);text-align:center;padding:8px 0">-</div>'; }
+  if(total){ c+=`<div style="font-size:13px;font-weight:800;border-top:1px dashed var(--border);padding-top:5px;margin-top:3px;line-height:1.55;word-break:keep-all">
+    <span style="color:var(--orange)">직보 ${N}</span> · <span style="color:var(--primary)">수업 ${M}</span>
+    <br><span style="font-size:16px;color:var(--text)">총 ${total}명</span></div>`; }
+  c+='</div></div>';
+  return {html:c, N, total};
 }
-function rJikboSheet(){
-  const el=document.getElementById('jikboSheet'); if(!el) return;
-  const t=todayStr(), DOW=['일','월','화','수','목','금','토'];
-  const rows=[];
-  for(let i=0;i<jbSheetDays;i++){
-    const ds=addDaysStr(t,i);
-    const jb=jikboOn(ds), cls=classNamesOn(ds), coming=classComingOn(ds);
-    if(!jb.length && !cls.length) continue;                       // 아무것도 없는 날은 건너뛴다
-    const jbN=jb.reduce((a,x)=>a+x.students.length,0);
-    // 같은 시간에 오는 학교는 한 줄로 묶는다 — 네 줄로 흩어져 있으면 캡처해도 안 읽힌다
-    const byTime={};
-    jb.forEach(x=>{ (byTime[x.time]=byTime[x.time]||[]).push(x); });
-    const slots=Object.keys(byTime).sort().map(tm=>{
-      const list=byTime[tm].slice().sort((a,b)=>b.students.length-a.students.length);
-      return { time:tm, n:list.reduce((a,x)=>a+x.students.length,0),
-        who:list.map(x=>shortSchool(x.school)+' '+x.students.length).join(' · '),
-        tip:list.map(x=>shortSchool(x.school)+': '+x.students.join(', ')).join(' / ') };
-    });
-    rows.push({ds, jb, jbN, slots, cls, coming, dow:new Date(ds+'T00:00:00').getDay(), hol:holidayName(ds)});
-  }
-  const num=(v,color)=>`<strong style="font-size:26px;font-weight:800;color:${v?color:'var(--border)'};line-height:1">${v||'–'}</strong>${v?`<span style="font-size:13px;font-weight:700;color:${color}">명</span>`:''}`;
-  const btn=(k,l)=>`<button class="btn btn-sm ${jbSheetDays===k?'btn-primary':'btn-outline'}" onclick="jbSheetSet(${k})">${l}</button>`;
-  el.innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-      <div class="card-title" style="margin:0">📸 한눈에 보기 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(이대로 캡처해서 보내세요)</span></div>
-      <div style="display:flex;gap:6px">${btn(7,'7일')}${btn(14,'2주')}${btn(30,'한 달')}</div>
-    </div>
-    ${rows.length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:520px">
-      <thead><tr style="background:var(--bg)">
-        <th style="padding:8px 10px;text-align:left;font-size:13px;font-weight:800;border:1px solid var(--border);width:112px">날짜</th>
-        <th style="padding:8px 10px;text-align:left;font-size:13px;font-weight:800;border:1px solid var(--border);color:#C2410C">🔶 직보</th>
-        <th style="padding:8px 10px;text-align:left;font-size:13px;font-weight:800;border:1px solid var(--border);color:var(--primary)">📘 수업</th>
-        <th style="padding:8px 10px;text-align:center;font-size:13px;font-weight:800;border:1px solid var(--border);width:78px">합계</th>
-      </tr></thead>
-      <tbody>${rows.map(r=>{
-        const off=r.dow===0||r.dow===6||!!r.hol;
-        return `<tr style="background:${r.ds===t?'var(--primary-light)':(off?'#FFF7ED':'var(--surface)')}">
-        <td style="padding:8px 10px;border:1px solid var(--border);white-space:nowrap">
-          <div style="font-size:19px;font-weight:800;line-height:1.15">${+r.ds.slice(5,7)}/${+r.ds.slice(8,10)}<span style="font-size:14px;color:${r.dow===0?'#EF4444':(r.dow===6?'#2563EB':'var(--text-muted)')};margin-left:4px">${DOW[r.dow]}</span></div>
-          ${r.hol?`<div style="font-size:11px;font-weight:700;color:#EA580C">${r.hol}</div>`:''}
-          ${r.ds===t?'<div style="font-size:11px;font-weight:800;color:var(--primary)">오늘</div>':''}</td>
-        <td style="padding:8px 10px;border:1px solid var(--border)">
-          ${r.slots.length?r.slots.map(x=>`<div title="${x.tip}" style="margin:2px 0">
-            <span style="font-size:17px;font-weight:800;color:#C2410C">${x.time}</span>
-            <span style="font-size:22px;font-weight:800;color:#C2410C;margin-left:7px">${x.n}명</span>
-            <div style="font-size:12.5px;color:var(--text-sub);line-height:1.4">${x.who}</div></div>`).join('')
-            :'<span style="font-size:15px;color:var(--border);font-weight:800">–</span>'}</td>
-        <td style="padding:8px 10px;border:1px solid var(--border)">
-          ${r.cls.length?`<div style="font-size:20px;font-weight:800;color:var(--primary);line-height:1.15">${r.coming.length}명</div>
-            <div style="font-size:12px;color:var(--text-muted)">${r.cls.join(' · ')}</div>`
-            :'<span style="font-size:15px;color:var(--border);font-weight:800">–</span>'}</td>
-        <td style="padding:8px 10px;border:1px solid var(--border);text-align:center">${num(r.jbN+r.coming.length,'var(--text)')}</td>
-      </tr>`;}).join('')}</tbody>
-    </table></div>`
-    :'<div style="font-size:13px;color:var(--text-muted);padding:10px 0">이 기간엔 직보도 수업도 없어요.</div>'}
-    <div style="font-size:11.5px;color:var(--text-muted);margin-top:9px">수업 인원은 <strong>올 것 같은 사람</strong>이에요 — 그날 직보 가는 학생과 다음 날 학교 시험이 있는 학생은 빼고 셉니다.</div>`;
-}
-// 📆 직보 달력 — 내신 관리 달력과 같은 모양. 한 칸에 '학교 N명'만 적는다.
-//   수업 인원·총 인원은 여기서 뺐다. 직보에 누가 오는지만 보면 되니까.
-let jbCalY=null, jbCalM=null;
-function jbCalShift(k){ const d=new Date(jbCalY, jbCalM+k, 1); jbCalY=d.getFullYear(); jbCalM=d.getMonth(); rJikbo(); }
 function rJikbo(){
   const el=document.getElementById('jikboCard'); if(!el) return;
-  const now=new Date();
-  if(jbCalY==null){ jbCalY=now.getFullYear(); jbCalM=now.getMonth(); }
-  const tStr=todayStr();
-  const firstDow=new Date(jbCalY,jbCalM,1).getDay(), dim=new Date(jbCalY,jbCalM+1,0).getDate();
-  const cells=[]; for(let i=0;i<firstDow;i++) cells.push(null); for(let d=1;d<=dim;d++) cells.push(d); while(cells.length%7) cells.push(null);
-  const dowL=['일','월','화','수','목','금','토'];
-  let days=0, people=0;
-  const cell=d=>{
-    if(!d) return '<div></div>';
-    const ds=`${jbCalY}-${pad(jbCalM+1)}-${pad(d)}`, dow=new Date(jbCalY,jbCalM,d).getDay();
-    const entries=jikboOn(ds), isToday=ds===tStr, hol=holidayName(ds);
-    const inExam=P_EXAMS.some(e=>e.startDate&&e.endDate&&ds>=e.startDate&&ds<=e.endDate);
-    const math=[]; P_EXAMS.forEach(e=>examMathDates(e).forEach(m=>{ if(m.date===ds) math.push(shortSchool(e.school)); }));
-    if(entries.length){ days++; entries.forEach(x=>people+=x.students.length); }
-    const col=(hol||dow===0)?'#EF4444':(dow===6?'#2563EB':'var(--text-sub)');
-    return `<div style="min-height:82px;border:1px solid var(--border);border-radius:8px;padding:4px 5px;background:${isToday?'var(--primary-light)':(inExam?'#FEF2F2':(hol?'#FFF7ED':'var(--surface)'))};${isToday?'box-shadow:inset 0 0 0 2px var(--primary)':''}">
-      <div style="font-size:13px;font-weight:800;color:${col}">${d}</div>
-      ${hol?`<div style="font-size:10px;font-weight:800;color:#EA580C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🇰🇷 ${hol}</div>`:''}
-      ${math.map(x=>`<div style="font-size:10px;color:#DC2626;font-weight:800;margin-top:1px">📐 ${x}</div>`).join('')}
-      ${entries.map(x=>`<div title="${x.time} ${x.school} — ${x.students.join(', ')}" style="font-size:10.5px;font-weight:700;color:#fff;background:var(--orange);border-radius:3px;padding:1px 4px;margin-top:2px;line-height:1.35;word-break:keep-all">${shortSchool(x.school)} ${x.students.length}명</div>`).join('')}
-    </div>`;
-  };
-  const grid=cells.map(cell).join('');
+  if(jbWeekStart==null) jbWeekStart=mondayOf(new Date());
+  const tStr=todayStr(), thisMon=dStr(mondayOf(new Date()));
+  let weeksHtml='', totalJikbo=0, jbDays=0;
+  for(let w=0; w<jbWeeks; w++){
+    const ws=new Date(jbWeekStart); ws.setDate(jbWeekStart.getDate()+w*7);
+    let cells='', wJb=0, wDays=0;
+    for(let i=0;i<7;i++){
+      const d=new Date(ws); d.setDate(ws.getDate()+i);
+      const cell=jikboDayCell(d,i,tStr);
+      cells+=cell.html; wJb+=cell.N; if(cell.N) wDays++;
+    }
+    totalJikbo+=wJb; jbDays+=wDays;
+    const we=new Date(ws); we.setDate(ws.getDate()+6);
+    weeksHtml+=`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:${w?'18px':'2px'} 0 6px">
+      <span style="font-size:16px;font-weight:800">${ws.getMonth()+1}/${ws.getDate()} ~ ${we.getMonth()+1}/${we.getDate()}</span>
+      ${dStr(ws)===thisMon?'<span class="badge b-green">이번 주</span>':''}
+      ${wDays?`<span style="font-size:13.5px;font-weight:800;color:#C2410C">🔶 직보 ${wDays}일 · 연인원 ${wJb}명</span>`
+             :'<span style="font-size:13px;color:var(--text-muted)">직보 없음</span>'}</div>`;
+    weeksHtml+=`<div style="overflow-x:auto"><div style="display:grid;grid-template-columns:repeat(7,minmax(94px,1fr));gap:4px;min-width:672px">${cells}</div></div>`;
+  }
+  const wkBtn=n=>`<button class="btn btn-sm ${jbWeeks===n?'btn-primary':'btn-outline'}" onclick="jbSetWeeks(${n})">${n}주</button>`;
   el.innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-      <div class="card-title" style="margin:0">🔶 직보 일정 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(시험 전 자동 생성 · 날짜에 손대면 전체 이름이 떠요)</span></div>
-      <div style="display:flex;align-items:center;gap:6px">
-        <button class="btn btn-outline btn-sm" onclick="jbCalShift(-1)">◀</button>
-        <strong style="font-size:15px;min-width:96px;text-align:center">${jbCalY}년 ${jbCalM+1}월</strong>
-        <button class="btn btn-outline btn-sm" onclick="jbCalShift(1)">▶</button>
-        <button class="btn btn-outline btn-sm" onclick="jbCalY=null;rJikbo()">이번 달</button>
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+      <div class="card-title" style="margin:0">🔶 직보 일정 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(주차별 · 이대로 캡처해서 보내세요)</span></div>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        ${[1,2,3,4].map(wkBtn).join('')}
+        <button class="btn btn-outline btn-sm" onclick="jbShift(-7)">◀</button>
+        <button class="btn btn-outline btn-sm" onclick="jbShift(7)">▶</button>
+        <button class="btn btn-outline btn-sm" onclick="jbWeekStart=null;rJikbo()">이번 주</button>
       </div>
     </div>
-    <div style="overflow-x:auto"><div style="display:grid;grid-template-columns:repeat(7,minmax(64px,1fr));gap:3px;min-width:470px">
-      ${dowL.map((l,i)=>`<div style="text-align:center;font-size:11px;font-weight:800;color:${i===0?'#EF4444':(i===6?'#2563EB':'var(--text-muted)')}">${l}</div>`).join('')}
-      ${grid}
-    </div></div>
-    <div style="font-size:11.5px;color:var(--text-muted);margin-top:9px">
-      🔶 직보 <strong style="color:var(--text)">${days}일</strong> · 연인원 <strong style="color:var(--text)">${people}명</strong> · 📐 수학 시험일 · 빨강 배경 = 시험기간<br>
-      수학시험 <strong>전날부터 거슬러</strong> — 주말·공휴일이 붙으면 그 앞 평일까지 · <strong>다음 날 다른 과목 시험이면 그날은 쉬어요</strong><br>
+    <div style="font-size:13px;color:var(--text-muted);margin-bottom:10px">보는 기간 <strong style="color:#C2410C">직보 ${jbDays}일 · 연인원 ${totalJikbo}명</strong> · 수업 인원은 <strong>올 것 같은 사람</strong>이에요 (그날 직보 가는 학생과 다음 날 학교 시험이 있는 학생은 빼고 셉니다)</div>
+    ${weeksHtml}
+    <div style="font-size:11.5px;color:var(--text-muted);margin-top:12px;border-top:1px dashed var(--border);padding-top:8px">
+      수학시험 <strong>전날부터 거슬러</strong> — 주말·공휴일이 붙으면 그 앞 평일까지 (주말 낀 화요일 시험이면 금·토·일·월) · <strong>다음 날 다른 과목 시험이면 그날은 쉬어요</strong><br>
       시간은 토·일·공휴일 12시 / 금요일 15시 / 그 밖의 평일은 그날 학교시험이 있으면 14시, 없으면 17시
     </div>
     ${P_EXAMS.length===0?'<div style="font-size:13px;color:var(--text-muted);margin-top:10px">학교 시험 일정을 입력하면(성적관리 → 학교별 내신 시험) 자동으로 직보가 생성돼요.</div>':''}`;
@@ -673,7 +625,7 @@ async function init(){
   document.getElementById('ev-date').value=todayStr();
   loadThemeCloud();
   try{ await loadAll(); }catch(e){ showToast('데이터를 불러오지 못했어요: '+e.message,'error'); }
-  rLayerBtns(); rCal(); rDayDetail(); rUpcoming(); rTodos(); rBriefing(); rJikbo(); rJikboSheet();
+  rLayerBtns(); rCal(); rDayDetail(); rUpcoming(); rTodos(); rBriefing(); rJikbo();
 }
 document.addEventListener('DOMContentLoaded', init);
 </script>

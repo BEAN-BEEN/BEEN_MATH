@@ -142,40 +142,55 @@ ok('선생님 화면과 플래너가 같은 사람을 부른다', () => {
   assert.strictEqual(t, p, '선생님(' + t + ')과 플래너(' + p + ')가 다름');
 });
 
-console.log('\n📆 플래너 직보 카드 — 내신 관리와 같은 달력');
-ok('주 단위 칸이 아니라 월 달력이다', () => {
-  assert.ok(ph.includes('function jbCalShift(k)'), '달 넘기기가 없음');
-  assert.ok(!ph.includes('function jikboDayCell('), '주 단위 칸이 남아 있음');
-  assert.ok(!ph.includes('let jbWeekStart'), '주 단위 상태가 남아 있음');
+console.log('\n📆 플래너 직보 카드 — 주 단위 칸, 글씨는 크게');
+ok('달력이 아니라 주 단위 칸이다 (위에 달력이 이미 있다)', () => {
+  assert.ok(ph.includes('function jikboDayCell('), '주 단위 칸이 없음');
+  assert.ok(!ph.includes('function jbCalShift('), '달력이 또 남아 있음');
+  assert.ok(ph.includes('let jbWeekStart=null, jbWeeks=2;'), '주 단위 상태가 없음');
 });
-ok("칸에는 '학교 N명'만 — 수업·총 인원은 뺐다", () => {
-  assert.ok(ph.includes("${shortSchool(x.school)} ${x.students.length}명"), '학교 N명 표시가 없음');
-  assert.ok(!ph.includes('직보${N}'), '칸에 직보 인원 수가 남아 있음');
-  assert.ok(!ph.includes('총 ${total}명'), '칸에 총 인원이 남아 있음');
+ok('1 · 2 · 3 · 4주 — 시험기간이 한 달까지 늘어질 때가 있다', () => {
+  assert.ok(ph.includes("${[1,2,3,4].map(wkBtn).join('')}"), '주 버튼이 없음');
+  assert.ok(ph.includes('function jbSetWeeks(k)'), '주 바꾸기가 없음');
+  assert.ok(ph.includes("onclick=\"jbShift(-7)\"") && ph.includes("onclick=\"jbShift(7)\""), '앞뒤로 넘기기가 없음');
 });
-
-console.log('\n📸 캡처용 표 — 숫자를 크게');
-ok('같은 시간에 오는 학교는 한 줄로 묶는다', () => {
-  assert.ok(ph.includes('const byTime={};'), '시간으로 안 묶음');
-  assert.ok(ph.includes("who:list.map(x=>shortSchool(x.school)+' '+x.students.length).join(' · ')"), '학교별 인원 요약이 없음');
+ok('주마다 날짜 범위와 직보 일수·연인원을 머리에 적는다', () => {
+  assert.ok(/🔶 직보 \${wDays}일 · 연인원 \${wJb}명/.test(ph), '주 요약이 없음');
+  assert.ok(ph.includes("'<span class=\"badge b-green\">이번 주</span>'"), '이번 주 표시가 없음');
 });
-ok('인원 숫자가 크다 (캡처해서 보내는 표다)', () => {
-  assert.ok(/font-size:2[0-9]px;font-weight:800;color:#C2410C/.test(ph), '직보 인원이 작음');
-  assert.ok(ph.includes("font-size:26px;font-weight:800"), '합계가 작음');
+ok('칸에 학생 이름이 그대로 나온다', () => {
+  assert.ok(ph.includes("${e.students.join(', ')}"), '학생 이름이 없음');
+  assert.ok(ph.includes("🔶${e.time} ${shortSchool(e.school)}"), '시간·학교가 없음');
 });
-ok('7일 / 2주 / 한 달을 고를 수 있다', () => {
-  assert.ok(ph.includes("${btn(7,'7일')}${btn(14,'2주')}${btn(30,'한 달')}"), '기간 버튼이 없음');
+ok('칸 맨 아래에 직보 / 수업 / 총원', () => {
+  assert.ok(ph.includes('직보 ${N}'), '직보 인원이 없음');
+  assert.ok(ph.includes('수업 ${M}'), '수업 인원이 없음');
+  assert.ok(ph.includes('총 ${total}명'), '총원이 없음');
+});
+ok('캡처해서 보내는 것이라 글씨가 크다', () => {
+  // 원래는 이름이 10.5px이라 캡처하면 안 읽혔다
+  assert.ok(ph.includes('font-size:13px;color:var(--text-sub);line-height:1.45'), '학생 이름이 작음');
+  assert.ok(ph.includes('font-size:14px;font-weight:800;color:var(--orange)'), '시간·학교가 작음');
+  assert.ok(ph.includes('font-size:16px;color:var(--text)">총 ${total}명'), '총원이 작음');
+  assert.ok(!/font-size:10\.5px/.test(ph), '옛 10.5px가 남아 있음');
+});
+ok('수학 시험일과 공휴일도 칸 머리에 적는다', () => {
+  assert.ok(ph.includes('📐 ${math.join(\' \')}'), '수학 시험일이 없음');
+  assert.ok(/const math=\[\][\s\S]{0,200}math\.indexOf\(nm\)<0/.test(ph), '같은 학교가 두 번 찍힘');
 });
 ok('수업 인원은 직보 가는 학생과 다음 날 시험인 학생을 뺀다', () => {
   assert.ok(ph.includes('function classComingOn(ds)'), '수업 예상 인원이 없음');
   assert.ok(/classComingOn[\s\S]{0,400}if\(J\.has\(id\)\) return;/.test(ph), '직보 가는 학생을 안 뺌');
   assert.ok(/classComingOn[\s\S]{0,400}if\(hasOtherExamNextDay\(st, ds\)\) return;/.test(ph), '다음 날 시험인 학생을 안 뺌');
 });
-ok('직보도 수업도 없는 날은 줄을 만들지 않는다', () => {
-  assert.ok(ph.includes('if(!jb.length && !cls.length) continue;'), '빈 날도 줄이 생김');
+ok('좁은 화면에서는 옆으로 넘겨 본다', () => {
+  assert.ok(/overflow-x:auto[\s\S]{0,120}grid-template-columns:repeat\(7,minmax\(94px,1fr\)\)/.test(ph), '가로 스크롤이 없음');
 });
-ok('처음 열 때 표도 같이 그린다', () => {
-  assert.ok(ph.includes('rJikbo(); rJikboSheet();'), '표를 안 그림');
+ok('직보 규칙 설명이 카드에 남아 있다', () => {
+  assert.ok(ph.includes('다음 날 다른 과목 시험이면 그날은 쉬어요'), '쉬는 날 설명이 없음');
+});
+ok('표를 따로 그리지 않는다 (카드 하나)', () => {
+  assert.ok(!ph.includes('jikboSheet'), '표 카드가 남아 있음');
+  assert.ok(ph.includes('rBriefing(); rJikbo();'), '처음 그리기가 안 맞음');
 });
 
 console.log('\n문법');
