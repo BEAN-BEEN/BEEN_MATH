@@ -180,7 +180,6 @@ ok('아무도 안 오는 반은 굳이 안 적는다', () => {
 ok('캡처해서 보내는 것이라 글씨가 크다', () => {
   // 원래는 이름이 10.5px이라 캡처하면 안 읽혔다
   assert.ok(ph.includes('font-size:13px;color:var(--text-sub);line-height:1.45'), '학생 이름이 작음');
-  assert.ok(ph.includes('font-size:14px;font-weight:800;color:var(--orange)'), '시간·학교가 작음');
   assert.ok(ph.includes('font-size:16px;color:var(--text);margin-top:2px">총 ${total}명'), '총원이 작음');
   assert.ok(!/font-size:10\.5px/.test(ph), '옛 10.5px가 남아 있음');
 });
@@ -204,33 +203,41 @@ ok('표를 따로 그리지 않는다 (카드 하나)', () => {
   assert.ok(ph.includes('rBriefing(); rJikbo();'), '처음 그리기가 안 맞음');
 });
 
-console.log('\n📸 캡처 — 그림 한 장으로 만들어 보낸다');
-ok('캡처 버튼이 있다', () => {
-  assert.ok(ph.includes('id="jbShotBtn" onclick="jbCapture()"'), '캡처 버튼이 없음');
-  assert.ok(ph.includes('async function jbCapture()'), '캡처가 없음');
+console.log('\n📸 캡처 — 숙제처럼 띄우고 그 부분만 캡처');
+ok('버튼을 누르면 깨끗한 화면이 뜬다', () => {
+  assert.ok(ph.includes('onclick="openJbShot()">📸 캡처'), '캡처 버튼이 없음');
+  assert.ok(ph.includes('function openJbShot()'), '띄우기가 없음');
+  assert.ok(ph.includes('function closeJbShot()'), '닫기가 없음');
+  assert.ok(ph.includes('id="jbShotSheet"'), '흰 화면이 없음');
 });
-ok('라이브러리는 누를 때 한 번만 불러온다', () => {
-  assert.ok(ph.includes('function jbLoadShot()'), '지연 로딩이 없음');
-  assert.ok(ph.includes('cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'), '판을 고정 안 함');
-  assert.ok(ph.includes('if(window.html2canvas) return Promise.resolve();'), '매번 다시 불러옴');
+ok('버튼은 캡처할 흰 부분 밖에 둔다 (숙제 캡처와 같게)', () => {
+  assert.ok(ph.includes('id="jbShotControls"'), '조절 버튼 자리가 없음');
+  assert.ok(ph.includes('아래 흰 부분만 캡처해서 보내세요'), '안내가 없음');
 });
-ok('폰에서는 공유창으로, 안 되면 내려받기', () => {
-  assert.ok(ph.includes('navigator.canShare && navigator.canShare({files:[file]})'), '공유가 없음');
-  assert.ok(ph.includes("err.name==='AbortError'"), '쌤이 공유창을 닫은 걸 실패로 봄');
-  assert.ok(ph.includes("a.download=name;"), '내려받기가 없음');
+ok('폰에서 읽히게 날짜를 위에서 아래로 늘어놓는다', () => {
+  // 가로 7칸은 폰에서 글씨가 뭉갠다
+  assert.ok(ph.includes('max-width:430px'), '폭이 폰에 안 맞음');
+  assert.ok(ph.includes('BEEN MATH 직보'), '머리말이 없음');
 });
-ok('그림에는 버튼 줄을 빼고, 옆으로 넘기던 부분까지 다 펼쳐 찍는다', () => {
-  assert.ok(ph.includes('data-jbhide'), '버튼 줄 표시가 없음');
-  assert.ok(ph.includes('data-jbscroll'), '가로 스크롤 표시가 없음');
-  assert.ok(ph.includes("h.style.display='none'"), '버튼을 안 감춤');
-  assert.ok(ph.includes("w.style.overflowX='visible'"), '가로를 안 펼침');
+ok('하루마다 직보 인원 · 부별 인원 · 총원', () => {
+  assert.ok(ph.includes('직보 ${jbN}명'), '직보 인원이 없음');
+  assert.ok(ph.includes('총 ${jbN+uniq.size}명'), '총원이 없음');
+  assert.ok(/const uniq=new Set\(\);/.test(ph), '겹치는 학생을 두 번 셈');
 });
-ok('끝나면 화면을 원래대로 돌려놓는다 (실패해도)', () => {
-  assert.ok(/finally\{[\s\S]{0,400}card\.style\.width=keepW;/.test(ph), '너비를 안 되돌림');
-  assert.ok(/finally\{[\s\S]{0,400}btn\.disabled=false/.test(ph), '버튼이 잠긴 채로 남음');
+ok('1 · 2 · 3 · 4주와 앞뒤로 넘기기', () => {
+  assert.ok(ph.includes("[1,2,3,4].map(wk).join('')"), '주 버튼이 없음');
+  assert.ok(ph.includes("nav(-7,'◀')+nav(7,'▶')"), '넘기기가 없음');
 });
-ok('파일 이름에 날짜가 들어간다', () => {
-  assert.ok(ph.includes('const name=`직보_${todayStr()}.png`;'), '파일 이름이 없음');
+ok('직보도 수업도 없는 날은 안 적는다', () => {
+  assert.ok(ph.includes('.filter(r=>r.on.length || r.slots.length);'), '빈 날도 적음');
+});
+ok('그림 파일로 내려받던 건 걷어냈다', () => {
+  assert.ok(!ph.includes('html2canvas'), 'html2canvas가 남아 있음');
+  assert.ok(!ph.includes('jbCapture'), '옛 캡처가 남아 있음');
+});
+ok('주황색 시간·학교 글씨를 줄였다', () => {
+  assert.ok(ph.includes('font-size:12.5px;font-weight:800;color:var(--orange)'), '아직 큼');
+  assert.ok(!ph.includes('font-size:14px;font-weight:800;color:var(--orange)'), '옛 크기가 남아 있음');
 });
 
 console.log('\n말은 쉽게');

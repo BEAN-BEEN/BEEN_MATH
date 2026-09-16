@@ -70,18 +70,41 @@ ok('고른 날짜에 테두리', () => {
   assert.ok(th.includes('isSel=ds===jbPickDate'), '고른 날 표시가 없음');
 });
 
-console.log('\n📸 캡처');
-ok('캡처 버튼이 있다', () => {
-  assert.ok(th.includes('id="jbShotBtn" onclick="jbCapture()"'), '캡처 버튼이 없음');
-  assert.ok(th.includes('async function jbCapture()'), '캡처가 없음');
-  assert.ok(th.includes('function jbLoadShot()'), '지연 로딩이 없음');
+console.log('\n📸 캡처 — 숙제처럼 띄우고 그 부분만 캡처');
+ok('버튼을 누르면 깨끗한 화면이 뜬다', () => {
+  assert.ok(th.includes('onclick="openJbShot()">📸 캡처'), '캡처 버튼이 없음');
+  assert.ok(th.includes('function openJbShot()'), '띄우기가 없음');
+  assert.ok(th.includes('function closeJbShot()'), '닫기가 없음');
+  assert.ok(th.includes('id="jbShotSheet"'), '흰 화면이 없음');
 });
-ok('버튼 줄은 그림에서 빼고 가로는 다 펼친다', () => {
-  assert.ok(th.includes('data-jbhide'), '버튼 줄 표시가 없음');
-  assert.ok(th.includes('data-jbscroll'), '가로 스크롤 표시가 없음');
+ok('버튼은 캡처할 흰 부분 밖에 둔다 (숙제 캡처와 같게)', () => {
+  assert.ok(th.includes('id="jbShotControls"'), '조절 버튼 자리가 없음');
+  assert.ok(th.includes('아래 흰 부분만 캡처해서 보내세요'), '안내가 없음');
 });
-ok('끝나면 화면을 되돌린다', () => {
-  assert.ok(/finally\{[\s\S]{0,400}card\.style\.width=keepW;/.test(th), '너비를 안 되돌림');
+ok('폰에서 읽히게 날짜를 위에서 아래로 늘어놓는다', () => {
+  // 가로 7칸은 폰에서 글씨가 뭉갠다
+  assert.ok(th.includes('max-width:430px'), '폭이 폰에 안 맞음');
+  assert.ok(th.includes('BEEN MATH 직보'), '머리말이 없음');
+});
+ok('하루마다 직보 인원 · 부별 인원 · 총원', () => {
+  assert.ok(th.includes('직보 ${jbN}명'), '직보 인원이 없음');
+  assert.ok(th.includes('총 ${jbN+uniq.size}명'), '총원이 없음');
+  assert.ok(/const uniq=new Set\(\);/.test(th), '겹치는 학생을 두 번 셈');
+});
+ok('1 · 2 · 3 · 4주와 앞뒤로 넘기기', () => {
+  assert.ok(th.includes("[1,2,3,4].map(wk).join('')"), '주 버튼이 없음');
+  assert.ok(th.includes("nav(-7,'◀')+nav(7,'▶')"), '넘기기가 없음');
+});
+ok('직보도 수업도 없는 날은 안 적는다', () => {
+  assert.ok(th.includes('.filter(r=>r.on.length || r.slots.length);'), '빈 날도 적음');
+});
+ok('그림 파일로 내려받던 건 걷어냈다', () => {
+  assert.ok(!th.includes('html2canvas'), 'html2canvas가 남아 있음');
+  assert.ok(!th.includes('jbCapture'), '옛 캡처가 남아 있음');
+});
+ok('주황색 시간·학교 글씨를 줄였다', () => {
+  assert.ok(th.includes('font-size:12.5px;font-weight:800;color:var(--orange)'), '아직 큼');
+  assert.ok(!th.includes('font-size:14px;font-weight:800;color:var(--orange)'), '옛 크기가 남아 있음');
 });
 
 console.log('\n안전');

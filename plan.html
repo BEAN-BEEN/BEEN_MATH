@@ -302,63 +302,67 @@ function hasOtherExamNextDay(s, dateStr){
 let jbWeekStart=null, jbWeeks=2;
 const JB_DOW=['월','화','수','목','금','토','일'];
 function jbSetWeeks(k){ jbWeeks=k; rJikbo(); }
-// 📸 이 카드를 그림 한 장으로. 폰에서는 공유창이 떠서 카톡으로 바로 보낼 수 있고,
-//   안 되면 그림 파일로 내려받는다. 라이브러리는 누를 때 한 번만 불러온다.
-let _h2c=null;
-function jbLoadShot(){
-  if(window.html2canvas) return Promise.resolve();
-  if(_h2c) return _h2c;
-  _h2c=new Promise((res,rej)=>{
-    const t=document.createElement('script');
-    t.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-    t.onload=()=>res(); t.onerror=()=>{ _h2c=null; rej(new Error('인터넷에서 못 불러왔어요')); };
-    document.head.appendChild(t);
-  });
-  return _h2c;
-}
-async function jbCapture(){
-  const card=document.getElementById('jikboCard'); if(!card) return;
-  const btn=document.getElementById('jbShotBtn');
-  const label=btn?btn.innerHTML:'';
-  if(btn){ btn.disabled=true; btn.innerHTML='만드는 중…'; }
-  // 옆으로 넘겨 보던 부분까지 다 펼쳐서 찍는다. 버튼 줄은 그림에서 뺀다.
-  const wraps=[...card.querySelectorAll('[data-jbscroll]')];
-  const hides=[...card.querySelectorAll('[data-jbhide]')];
-  const keepW=card.style.width;
-  wraps.forEach(w=>{ w.dataset.ov=w.style.overflowX||''; w.style.overflowX='visible'; });
-  hides.forEach(h=>{ h.dataset.dp=h.style.display||''; h.style.display='none'; });
-  try{
-    await jbLoadShot();
-    const w=Math.max(card.scrollWidth, 720);
-    card.style.width=w+'px';
-    const canvas=await html2canvas(card, {scale:2, backgroundColor:'#ffffff', width:w, windowWidth:w+48, useCORS:true});
-    const name=`직보_${todayStr()}.png`;
-    const blob=await new Promise(r=>canvas.toBlob(r,'image/png'));
-    if(!blob) throw new Error('그림을 못 만들었어요');
-    const file=new File([blob], name, {type:'image/png'});
-    if(navigator.canShare && navigator.canShare({files:[file]})){
-      try{ await navigator.share({files:[file], title:'직보 일정'}); return; }
-      catch(err){ if(err && err.name==='AbortError') return; }   // 쌤이 공유창을 닫은 것
-    }
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a'); a.href=url; a.download=name;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url), 5000);
-    showToast('그림으로 저장했어요 📸','success');
-  }catch(e){ showToast('캡처 실패: '+(e&&e.message||e),'error'); }
-  finally{
-    card.style.width=keepW;
-    wraps.forEach(w=>{ w.style.overflowX=w.dataset.ov; delete w.dataset.ov; });
-    hides.forEach(h=>{ h.style.display=h.dataset.dp; delete h.dataset.dp; });
-    if(btn){ btn.disabled=false; btn.innerHTML=label; }
-  }
-}
 function jbShift(n){ const d=new Date(jbWeekStart||mondayOf(new Date())); d.setDate(d.getDate()+n); jbWeekStart=mondayOf(d); rJikbo(); }
 // 표에서 날짜를 누르면 아래 상세로 — 누가 오고 누가 빠지는지 이름까지.
 function jbPick(ds){
   selDate=ds; rDayDetail(); rCal(); rJikbo();
-  const el=document.getElementById('dayDetail');
-  if(el && el.scrollIntoView) el.scrollIntoView({behavior:'smooth', block:'start'});
+  const el=document.getElementById("dayDetail");
+  if(el && el.scrollIntoView) el.scrollIntoView({behavior:"smooth", block:"start"});
+}
+// 📸 캡처용 보기 — 숙제 캡처와 같은 방식. 흰 부분만 캡처해서 보내면 된다.
+//   가로 7칸은 폰에서 안 읽히니, 여기서는 날짜를 위에서 아래로 늘어놓는다.
+let jbShotWeeks=1, jbShotStart=null;
+function openJbShot(){
+  jbShotStart=mondayOf(new Date()); jbShotWeeks=1;
+  renderJbShot();
+  const m=document.getElementById('jbShotModal'); if(m) m.style.display='flex';
+}
+function closeJbShot(){ const m=document.getElementById('jbShotModal'); if(m) m.style.display='none'; }
+function setJbShot(k,v){
+  if(k==='weeks') jbShotWeeks=v;
+  else { const d=new Date(jbShotStart); d.setDate(d.getDate()+v); jbShotStart=mondayOf(d); }
+  renderJbShot();
+}
+function renderJbShot(){
+  const ctl=document.getElementById('jbShotControls'), sheet=document.getElementById('jbShotSheet');
+  if(!sheet) return;
+  const DOW=['일','월','화','수','목','금','토'];
+  const days=[];
+  for(let i=0;i<jbShotWeeks*7;i++){ const d=new Date(jbShotStart); d.setDate(jbShotStart.getDate()+i); days.push(dStr(d)); }
+  const rows=days.map(ds=>({ ds, on:jikboOn(ds), slots:classSlotsOn(ds), hol:holidayName(ds) }))
+    .filter(r=>r.on.length || r.slots.length);
+  const first=days[0], last=days[days.length-1];
+  if(ctl){
+    const wk=k=>`<button onclick="setJbShot('weeks',${k})" style="border:none;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;${jbShotWeeks===k?'background:#F97316;color:#fff':'background:rgba(255,255,255,.2);color:#fff'}">${k}주</button>`;
+    const nav=(v,l)=>`<button onclick="setJbShot('move',${v})" style="border:none;border-radius:8px;padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;background:rgba(255,255,255,.2);color:#fff">${l}</button>`;
+    ctl.innerHTML=[1,2,3,4].map(wk).join('')+nav(-7,'◀')+nav(7,'▶')
+      +`<span style="color:rgba(255,255,255,.75);font-size:11px;margin-left:2px">아래 흰 부분만 캡처해서 보내세요</span>`;
+  }
+  sheet.innerHTML=`
+    <div style="background:linear-gradient(135deg,#F97316,#FB923C);color:#fff;padding:16px 18px">
+      <div style="font-size:12px;opacity:.9;font-weight:700">BEEN MATH 직보</div>
+      <div style="font-size:20px;font-weight:800;margin-top:2px">${+first.slice(5,7)}/${+first.slice(8,10)} ~ ${+last.slice(5,7)}/${+last.slice(8,10)}</div>
+    </div>
+    <div style="padding:6px 0 14px">
+    ${rows.length?rows.map(r=>{
+      const dow=new Date(r.ds+'T00:00:00').getDay();
+      const jbN=r.on.reduce((a,x)=>a+x.students.length,0);
+      const uniq=new Set(); r.slots.forEach(x=>x.names.forEach(nm=>uniq.add(nm)));
+      return `<div style="padding:11px 16px;border-bottom:1px solid #F1F5F9">
+        <div style="font-size:16px;font-weight:800;color:${dow===0?'#EF4444':(dow===6?'#2563EB':'#0F172A')}">
+          ${+r.ds.slice(5,7)}/${+r.ds.slice(8,10)} (${DOW[dow]})
+          ${r.hol?`<span style="font-size:12px;font-weight:700;color:#EA580C;margin-left:4px">${r.hol}</span>`:''}</div>
+        ${r.on.length?r.on.map(x=>`<div style="margin-top:5px">
+          <div style="font-size:14px;font-weight:800;color:#C2410C">🔶 ${x.time+' '+shortSchool(x.school)+' '+x.students.length+'명'}</div>
+          <div style="font-size:13px;color:#475569;line-height:1.45">${x.students.join(', ')}</div></div>`).join('')
+          :''}
+        <div style="font-size:13px;font-weight:700;color:#475569;margin-top:6px">
+          ${jbN?`<span style="color:#C2410C">직보 ${jbN}명</span>`:''}
+          ${r.slots.filter(x=>x.names.length).map(x=>`<span style="margin-left:${jbN?'8px':'0'};color:#5B6CF5">${x.slot||x.name} ${x.names.length}명</span>`).join('')}
+          <span style="margin-left:8px;color:#0F172A;font-weight:800">총 ${jbN+uniq.size}명</span></div>
+      </div>`;
+    }).join(''):'<div style="padding:22px 16px;color:#94A3B8;font-size:13px;text-align:center">이 기간엔 직보도 수업도 없어요.</div>'}
+    </div>`;
 }
 // 그날 정규수업에 올 것 같은 학생 — 직보 가는 학생과 다음 날 시험인 학생은 뺀다
 function classComingOn(ds){
@@ -405,7 +409,7 @@ function jikboDayCell(d,i,tStr){
   c+=`<div style="padding:6px;min-height:52px">`;
   if(entries.length){
     entries.forEach(e=>{ c+=`<div style="margin-bottom:7px">
-      <div style="font-size:14px;font-weight:800;color:var(--orange);word-break:keep-all">🔶${e.time} ${shortSchool(e.school)} <span style="font-size:15px">${e.students.length}명</span></div>
+      <div style="font-size:12.5px;font-weight:800;color:var(--orange);word-break:keep-all">🔶${e.time} ${shortSchool(e.school)} <span style="font-size:13.5px">${e.students.length}명</span></div>
       <div style="font-size:13px;color:var(--text-sub);line-height:1.45;word-break:keep-all">${e.students.join(', ')}</div></div>`; });
   } else if(!total){ c+='<div style="font-size:13px;color:var(--text-muted);text-align:center;padding:8px 0">-</div>'; }
   if(total){ c+=`<div style="font-size:13px;font-weight:800;border-top:1px dashed var(--border);padding-top:5px;margin-top:3px;line-height:1.6;word-break:keep-all">
@@ -442,7 +446,7 @@ function rJikbo(){
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
       <div class="card-title" style="margin:0">🔶 직보 일정 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(주차별 · 날짜를 누르면 아래에 명단 · 이대로 캡처해서 보내세요)</span></div>
       <div data-jbhide style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-        <button class="btn btn-primary btn-sm" id="jbShotBtn" onclick="jbCapture()">📸 캡처</button>
+        <button class="btn btn-primary btn-sm" onclick="openJbShot()">📸 캡처</button>
         ${[1,2,3,4].map(wkBtn).join('')}
         <button class="btn btn-outline btn-sm" onclick="jbShift(-7)">◀</button>
         <button class="btn btn-outline btn-sm" onclick="jbShift(7)">▶</button>
@@ -729,5 +733,15 @@ async function init(){
 }
 document.addEventListener('DOMContentLoaded', init);
 </script>
+<!-- 📸 직보 캡처용 보기 — 숙제 캡처와 같은 방식 (캡처 영역엔 버튼을 넣지 않음) -->
+<div id="jbShotModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.72);z-index:1700;align-items:flex-start;justify-content:center;overflow:auto;padding:16px" onclick="if(event.target===this)closeJbShot()">
+  <div style="width:100%;max-width:430px">
+    <div id="jbShotControls" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px"></div>
+    <div id="jbShotSheet" style="background:#fff;border-radius:16px;overflow:hidden"></div>
+    <div style="text-align:center;padding:12px 0 24px">
+      <button onclick="closeJbShot()" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:9px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">닫기</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
