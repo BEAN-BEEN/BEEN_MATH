@@ -6843,10 +6843,186 @@ function makeupRosterPanel(m){
     <div style="font-size:11px;color:var(--text-muted);margin-top:8px">학생을 누르면 '온다고 함'으로 표시돼요. 다시 누르면 취소.</div>
   </div>`;
 }
+// ───── 📆 주차별 직보 표 — 플래너와 같은 모양. 캡처해서 그대로 보낸다.
+//   플래너는 규칙으로 계산한 것이고, 여기는 실제로 잡혀 있는 직보(보강 목록)를 본다.
+let jbWeekStart=null, jbWeeks=2, jbPickDate='';
+const JB_DOW=['월','화','수','목','금','토','일'];
+function jbMonday(d){ const x=new Date(d); const dow=(x.getDay()+6)%7; x.setDate(x.getDate()-dow); x.setHours(0,0,0,0); return x; }
+function jbStr(d){ const p=v=>String(v).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; }
+function jbSetWeeks(k){ jbWeeks=k; rNaesin(); }
+function jbShift(k){ const d=new Date(jbWeekStart||jbMonday(new Date())); d.setDate(d.getDate()+k); jbWeekStart=jbMonday(d); rNaesin(); }
+function jbPick(ds){ jbPickDate=(jbPickDate===ds?'':ds); rNaesin(); }
+// 그날 잡혀 있는 직보 — 시간별로 묶고, 부를 학생은 makeupRoster 기준(부담임·반 없는 학생 제외)
+function jbOnDate(ds){
+  const byTime={};
+  getMakeups().filter(m=>m.date===ds).forEach(m=>{
+    const t=(m.time||'').trim()||'시간 미정';
+    const all=makeupRoster(m);
+    const who=makeupIsSchoolWide(m) ? all.filter(x=>!isJikboSkip(x)) : all;
+    const name=m.school ? shortSchool(m.school) : String(m.className||'보강').replace(/\s*직보\s*$/,'');
+    (byTime[t]=byTime[t]||[]).push({ name, who, id:m.id });
+  });
+  return Object.keys(byTime).sort().map(t=>({ time:t, groups:byTime[t] }));
+}
+// 그날 직보에 오는 학생 id
+function jbIdsOn(ds){ const set=new Set(); jbOnDate(ds).forEach(t=>t.groups.forEach(g=>g.who.forEach(x=>set.add(x.id)))); return set; }
+// 그 학생이 '다음 날' 다른 과목 시험을 보는가 (다음날이 시험기간 안 + 수학시험일 아님)
+function jbOtherExamNext(st, ds){
+  const next=jikboAdd(ds,1), sc=normSchool(st.school||'');
+  return visibleSchoolExams().some(e=>{
+    if(normSchool(e.school||'')!==sc) return false;
+    if(!jikboIsExamDay(e, next)) return false;
+    return !examMathDates(e).map(m=>m.date).includes(next);
+  });
+}
+// 그날 수업을 부(1부·2부·3부)로 나눠 — 직보 가는 학생과 다음 날 시험인 학생은 뺀다
+function jbSlotsOn(ds){
+  const wd=['sun','mon','tue','wed','thu','fri','sat'][new Date(ds+'T00:00:00').getDay()];
+  const J=jbIdsOn(ds);
+  return CLASSES.filter(c=>clsHasDay(c,wd) && isClassActive(c,ds) && (!c.type||c.type==='정규'))
+    .sort((a,b)=>String(a.slot||'').localeCompare(String(b.slot||'')) || (a.order||0)-(b.order||0))
+    .map(c=>{
+      const coming=[], jikbo=[], exam=[];
+      getStudentsByClass(c.id).forEach(st=>{
+        if(J.has(st.id)) jikbo.push(st.name);
+        else if(jbOtherExamNext(st, ds)) exam.push(st.name);
+        else coming.push(st.name);
+      });
+      return { slot:(c.slot||'').trim(), name:c.name, time:(c.startTime&&c.endTime)?(c.startTime+'~'+c.endTime):'', coming, jikbo, exam };
+    });
+}
+// 하루 칸
+function jbDayCell(d,i,tStr){
+  const ds=jbStr(d), on=jbOnDate(ds), slots=jbSlotsOn(ds);
+  const N=jbIdsOn(ds).size;
+  const uniq=new Set(); slots.forEach(x=>x.coming.forEach(nm=>uniq.add(nm)));
+  const total=N+uniq.size;
+  const isToday=ds===tStr, hol=holidayName(ds), isSel=ds===jbPickDate;
+  const math=[]; visibleSchoolExams().forEach(e=>examMathDates(e).forEach(m=>{ const nm=shortSchool(e.school); if(m.date===ds && nm && math.indexOf(nm)<0) math.push(nm); }));
+  let c=`<div onclick="jbPick('${ds}')" title="누르면 아래에서 누가 오고 누가 빠지는지 봐요" style="cursor:pointer;min-width:0;border:1px solid var(--border);border-radius:9px;overflow:hidden;background:${isToday?'var(--primary-light)':'var(--surface)'};${isSel?'box-shadow:inset 0 0 0 2px var(--primary)':''}">`;
+  c+=`<div style="text-align:center;padding:6px 3px;background:${(i>=5||hol)?'#FEF2F2':'var(--bg)'};font-weight:800;font-size:15px;color:${i===6?'#EF4444':(i===5?'#2563EB':'var(--text-sub)')}">${JB_DOW[i]}
+    <span style="font-weight:800;color:var(--text);margin-left:3px">${d.getMonth()+1}/${d.getDate()}</span>
+    ${hol?`<div style="font-size:11px;font-weight:700;color:#EA580C">${hol}</div>`:''}
+    ${math.length?`<div style="font-size:11.5px;font-weight:800;color:#DC2626">📐 ${math.join(' ')}</div>`:''}</div>`;
+  c+=`<div style="padding:6px;min-height:52px">`;
+  if(on.length){
+    on.forEach(t=>t.groups.forEach(g=>{ c+=`<div style="margin-bottom:7px">
+      <div style="font-size:14px;font-weight:800;color:var(--orange);word-break:keep-all">🔶${t.time} ${anEsc(g.name)} <span style="font-size:15px">${g.who.length}명</span></div>
+      <div style="font-size:13px;color:var(--text-sub);line-height:1.45;word-break:keep-all">${g.who.map(x=>anEsc(x.name)).join(', ')}</div></div>`; }));
+  } else if(!total){ c+='<div style="font-size:13px;color:var(--text-muted);text-align:center;padding:8px 0">-</div>'; }
+  if(total){ c+=`<div style="font-size:13px;font-weight:800;border-top:1px dashed var(--border);padding-top:5px;margin-top:3px;line-height:1.6;word-break:keep-all">
+    ${N?`<div style="color:var(--orange)">직보 <span style="font-size:15px">${N}</span>명</div>`:''}
+    ${slots.filter(x=>x.coming.length).map(x=>`<div style="color:var(--primary)">${anEsc(x.slot||x.name)} <span style="font-size:15px">${x.coming.length}</span>명</div>`).join('')}
+    <div style="font-size:16px;color:var(--text);margin-top:2px">총 ${total}명</div></div>`; }
+  c+='</div></div>';
+  return {html:c, N};
+}
+// 고른 날짜의 명단 — 누가 오고 누가 빠지는지
+function jbDayDetailHtml(){
+  const ds=jbPickDate; if(!ds) return '';
+  const d=new Date(ds+'T00:00:00');
+  const label=`${d.getMonth()+1}월 ${d.getDate()}일 (${['일','월','화','수','목','금','토'][d.getDay()]})`;
+  const on=jbOnDate(ds), slots=jbSlotsOn(ds);
+  return `<div style="margin-top:12px;border-top:2px solid var(--border);padding-top:11px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <div style="font-size:15px;font-weight:800">📌 ${label} 누가 오나</div>
+      <button class="btn btn-outline btn-sm" onclick="jbPick('${ds}')">닫기</button>
+    </div>
+    ${on.length?on.map(t=>t.groups.map(g=>`<div style="background:#FFF7ED;border-radius:8px;padding:8px 10px;margin-bottom:6px">
+      <div style="font-size:13px;font-weight:800;color:#C2410C">🔶 ${t.time} ${anEsc(g.name)} <span style="font-size:12px">${g.who.length}명</span></div>
+      <div style="font-size:12.5px;color:var(--text-sub);margin-top:3px">${g.who.map(x=>anEsc(x.name)).join(', ')||'-'}</div>
+    </div>`).join('')).join(''):'<div style="font-size:13px;color:var(--text-muted);padding:4px 0 8px">이 날은 잡힌 직보가 없어요.</div>'}
+    ${slots.map(x=>`<div style="background:var(--bg);border-radius:8px;padding:8px 10px;margin-bottom:6px">
+      <div style="font-size:13px;font-weight:700">${x.slot?`<span style="color:var(--primary)">${anEsc(x.slot)}</span> `:''}${anEsc(x.name)} <span style="font-size:11px;color:var(--text-muted)">${x.time}</span> · <span style="color:var(--green)">올 ${x.coming.length}명</span>${(x.jikbo.length+x.exam.length)?` / <span style="color:var(--text-muted)">빠짐 ${x.jikbo.length+x.exam.length}명</span>`:''}</div>
+      <div style="font-size:12px;color:var(--text-sub);margin-top:3px">✅ ${x.coming.map(anEsc).join(', ')||'-'}</div>
+      ${x.jikbo.length?`<div style="font-size:12px;color:var(--orange);margin-top:2px">🔶 직보로 빠짐: ${x.jikbo.map(anEsc).join(', ')}</div>`:''}
+      ${x.exam.length?`<div style="font-size:12px;color:var(--red);margin-top:2px">📝 다음날 다른 과목 시험: ${x.exam.map(anEsc).join(', ')}</div>`:''}
+    </div>`).join('')}</div>`;
+}
+// 📸 이 표를 그림 한 장으로 — 폰에서는 공유창, 아니면 파일로 내려받기
+let _jbShotLib=null;
+function jbLoadShot(){
+  if(window.html2canvas) return Promise.resolve();
+  if(_jbShotLib) return _jbShotLib;
+  _jbShotLib=new Promise((res,rej)=>{
+    const t=document.createElement('script');
+    t.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    t.onload=()=>res(); t.onerror=()=>{ _jbShotLib=null; rej(new Error('인터넷에서 못 불러왔어요')); };
+    document.head.appendChild(t);
+  });
+  return _jbShotLib;
+}
+async function jbCapture(){
+  const card=document.getElementById('jbWeekCard'); if(!card) return;
+  const btn=document.getElementById('jbShotBtn'), label=btn?btn.innerHTML:'';
+  if(btn){ btn.disabled=true; btn.innerHTML='만드는 중…'; }
+  const wraps=[...card.querySelectorAll('[data-jbscroll]')], hides=[...card.querySelectorAll('[data-jbhide]')];
+  const keepW=card.style.width;
+  wraps.forEach(w=>{ w.dataset.ov=w.style.overflowX||''; w.style.overflowX='visible'; });
+  hides.forEach(h=>{ h.dataset.dp=h.style.display||''; h.style.display='none'; });
+  try{
+    await jbLoadShot();
+    const w=Math.max(card.scrollWidth, 720);
+    card.style.width=w+'px';
+    const canvas=await html2canvas(card, {scale:2, backgroundColor:'#ffffff', width:w, windowWidth:w+48, useCORS:true});
+    const name=`직보_${new Date().toISOString().slice(0,10)}.png`;
+    const blob=await new Promise(r=>canvas.toBlob(r,'image/png'));
+    if(!blob) throw new Error('그림을 못 만들었어요');
+    const file=new File([blob], name, {type:'image/png'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      try{ await navigator.share({files:[file], title:'직보 일정'}); return; }
+      catch(err){ if(err && err.name==='AbortError') return; }
+    }
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download=name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 5000);
+    showToast('그림으로 저장했어요 📸','success');
+  }catch(e){ showToast('캡처 실패: '+(e&&e.message||e),'error'); }
+  finally{
+    card.style.width=keepW;
+    wraps.forEach(w=>{ w.style.overflowX=w.dataset.ov; delete w.dataset.ov; });
+    hides.forEach(h=>{ h.style.display=h.dataset.dp; delete h.dataset.dp; });
+    if(btn){ btn.disabled=false; btn.innerHTML=label; }
+  }
+}
+function jbWeekBoardHtml(){
+  if(jbWeekStart==null) jbWeekStart=jbMonday(new Date());
+  const tStr=new Date().toISOString().slice(0,10), thisMon=jbStr(jbMonday(new Date()));
+  let weeksHtml='', jbDays=0;
+  for(let w=0; w<jbWeeks; w++){
+    const ws=new Date(jbWeekStart); ws.setDate(jbWeekStart.getDate()+w*7);
+    let cells='', wDays=0;
+    for(let i=0;i<7;i++){ const d=new Date(ws); d.setDate(ws.getDate()+i); const cell=jbDayCell(d,i,tStr); cells+=cell.html; if(cell.N) wDays++; }
+    jbDays+=wDays;
+    const we=new Date(ws); we.setDate(ws.getDate()+6);
+    weeksHtml+=`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:${w?'18px':'2px'} 0 6px">
+      <span style="font-size:16px;font-weight:800">${ws.getMonth()+1}/${ws.getDate()} ~ ${we.getMonth()+1}/${we.getDate()}</span>
+      ${jbStr(ws)===thisMon?'<span class="badge b-green">이번 주</span>':''}
+      ${wDays?`<span style="font-size:13.5px;font-weight:800;color:#C2410C">🔶 직보 ${wDays}일</span>`:'<span style="font-size:13px;color:var(--text-muted)">직보 없음</span>'}</div>`;
+    weeksHtml+=`<div data-jbscroll style="overflow-x:auto"><div style="display:grid;grid-template-columns:repeat(7,minmax(94px,1fr));gap:4px;min-width:672px">${cells}</div></div>`;
+  }
+  const wkBtn=k=>`<button class="btn btn-sm ${jbWeeks===k?'btn-primary':'btn-outline'}" onclick="jbSetWeeks(${k})">${k}주</button>`;
+  return `<div class="card" id="jbWeekCard">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+      <div class="card-title" style="margin:0">📆 주차별 직보 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(날짜를 누르면 아래에 명단 · 이대로 캡처해서 보내세요)</span></div>
+      <div data-jbhide style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-primary btn-sm" id="jbShotBtn" onclick="jbCapture()">📸 캡처</button>
+        ${[1,2,3,4].map(wkBtn).join('')}
+        <button class="btn btn-outline btn-sm" onclick="jbShift(-7)">◀</button>
+        <button class="btn btn-outline btn-sm" onclick="jbShift(7)">▶</button>
+        <button class="btn btn-outline btn-sm" onclick="jbWeekStart=null;rNaesin()">이번 주</button>
+      </div>
+    </div>
+    <div style="font-size:13px;color:var(--text-muted);margin-bottom:10px">보는 기간 <strong style="color:#C2410C">직보 ${jbDays}일</strong> · 부별 인원은 그날 <strong>올 것 같은 사람</strong>이에요 — 직보 가는 학생과 다음 날 학교 시험이 있는 학생은 빼고 셉니다.</div>
+    ${weeksHtml}
+    ${jbDayDetailHtml()}
+  </div>`;
+}
 // 🔶 직보·보강 관리 (내신 관리 > 직보 일정) — 시간표에서 이동
 function makeupBlockHtml(){
   const makeups=getMakeups();
-  return `<div class="card">
+  return jbWeekBoardHtml() + `<div class="card">
       <div class="card-title">🔶 직보 · 보강 일정 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(시험 전날 직보 자동생성 · 결석 보강 추가) · 학생은 각자 플래너/캘린더에서 봐요</span></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
         <div class="form-group" style="margin:0"><label class="form-label">날짜 *</label><input class="form-input" id="mk-date" type="date" style="width:160px"></div>

@@ -292,6 +292,7 @@ function hasOtherExamNextDay(s, dateStr){
   return P_EXAMS.some(e=>{
     if((s.school||'')!==e.school || !(e.startDate&&e.endDate)) return false;
     if(!(next>=e.startDate && next<=e.endDate)) return false;       // 다음날이 시험기간 안
+    if(jikboIsOff(next)) return false;                             // 주말·공휴일엔 시험을 안 본다
     return !examMathDates(e).map(m=>m.date).includes(next);          // 수학시험일이 아니면 = 타과목
   });
 }
