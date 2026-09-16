@@ -158,8 +158,9 @@ ok('주마다 날짜 범위와 직보 일수를 머리에 적는다', () => {
   assert.ok(ph.includes("'<span class=\"badge b-green\">이번 주</span>'"), '이번 주 표시가 없음');
 });
 ok('칸에 학생 이름이 그대로 나온다', () => {
-  assert.ok(ph.includes("${e.students.join(', ')}"), '학생 이름이 없음');
-  assert.ok(ph.includes("🔶${e.time} ${shortSchool(e.school)}"), '시간·학교가 없음');
+  assert.ok(ph.includes("${x.students.join(', ')}"), '학생 이름이 없음');
+  assert.ok(ph.includes('🔶${tm}'), '시간이 없음');
+  assert.ok(ph.includes('${shortSchool(x.school)} ${x.students.length}명'), '학교·인원이 없음');
 });
 ok('칸 맨 아래에 직보 · 부별 인원 · 총원', () => {
   // '수업 N명' 한 덩어리로는 몇 시에 몇 명 오는지 알 수가 없었다
@@ -179,7 +180,7 @@ ok('아무도 안 오는 반은 굳이 안 적는다', () => {
 });
 ok('캡처해서 보내는 것이라 글씨가 크다', () => {
   // 원래는 이름이 10.5px이라 캡처하면 안 읽혔다
-  assert.ok(ph.includes('font-size:13px;color:var(--text-sub);line-height:1.45'), '학생 이름이 작음');
+  assert.ok(ph.includes('font-size:12.5px;line-height:1.45;word-break:keep-all'), '학생 이름이 작음');
   assert.ok(ph.includes('font-size:16px;color:var(--text);margin-top:2px">총 ${total}명'), '총원이 작음');
   assert.ok(!/font-size:10\.5px/.test(ph), '옛 10.5px가 남아 있음');
 });
@@ -203,41 +204,49 @@ ok('표를 따로 그리지 않는다 (카드 하나)', () => {
   assert.ok(ph.includes('rBriefing(); rJikbo();'), '처음 그리기가 안 맞음');
 });
 
-console.log('\n📸 캡처 — 숙제처럼 띄우고 그 부분만 캡처');
-ok('버튼을 누르면 깨끗한 화면이 뜬다', () => {
-  assert.ok(ph.includes('onclick="openJbShot()">📸 캡처'), '캡처 버튼이 없음');
-  assert.ok(ph.includes('function openJbShot()'), '띄우기가 없음');
+console.log('\n📸 캡처 — 지금 화면을 찍어 먼저 보여준다');
+ok('버튼을 누르면 찍은 그림을 먼저 보여준다', () => {
+  // 바로 내려받거나 공유창이 뜨면 뭘 보내는지 못 보고 보내게 된다
+  assert.ok(ph.includes('id="jbShotBtn" onclick="jbCapture()"'), '캡처 버튼이 없음');
+  assert.ok(ph.includes('async function jbCapture()'), '캡처가 없음');
+  assert.ok(ph.includes('id="jbShotPreview"'), '미리보기 자리가 없음');
+  assert.ok(ph.includes("pv.innerHTML=`<img src=\"${canvas.toDataURL('image/png')}\""), '그림을 안 보여줌');
+  assert.ok(/m\.style\.display='flex'/.test(ph), '미리보기를 안 띄움');
+});
+ok('보고 나서 복사 · 저장 · 보내기', () => {
+  assert.ok(ph.includes('async function jbShotCopy()'), '복사가 없음');
+  assert.ok(ph.includes("navigator.clipboard.write([new ClipboardItem({'image/png': _jbShotBlob})])"), '그림 복사가 아님');
+  assert.ok(ph.includes('function jbShotSave()'), '저장이 없음');
+  assert.ok(ph.includes('async function jbShotShare()'), '보내기가 없음');
   assert.ok(ph.includes('function closeJbShot()'), '닫기가 없음');
-  assert.ok(ph.includes('id="jbShotSheet"'), '흰 화면이 없음');
 });
-ok('버튼은 캡처할 흰 부분 밖에 둔다 (숙제 캡처와 같게)', () => {
-  assert.ok(ph.includes('id="jbShotControls"'), '조절 버튼 자리가 없음');
-  assert.ok(ph.includes('아래 흰 부분만 캡처해서 보내세요'), '안내가 없음');
+ok('복사가 안 되는 브라우저면 그렇다고 알려준다', () => {
+  assert.ok(ph.includes('이 브라우저는 그림 복사를 아직 못 해요'), '안내가 없음');
+  assert.ok(ph.includes('그림을 오른쪽 클릭해 복사해 주세요'), '다른 방법을 안 알려줌');
 });
-ok('폰에서 읽히게 날짜를 위에서 아래로 늘어놓는다', () => {
-  // 가로 7칸은 폰에서 글씨가 뭉갠다
-  assert.ok(ph.includes('max-width:430px'), '폭이 폰에 안 맞음');
-  assert.ok(ph.includes('BEEN MATH 직보'), '머리말이 없음');
+ok('보내기는 되는 기기에서만 보인다', () => {
+  assert.ok(/sb\.style\.display = can \? '' : 'none';/.test(ph), '보내기를 늘 보여줌');
 });
-ok('하루마다 직보 인원 · 부별 인원 · 총원', () => {
-  assert.ok(ph.includes('직보 ${jbN}명'), '직보 인원이 없음');
-  assert.ok(ph.includes('총 ${jbN+uniq.size}명'), '총원이 없음');
-  assert.ok(/const uniq=new Set\(\);/.test(ph), '겹치는 학생을 두 번 셈');
+ok('그림에는 버튼 줄을 빼고 옆으로 넘기던 부분까지 다 펼쳐 찍는다', () => {
+  assert.ok(ph.includes('data-jbhide'), '버튼 줄 표시가 없음');
+  assert.ok(ph.includes('data-jbscroll'), '가로 스크롤 표시가 없음');
+  assert.ok(ph.includes("h.style.display='none'"), '버튼을 안 감춤');
+  assert.ok(ph.includes("w.style.overflowX='visible'"), '가로를 안 펼침');
 });
-ok('1 · 2 · 3 · 4주와 앞뒤로 넘기기', () => {
-  assert.ok(ph.includes("[1,2,3,4].map(wk).join('')"), '주 버튼이 없음');
-  assert.ok(ph.includes("nav(-7,'◀')+nav(7,'▶')"), '넘기기가 없음');
+ok('끝나면 화면을 원래대로 (실패해도)', () => {
+  assert.ok(/finally\{[\s\S]{0,400}card\.style\.width=keepW;/.test(ph), '너비를 안 되돌림');
+  assert.ok(/finally\{[\s\S]{0,400}btn\.disabled=false/.test(ph), '버튼이 잠긴 채로 남음');
 });
-ok('직보도 수업도 없는 날은 안 적는다', () => {
-  assert.ok(ph.includes('.filter(r=>r.on.length || r.slots.length);'), '빈 날도 적음');
+ok('띄워놓고 캡처하라던 화면은 걷어냈다', () => {
+  assert.ok(!ph.includes('openJbShot'), '옛 시트가 남아 있음');
+  assert.ok(!ph.includes('id="jbShotSheet"'), '옛 시트가 남아 있음');
 });
-ok('그림 파일로 내려받던 건 걷어냈다', () => {
-  assert.ok(!ph.includes('html2canvas'), 'html2canvas가 남아 있음');
-  assert.ok(!ph.includes('jbCapture'), '옛 캡처가 남아 있음');
-});
-ok('주황색 시간·학교 글씨를 줄였다', () => {
-  assert.ok(ph.includes('font-size:12.5px;font-weight:800;color:var(--orange)'), '아직 큼');
-  assert.ok(!ph.includes('font-size:14px;font-weight:800;color:var(--orange)'), '옛 크기가 남아 있음');
+
+console.log('\n같은 시간은 한 줄로');
+ok('시간을 한 번만 적고 그 아래에 학교별 인원·이름', () => {
+  // 전에는 🔶15:00 관양 / 🔶15:00 신성 / 🔶15:00 백운 … 시간이 네 번 반복됐다
+  assert.ok(ph.includes('시간이 네 번 반복되면 읽기 어렵다'), '시간으로 안 묶음');
+  assert.ok(/🔶\$\{t(?:m|\.time)} <span style="font-size:13.5px">\$\{tot}명<\/span>/.test(ph), '시간별 합계가 없음');
 });
 
 console.log('\n말은 쉽게');
