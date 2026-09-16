@@ -153,24 +153,35 @@ ok('1 · 2 · 3 · 4주 — 시험기간이 한 달까지 늘어질 때가 있�
   assert.ok(ph.includes('function jbSetWeeks(k)'), '주 바꾸기가 없음');
   assert.ok(ph.includes("onclick=\"jbShift(-7)\"") && ph.includes("onclick=\"jbShift(7)\""), '앞뒤로 넘기기가 없음');
 });
-ok('주마다 날짜 범위와 직보 일수·연인원을 머리에 적는다', () => {
-  assert.ok(/🔶 직보 \${wDays}일 · 연인원 \${wJb}명/.test(ph), '주 요약이 없음');
+ok('주마다 날짜 범위와 직보 일수를 머리에 적는다', () => {
+  assert.ok(/🔶 직보 \${wDays}일</.test(ph), '주 요약이 없음');
   assert.ok(ph.includes("'<span class=\"badge b-green\">이번 주</span>'"), '이번 주 표시가 없음');
 });
 ok('칸에 학생 이름이 그대로 나온다', () => {
   assert.ok(ph.includes("${e.students.join(', ')}"), '학생 이름이 없음');
   assert.ok(ph.includes("🔶${e.time} ${shortSchool(e.school)}"), '시간·학교가 없음');
 });
-ok('칸 맨 아래에 직보 / 수업 / 총원', () => {
-  assert.ok(ph.includes('직보 ${N}'), '직보 인원이 없음');
-  assert.ok(ph.includes('수업 ${M}'), '수업 인원이 없음');
+ok('칸 맨 아래에 직보 · 부별 인원 · 총원', () => {
+  // '수업 N명' 한 덩어리로는 몇 시에 몇 명 오는지 알 수가 없었다
+  assert.ok(/직보 <span style="font-size:15px">\$\{N}<\/span>명/.test(ph), '직보 인원이 없음');
+  assert.ok(ph.includes('${x.slot||x.name} <span style="font-size:15px">${x.n}</span>명'), '부별 인원이 없음');
   assert.ok(ph.includes('총 ${total}명'), '총원이 없음');
+  assert.ok(!ph.includes('수업 ${M}'), '옛 수업 덩어리가 남아 있음');
+});
+ok('1부·2부·3부로 나눠 센다', () => {
+  assert.ok(ph.includes('function classSlotsOn(ds)'), '부별 집계가 없음');
+  assert.ok(/classSlotsOn[\s\S]{0,700}if\(J\.has\(st\.id\)\) return false;/.test(ph), '직보 가는 학생을 안 뺌');
+  assert.ok(/classSlotsOn[\s\S]{0,700}if\(hasOtherExamNextDay\(st, ds\)\) return false;/.test(ph), '다음 날 시험인 학생을 안 뺌');
+  assert.ok(/String\(a\.slot\|\|''\)\.localeCompare\(String\(b\.slot\|\|''\)\)/.test(ph), '부 순서대로 안 세움');
+});
+ok('아무도 안 오는 반은 굳이 안 적는다', () => {
+  assert.ok(ph.includes('classSlotsOn(ds).filter(x=>x.n)'), '0명인 반도 적음');
 });
 ok('캡처해서 보내는 것이라 글씨가 크다', () => {
   // 원래는 이름이 10.5px이라 캡처하면 안 읽혔다
   assert.ok(ph.includes('font-size:13px;color:var(--text-sub);line-height:1.45'), '학생 이름이 작음');
   assert.ok(ph.includes('font-size:14px;font-weight:800;color:var(--orange)'), '시간·학교가 작음');
-  assert.ok(ph.includes('font-size:16px;color:var(--text)">총 ${total}명'), '총원이 작음');
+  assert.ok(ph.includes('font-size:16px;color:var(--text);margin-top:2px">총 ${total}명'), '총원이 작음');
   assert.ok(!/font-size:10\.5px/.test(ph), '옛 10.5px가 남아 있음');
 });
 ok('수학 시험일과 공휴일도 칸 머리에 적는다', () => {
@@ -191,6 +202,69 @@ ok('직보 규칙 설명이 카드에 남아 있다', () => {
 ok('표를 따로 그리지 않는다 (카드 하나)', () => {
   assert.ok(!ph.includes('jikboSheet'), '표 카드가 남아 있음');
   assert.ok(ph.includes('rBriefing(); rJikbo();'), '처음 그리기가 안 맞음');
+});
+
+console.log('\n📸 캡처 — 그림 한 장으로 만들어 보낸다');
+ok('캡처 버튼이 있다', () => {
+  assert.ok(ph.includes('id="jbShotBtn" onclick="jbCapture()"'), '캡처 버튼이 없음');
+  assert.ok(ph.includes('async function jbCapture()'), '캡처가 없음');
+});
+ok('라이브러리는 누를 때 한 번만 불러온다', () => {
+  assert.ok(ph.includes('function jbLoadShot()'), '지연 로딩이 없음');
+  assert.ok(ph.includes('cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'), '판을 고정 안 함');
+  assert.ok(ph.includes('if(window.html2canvas) return Promise.resolve();'), '매번 다시 불러옴');
+});
+ok('폰에서는 공유창으로, 안 되면 내려받기', () => {
+  assert.ok(ph.includes('navigator.canShare && navigator.canShare({files:[file]})'), '공유가 없음');
+  assert.ok(ph.includes("err.name==='AbortError'"), '쌤이 공유창을 닫은 걸 실패로 봄');
+  assert.ok(ph.includes("a.download=name;"), '내려받기가 없음');
+});
+ok('그림에는 버튼 줄을 빼고, 옆으로 넘기던 부분까지 다 펼쳐 찍는다', () => {
+  assert.ok(ph.includes('data-jbhide'), '버튼 줄 표시가 없음');
+  assert.ok(ph.includes('data-jbscroll'), '가로 스크롤 표시가 없음');
+  assert.ok(ph.includes("h.style.display='none'"), '버튼을 안 감춤');
+  assert.ok(ph.includes("w.style.overflowX='visible'"), '가로를 안 펼침');
+});
+ok('끝나면 화면을 원래대로 돌려놓는다 (실패해도)', () => {
+  assert.ok(/finally\{[\s\S]{0,400}card\.style\.width=keepW;/.test(ph), '너비를 안 되돌림');
+  assert.ok(/finally\{[\s\S]{0,400}btn\.disabled=false/.test(ph), '버튼이 잠긴 채로 남음');
+});
+ok('파일 이름에 날짜가 들어간다', () => {
+  assert.ok(ph.includes('const name=`직보_${todayStr()}.png`;'), '파일 이름이 없음');
+});
+
+console.log('\n말은 쉽게');
+ok("'연인원' 같은 말은 안 쓴다", () => {
+  assert.ok(!ph.includes('연인원'), '연인원이 남아 있음');
+});
+ok('주별 예상 인원은 굳이 안 적는다 — 날짜별로 보면 된다', () => {
+  assert.ok(!ph.includes('wWho'), '주별 인원이 남아 있음');
+  assert.ok(!ph.includes('allWho'), '기간 전체 인원이 남아 있음');
+});
+
+console.log('\n날짜를 누르면 아래에 명단');
+ok('칸을 누르면 그 날짜가 열린다', () => {
+  assert.ok(ph.includes("jbPick('${ds}')"), '칸이 안 눌림');
+  assert.ok(ph.includes('function jbPick(ds)'), '날짜 고르기가 없음');
+  assert.ok(/jbPick[\s\S]{0,200}selDate=ds; rDayDetail\(\); rCal\(\); rJikbo\(\);/.test(ph), '상세를 안 다시 그림');
+  assert.ok(/jbPick[\s\S]{0,300}scrollIntoView/.test(ph), '상세로 안 내려감');
+});
+ok('고른 날짜에 테두리가 생긴다', () => {
+  assert.ok(ph.includes('isSel=ds===selDate'), '고른 날 표시가 없음');
+  assert.ok(ph.includes("${isSel?'box-shadow:inset 0 0 0 2px var(--primary)':''}"), '테두리가 없음');
+});
+ok('상세에 직보 오는 학생 이름이 나온다', () => {
+  assert.ok(ph.includes('function jikboRosterHtml(dateStr)'), '직보 명단이 없음');
+  assert.ok(ph.includes("${x.students.join(', ')}"), '이름이 없음');
+  assert.ok(ph.includes('${jikboRosterHtml(selDate)}'), '상세에 안 붙음');
+});
+ok('상세에 누가 빠지는지도 나온다', () => {
+  assert.ok(ph.includes('🔶 직보로 빠짐'), '직보로 빠지는 학생이 없음');
+  assert.ok(ph.includes('📝 다음날 시험 준비'), '다른 시험 준비로 빠지는 학생이 없음');
+  assert.ok(ph.includes("✅ ${coming.join(', ')||'-'}"), '오는 학생이 없음');
+});
+ok('수업별 출결에도 부를 앞에 세운다', () => {
+  assert.ok(ph.includes('${c.slot?`<span style="color:var(--primary)">${c.slot}</span> `:\'\'}'), '부가 안 나옴');
 });
 
 console.log('\n문법');

@@ -237,20 +237,66 @@ ok('이미 직보 일정에 있는 학교는 예정으로 또 띄우지 않는�
   assert.ok(th.includes("if((jbOn[d]||[]).includes(nm)) return;"), '중복 제거가 없음');
 });
 
-console.log('\n자동 생성 — 쉬는 날에 남은 옛 직보 정리');
-ok('쉬는 날인데 남아 있는 자동 직보를 찾아낸다', () => {
-  assert.ok(th.includes('if(m.date!==d || !m.auto) return;'), '쉬는 날 정리가 없음');
+console.log('\n자동 생성 — 규칙이 바뀌면서 흘러간 직보 정리');
+ok('지금 규칙으로 안 잡히는 날의 자동 직보를 찾아낸다', () => {
+  // 쉬는 날뿐 아니라 '시험 전 연휴'에 잘못 잡혀 있던 것도 (10/8~10/11 산본·양명·우성)
+  assert.ok(th.includes('jikboDatesOf(e).forEach(d=>okBySchool[sc].add(d));'), '지금 규칙의 날짜를 안 모음');
+  assert.ok(th.includes('return !okBySchool[key].has(m.date);'), '흘러간 날을 안 가려냄');
 });
 ok('손으로 넣은 보강과 지난 날짜는 건드리지 않는다', () => {
-  assert.ok(th.includes('손으로 넣은 보강(auto가 아닌 것)과 지난 날짜는 건드리지 않는다'), '보호 설명이 없음');
-  assert.ok(/jikboRestDatesOf\(e\)\.forEach\(d=>\{\s*if\(d<today\) return;/.test(th), '지난 날짜를 안 거름');
+  assert.ok(th.includes('손으로 넣은 보강(auto가 아닌 것), 지난 날짜, 다가오는 시험이 없는 학교는 건드리지 않는다'), '보호 설명이 없음');
+  assert.ok(th.includes("if(!m.auto || !m.date || m.date<today) return false;"), '자동/지난 날짜를 안 거름');
+});
+ok('다가오는 시험이 없는 학교는 손대지 않는다', () => {
+  assert.ok(th.includes("if((e.endDate||e.startDate||'') < today) return;"), '끝난 시험까지 봄');
+  assert.ok(/const key = okBySchool\[sc\] \? sc :/.test(th), '학교를 못 찾으면 그냥 두는 처리가 없음');
+  assert.ok(th.includes('if(!key) return false;'), '모르는 학교까지 지움');
+});
+ok('학교 이름은 school과 반 이름 양쪽으로 찾는다', () => {
+  assert.ok(th.includes("Object.keys(okBySchool).find(k=>String(m.className||'').includes(k))"), '반 이름으로 못 찾음');
 });
 ok('지우기 전에 무엇을 지우는지 확인창에 적어준다', () => {
   assert.ok(th.includes('🗑 지울 직보'), '지울 목록 안내가 없음');
+  assert.ok(th.includes('지금 규칙으로는 직보가 아닌 날이에요'), '왜 지우는지 안 적음');
   assert.ok(th.includes('${restMsg}${staleMsg}'), '확인창에 안 붙음');
 });
 ok('결과에 지운 건수를 알려준다', () => {
-  assert.ok(th.includes('건 지움(쉬는 날)'), '지운 건수 안내가 없음');
+  assert.ok(th.includes('건 지움(규칙이 바뀐 날)'), '지운 건수 안내가 없음');
+});
+
+console.log('\n시험 전의 연휴는 이 시험과 상관없다');
+// 우성고 2학기 중간 — 시험 10/13(화)~10/16, 수학 10/13.
+//   10/9(한글날)~10/11 연휴는 시험이 시작되기도 전이다. 전날 10/12 하루만.
+//   주말 직보는 '주말을 끼고 시험을 보는 학교' 것이다.
+const WOOSUNG = { school: '우성고', startDate: '2026-10-13', endDate: '2026-10-16', mathDate: '2026-10-13' };
+ok('우성고 — 연휴를 건너뛰지 않고 전날 하루', () => {
+  assert.strictEqual(both(WOOSUNG), '10-12(월)');
+});
+ok('시험 시작 전의 토·일·공휴일은 안 잡힌다', () => {
+  const got = T.jikboDatesOf(WOOSUNG);
+  ['2026-10-08', '2026-10-09', '2026-10-10', '2026-10-11'].forEach(d => {
+    assert.ok(!got.includes(d), d + '이 잡힘 (시험은 10/13부터)');
+  });
+});
+ok('산본고 — 수학이 시험 첫날이면 전날(일요일) 하루', () => {
+  // 시험 10/12(월)~10/16, 수학 10/12. 앞 주말은 시험기간 밖이다.
+  assert.strictEqual(both({ school: '산본고', startDate: '2026-10-12', endDate: '2026-10-16', mathDate: '2026-10-12' }), '10-11(일)');
+});
+ok('양명고 — 시험 첫날 다른 과목, 둘째 날 수학이면 그 전날 하루', () => {
+  assert.strictEqual(both({ school: '양명고', startDate: '2026-10-12', endDate: '2026-10-16', mathDate: '2026-10-13' }), '10-12(월)');
+});
+ok('★ 주말이 시험기간 안이면 예전처럼 금·토·일·월', () => {
+  // 신성고는 시험이 10/1부터라 주말이 기간 안 — 그대로 4일
+  assert.strictEqual(both(SINSUNG), '10-02(금) 10-03(토) 10-04(일) 10-05(월)');
+  assert.strictEqual(both(GWACHEON), '10-02(금) 10-03(토) 10-04(일) 10-06(화)');
+});
+ok('시험기간을 아직 안 넣었으면 전날 하루만', () => {
+  // 기간이 없으면 어느 쉬는 날이 '기간 안'인지 알 수가 없다 → 안전하게 하루
+  assert.strictEqual(both({ mathDate: '2026-10-06' }), '10-05(월)');
+});
+ok('직보 시작일을 직접 넣으면 그건 그대로 (기간 밖이어도)', () => {
+  assert.strictEqual(both({ school: '우성고', startDate: '2026-10-13', endDate: '2026-10-16', mathDate: '2026-10-13', jikboStart: '2026-10-10' }),
+    '10-10(토) 10-11(일) 10-12(월)');
 });
 
 console.log('\n수학시험이 여러 날 / 직접 지정');

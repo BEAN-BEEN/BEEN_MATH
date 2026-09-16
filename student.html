@@ -1419,6 +1419,13 @@ function _jbMathDates(e){ return (Array.isArray(e.mathDates)&&e.mathDates.length
 //     예) 10/7(수) 수학, 10/6(화) 다른 과목 → 10/5(월)은 쉬고 10/6(화)에 직보.
 //   시간: 토·일·공휴일 12시 / 금요일 3시 / 그 밖의 평일 2시.
 function _jbIsOff(ds){ const dow=new Date(ds+'T00:00:00').getDay(); return dow===0||dow===6||!!holidayName(ds); }
+function _jbInPeriod(e, ds){ return !!(e && e.startDate && e.endDate && ds>=e.startDate && ds<=e.endDate); }
+// 전날 하루에서 더 거슬러 올라갈 것인가 — 시험 기간 안의 쉬는 날일 때만.
+//   시험 전의 연휴(예: 우성고 10/9~10/11)는 그 시험과 상관이 없다.
+function _jbGoBack(e, d, prev){
+  if(_jbIsOff(d)) return _jbInPeriod(e, d);
+  return _jbIsOff(prev) && _jbInPeriod(e, prev);
+}
 // 그날 학교에서 실제로 시험을 보는가 (기간 안이어도 주말·공휴일엔 안 본다)
 function _jbIsExamDay(e, ds){
   if(!e || !e.startDate || !e.endDate) return false;
@@ -1439,7 +1446,7 @@ function _jbDates(e){ const mds=_jbMathDates(e).filter(Boolean).sort(); if(!mds.
       for(let i=0;i<9;i++){
         set.add(d);
         const prev=_jbAddDays(d,-1);
-        if(!_jbIsOff(d) && !_jbIsOff(prev)) break;
+        if(!_jbGoBack(e, d, prev)) break;
         d=prev;
       }
     });
