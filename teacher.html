@@ -1036,7 +1036,8 @@ function rNaesin(){
     : naesinTab==='jikbo' ? makeupBlockHtml()
     : naesinTab==='bogang' ? bogangCheckHtml()
     : naesinTab==='neis' ? (examTimelineHtml() + schoolLookupHtml() + neisScheduleHtml())
-    : (schoolBooksHtml() + schoolInfoHtml());
+    // 매일 보는 총정리(출판사·범위별 부수, 학교 카드)를 위로 — 23개 학교 출판사 입력표 밑에 깔려 안 보였다
+    : (schoolInfoHtml() + schoolBooksHtml());
 }
 // 학생 반 이름에서 등급(T/S/A) 추출 — 여러 반이면 여러 등급
 function studentTiers(s){

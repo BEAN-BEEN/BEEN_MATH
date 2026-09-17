@@ -3,23 +3,31 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BEEN MATH — 혜빈쌤 수학 학습 관리 시스템</title>
+  <title>BEEN MATH — 이런 걸 볼 수 있어요</title>
   <link rel="icon" type="image/svg+xml" href="icon.svg">
   <link rel="apple-touch-icon" href="logo.png">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#114C56">
+  <!-- 카톡·문자로 주소를 보내면 이 제목·설명·그림이 미리보기로 뜬다 -->
+  <meta name="description" content="혜빈쌤 반 학생·학부모님을 위한 수학 학습 관리 — 숙제 현황, 시험 채점과 분석, 내신 D-day·직보 일정을 휴대폰으로 확인해요.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://been-math.com/about.html">
+  <meta property="og:title" content="BEEN MATH — 이런 걸 볼 수 있어요">
+  <meta property="og:description" content="숙제 현황 · 시험 채점과 분석 · 성적 변화 · 내신 D-day · 직보 일정">
+  <meta property="og:image" content="https://been-math.com/logo.png">
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <style>
     :root{
       --primary:#5B6CF5; --primary-dark:#4F46E5; --primary-light:#EEF2FF;
-      --teal:#17A6A6; --teal-dark:#114C56; --green:#36D399;
+      --teal:#17A6A6; --teal-dark:#114C56; --green:#36D399; --orange:#F97316;
       --text:#0F172A; --text-sub:#334155; --text-muted:#64748B;
       --border:#E2E8F0; --surface:#fff; --bg:#F8FAFC;
       --radius:16px;
     }
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'Noto Sans KR',-apple-system,sans-serif;color:var(--text);background:var(--bg);line-height:1.6}
+    body{font-family:'Noto Sans KR',-apple-system,sans-serif;color:var(--text);background:var(--bg);line-height:1.6;word-break:keep-all}
     a{text-decoration:none;color:inherit}
+
     .btn{display:inline-flex;align-items:center;gap:8px;padding:12px 22px;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;border:none;font-family:inherit;transition:transform .12s,box-shadow .12s}
     .btn:hover{transform:translateY(-2px)}
     .btn-primary{background:#fff;color:var(--teal-dark)}
@@ -34,60 +42,80 @@
     .nav .btn-teal{padding:9px 18px;font-size:14px}
 
     /* HERO */
-    .hero{background:linear-gradient(135deg,#114C56 0%,#17A6A6 100%);color:#fff;text-align:center;padding:72px 20px 80px;position:relative;overflow:hidden}
+    .hero{background:linear-gradient(135deg,#114C56 0%,#17A6A6 100%);color:#fff;text-align:center;padding:64px 20px 72px;position:relative;overflow:hidden}
     .hero::before,.hero::after{content:'';position:absolute;border-radius:50%;background:rgba(255,255,255,.07)}
     .hero::before{width:340px;height:340px;top:-120px;right:-60px}
     .hero::after{width:260px;height:260px;bottom:-100px;left:-50px}
     .hero-in{max-width:760px;margin:0 auto;position:relative;z-index:1}
     .hero img.logo{width:84px;height:84px;border-radius:22px;box-shadow:0 12px 30px rgba(0,0,0,.25);margin-bottom:18px}
     .hero h1{font-size:42px;font-weight:900;letter-spacing:-1px;margin-bottom:14px}
-    .hero p.sub{font-size:18px;opacity:.92;margin-bottom:8px}
-    .hero p.desc{font-size:15px;opacity:.8;margin-bottom:30px;line-height:1.8}
+    .hero p.sub{font-size:18px;opacity:.95;margin-bottom:8px;font-weight:700}
+    .hero p.desc{font-size:15px;opacity:.85;margin-bottom:28px;line-height:1.8}
     .hero-btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
 
     /* SECTIONS */
-    section{max-width:1100px;margin:0 auto;padding:64px 20px}
+    section{max-width:1100px;margin:0 auto;padding:60px 20px}
     .sec-tag{text-align:center;color:var(--teal);font-weight:700;font-size:14px;letter-spacing:1px;margin-bottom:8px}
     .sec-title{text-align:center;font-size:30px;font-weight:800;letter-spacing:-.5px;margin-bottom:10px}
-    .sec-desc{text-align:center;color:var(--text-muted);margin-bottom:42px}
+    .sec-desc{text-align:center;color:var(--text-muted);margin-bottom:36px}
 
-    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
-    .feature{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:26px;transition:transform .15s,box-shadow .15s}
-    .feature:hover{transform:translateY(-4px);box-shadow:0 12px 28px rgba(0,0,0,.07)}
-    .feature .ico{width:50px;height:50px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:14px;background:var(--primary-light)}
-    .feature h3{font-size:17px;font-weight:700;margin-bottom:8px}
+    /* 기능 — 학생 메뉴와 같은 세 묶음 */
+    .group{margin-bottom:30px}
+    .group:last-of-type{margin-bottom:0}
+    .group-head{display:flex;align-items:center;gap:10px;margin:0 2px 12px}
+    .group-head h3{font-size:18px;font-weight:800}
+    .group-head span{font-size:13px;color:var(--text-muted)}
+    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+    .feature{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:22px;transition:transform .15s,box-shadow .15s}
+    .feature:hover{transform:translateY(-3px);box-shadow:0 12px 28px rgba(0,0,0,.07)}
+    .feature .ico{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:23px;margin-bottom:12px;background:var(--primary-light)}
+    .feature h4{font-size:16.5px;font-weight:800;margin-bottom:6px}
     .feature p{font-size:14px;color:var(--text-sub);line-height:1.7}
+    .feature .tag{display:inline-block;margin-top:10px;font-size:11.5px;font-weight:700;color:var(--teal-dark);background:#E6F6F6;border-radius:6px;padding:2px 8px}
+
+    .extras{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:26px}
+    .extras span{background:#fff;border:1px solid var(--border);border-radius:999px;padding:8px 14px;font-size:13.5px;font-weight:600;color:var(--text-sub)}
 
     /* HOW (혜빈쌤 관리) */
     .how{background:#fff;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
-    .how-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}
+    .how-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
     .how-item{display:flex;gap:14px;align-items:flex-start;padding:18px;border-radius:var(--radius);background:var(--bg)}
     .how-num{flex:0 0 38px;height:38px;border-radius:50%;background:var(--teal);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center}
-    .how-item h4{font-size:16px;font-weight:700;margin-bottom:4px}
+    .how-item h4{font-size:16px;font-weight:800;margin-bottom:4px}
     .how-item p{font-size:14px;color:var(--text-sub)}
 
-    /* CTA */
-    .cta{background:linear-gradient(135deg,#5B6CF5,#8B5CF6);color:#fff;text-align:center;border-radius:24px;max-width:900px;margin:60px auto;padding:50px 24px}
-    .cta h2{font-size:28px;font-weight:800;margin-bottom:10px}
-    .cta p{opacity:.9;margin-bottom:24px}
+    /* 로그인 안내 */
+    .cta{background:linear-gradient(135deg,#5B6CF5,#8B5CF6);color:#fff;text-align:center;border-radius:24px;max-width:900px;margin:56px auto;padding:46px 24px}
+    .cta h2{font-size:26px;font-weight:800;margin-bottom:12px}
+    .cta ul{list-style:none;display:inline-flex;flex-direction:column;gap:6px;text-align:left;margin:0 auto 24px;font-size:15px;opacity:.95}
 
-    footer{text-align:center;padding:34px 20px;color:var(--text-muted);font-size:13px;border-top:1px solid var(--border)}
+    /* 혜빈쌤 링크 */
+    .links{max-width:900px;margin:0 auto;padding:0 20px 20px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+    .links a{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px 16px;transition:transform .12s,box-shadow .12s}
+    .links a:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(0,0,0,.06)}
+    .links .i{flex:0 0 40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:19px}
+    .links .t{font-size:14.5px;font-weight:800;line-height:1.3}
+    .links .d{font-size:12px;color:var(--text-muted)}
+
+    footer{text-align:center;padding:30px 20px;color:var(--text-muted);font-size:13px;border-top:1px solid var(--border);margin-top:24px}
 
     @media(max-width:760px){
       .hero h1{font-size:32px}
+      .hero p.sub{font-size:16px}
       .grid{grid-template-columns:1fr}
       .how-grid{grid-template-columns:1fr}
+      .links{grid-template-columns:1fr}
       .sec-title{font-size:24px}
-      section{padding:48px 18px}
+      section{padding:44px 16px}
+      .cta{margin:40px 16px}
     }
   </style>
 </head>
 <body>
-
   <!-- NAV -->
   <header class="nav">
     <div class="nav-in">
-      <div class="brand-row"><img src="icon.svg" alt="">BEEN MATH</div>
+      <a href="index.html" class="brand-row"><img src="icon.svg" alt="">BEEN MATH</a>
       <a href="index.html"><button class="btn btn-teal">로그인 →</button></a>
     </div>
   </header>
@@ -97,30 +125,52 @@
     <div class="hero-in">
       <img class="logo" src="icon.svg" alt="BEEN MATH">
       <h1>BEEN MATH</h1>
-      <p class="sub">혜빈쌤과 함께하는 수학 학습 관리 시스템</p>
-      <p class="desc">숙제·출석·성적·질문·AI 힌트까지 한 곳에서.<br>학생은 휴대폰으로 간편하게, 선생님은 체계적으로 관리해요.</p>
+      <p class="sub">혜빈쌤 반 학생 · 학부모님을 위한 수학 학습 관리</p>
+      <p class="desc">숙제는 냈는지, 시험은 어땠는지, 다음 시험까지 며칠 남았는지.<br>휴대폰 하나로 바로 확인해요.</p>
       <div class="hero-btns">
         <a href="index.html"><button class="btn btn-primary">🎒 학생 / 학부모 로그인</button></a>
-        <a href="index.html"><button class="btn btn-ghost">👩‍🏫 선생님 로그인</button></a>
+        <a href="https://m.blog.naver.com/been_math" target="_blank" rel="noopener"><button class="btn btn-ghost">📘 혜빈쌤 블로그</button></a>
       </div>
     </div>
   </div>
 
-  <!-- FEATURES -->
+  <!-- 무엇을 볼 수 있나 — 학생 화면 메뉴와 같은 순서 -->
   <section>
-    <div class="sec-tag">FEATURES</div>
-    <div class="sec-title">이런 걸 할 수 있어요</div>
-    <div class="sec-desc">학원 운영에 필요한 기능을 한 시스템에 담았어요.</div>
-    <div class="grid">
-      <div class="feature"><div class="ico">📝</div><h3>숙제 관리</h3><p>선생님이 과제를 올리면 학생이 사진으로 제출, 미제출 학생은 자동 표시 + 푸시 독촉까지.</p></div>
-      <div class="feature"><div class="ico" style="background:#ECFDF5">🗓️</div><h3>출석 관리</h3><p>요일별로 반 학생 출석·지각·결석을 한 번에 체크. 결석·보강 챙길 것을 대시보드에서 한눈에.</p></div>
-      <div class="feature"><div class="ico" style="background:#FFF7ED">🏆</div><h3>성적 & 그래프</h3><p>시험 점수를 입력하면 학생별 성적 변화가 그래프로. 반 평균·최고·최저도 자동 계산.</p></div>
-      <div class="feature"><div class="ico" style="background:#EFF6FF">🤖</div><h3>AI 단계별 힌트</h3><p>모르는 문제는 사진 찍어 질문 → AI가 단원·개념을 짚어주고 1→2→3단계로 도와줘요.</p></div>
-      <div class="feature"><div class="ico" style="background:#FEF2F2">📄</div><h3>AI 시험지 분석</h3><p>시험지 사진을 올리면 문제별 단원·요구능력·난이도를 분석해 리포트로.</p></div>
-      <div class="feature"><div class="ico" style="background:#F5F3FF">🔔</div><h3>푸시 알림</h3><p>새 숙제·공지를 학생 휴대폰으로 바로 알림. (무료 웹 푸시)</p></div>
-      <div class="feature"><div class="ico" style="background:#ECFEFF">🎬</div><h3>수업 영상 & 자료실</h3><p>판서·수업 영상과 교재·해설·프린트를 반별로 공유. 결석해도 영상으로 보충.</p></div>
-      <div class="feature"><div class="ico" style="background:#FFFBEB">💬</div><h3>질문실 & 상담</h3><p>학생 질문에 선생님이 답변, 상담 신청도 온라인으로 접수·관리.</p></div>
-      <div class="feature"><div class="ico" style="background:#F0FDF4">📊</div><h3>학습 리포트</h3><p>숙제율·출석률·평균점수와 혜빈쌤 코멘트가 담긴 맞춤 리포트.</p></div>
+    <div class="sec-tag">WHAT YOU CAN SEE</div>
+    <div class="sec-title">이런 걸 볼 수 있어요</div>
+    <div class="sec-desc">로그인하면 학생 화면에 바로 나오는 것들이에요.</div>
+
+    <div class="group">
+      <div class="group-head"><h3>📚 공부</h3><span>매일 챙기는 것</span></div>
+      <div class="grid">
+        <div class="feature"><div class="ico">📝</div><h4>숙제 현황</h4><p>반별로 낼 숙제와 마감일, 냈는지 안 냈는지를 한눈에. 사진으로 제출하면 선생님 확인까지 바로 보여요.</p><span class="tag">홈 · 숙제</span></div>
+        <div class="feature"><div class="ico" style="background:#FFF7ED">🔶</div><h4>오답 고치기</h4><p>틀린 문제를 다시 풀어 사진으로 올리면 선생님이 확인해요. 고칠 오답이 몇 개 남았는지 홈에 바로 떠요.</p><span class="tag">오답 · 복습</span></div>
+        <div class="feature"><div class="ico" style="background:#ECFEFF">🎬</div><h4>수업 영상 · 자료실</h4><p>결석하거나 다시 보고 싶을 땐 수업 영상으로. 교재 해설·프린트·오답 양식도 반별로 모여 있어요.</p><span class="tag">수업 영상 · 자료실</span></div>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-head"><h3>📈 나의 기록</h3><span>시험과 성적</span></div>
+      <div class="grid">
+        <div class="feature"><div class="ico" style="background:#ECFDF5">✅</div><h4>시험지 바로 채점</h4><p>시험지에 쓴 답을 번호만 눌러 넣으면 바로 점수가 나와요. 찍은 문제나 시간이 모자랐던 문제는 따로 표시해 진짜 실력을 봐요.</p><span class="tag">홈 · 성적</span></div>
+        <div class="feature"><div class="ico" style="background:#FEF2F2">📊</div><h4>문항 분석 · 성적 변화</h4><p>틀린 문제의 단원·난이도와 출제 의도, 어떻게 풀었어야 하는지까지. 시험마다 점수가 어떻게 변하는지 그래프로 봐요.</p><span class="tag">성적 · TEST 리포트</span></div>
+        <div class="feature"><div class="ico" style="background:#F0FDF4">📚</div><h4>학습 리포트</h4><p>숙제 제출률, 마감 뒤 늦게 낸 비율, 출석률, 오답 완료율을 막대로. 요즘 공부 흐름이 어떤지 한 번에 보여요.</p><span class="tag">학습 리포트</span></div>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-head"><h3>🏫 학원 · 학교</h3><span>일정</span></div>
+      <div class="grid">
+        <div class="feature"><div class="ico" style="background:#FEF2F2">📕</div><h4>내신 D-day · 직보</h4><p>우리 학교 수학 시험까지 며칠 남았는지, 시험 전 직보가 언제 몇 시인지 홈에 바로 나와요. 모의고사 D-day도 같이.</p><span class="tag">홈</span></div>
+        <div class="feature"><div class="ico" style="background:#F5F3FF">📒</div><h4>시간표 · 진도표</h4><p>내 수업 시간표와 보강 일정, 반별로 어디까지 나갔는지 진도표로 확인해요.</p><span class="tag">시간표 · 진도표</span></div>
+        <div class="feature"><div class="ico" style="background:#FFFBEB">🍚</div><h4>급식 · 학사일정</h4><p>우리 학교 오늘 급식과 학사일정, 모의고사 일정을 학교 홈페이지에 안 들어가도 바로 봐요.</p><span class="tag">급식 · 학사일정</span></div>
+      </div>
+    </div>
+
+    <div class="extras">
+      <span>🔔 새 숙제·공지 휴대폰 알림</span>
+      <span>📲 홈 화면에 앱처럼 추가</span>
+      <span>👨‍👩‍👧 학부모님도 자녀 계정으로 같이 확인</span>
     </div>
   </section>
 
@@ -129,26 +179,37 @@
     <section>
       <div class="sec-tag">HOW IT WORKS</div>
       <div class="sec-title">혜빈쌤의 관리 방식</div>
-      <div class="sec-desc">꼼꼼한 관리로 학생의 실력을 끌어올려요.</div>
+      <div class="sec-desc">사이트는 도구일 뿐, 꼼꼼한 관리가 먼저예요.</div>
       <div class="how-grid">
-        <div class="how-item"><div class="how-num">1</div><div><h4>숙제는 사진 제출 → 확인 → 오답</h4><p>매 수업 숙제를 내고, 제출 사진을 확인하고, 틀린 문제는 오답 재제출까지 챙겨요.</p></div></div>
-        <div class="how-item"><div class="how-num">2</div><div><h4>출석·보강 빈틈없이</h4><p>결석하면 보강 일정과 수업 영상으로 보충, 지각이 잦으면 상담해요.</p></div></div>
-        <div class="how-item"><div class="how-num">3</div><div><h4>성적은 데이터로</h4><p>시험 점수를 추적해 약한 단원·능력을 찾아 집중 보완해요.</p></div></div>
-        <div class="how-item"><div class="how-num">4</div><div><h4>질문은 언제든 AI + 선생님</h4><p>AI 힌트로 먼저 생각하고, 선생님의 상세 답변으로 확실히 이해해요.</p></div></div>
+        <div class="how-item"><div class="how-num">1</div><div><h4>숙제는 제출 → 확인 → 오답까지</h4><p>매 수업 숙제를 내고, 제출한 사진을 확인하고, 틀린 문제는 다시 풀어 올릴 때까지 챙겨요.</p></div></div>
+        <div class="how-item"><div class="how-num">2</div><div><h4>시험은 채점에서 끝내지 않아요</h4><p>찍었거나 시간이 모자랐던 문제를 따로 보고, 반 전체가 많이 틀린 문항은 다음 수업에서 다시 짚어요.</p></div></div>
+        <div class="how-item"><div class="how-num">3</div><div><h4>내신은 학교별로</h4><p>학교마다 교과서·범위·시험일을 따로 챙기고, 수학 시험 직전에는 직보로 마무리해요.</p></div></div>
+        <div class="how-item"><div class="how-num">4</div><div><h4>빠진 수업은 메워요</h4><p>결석하면 보강과 수업 영상으로 보충해서 진도가 끊기지 않게 해요.</p></div></div>
       </div>
     </section>
   </div>
 
-  <!-- CTA -->
+  <!-- 로그인 안내 -->
   <div class="cta">
-    <h2>지금 시작해보세요</h2>
-    <p>학생은 이름 + 핸드폰 뒤 4자리로 간편 로그인 · 회원가입 필요 없어요</p>
-    <a href="index.html"><button class="btn btn-primary">로그인하러 가기 →</button></a>
+    <h2>로그인은 이렇게 해요</h2>
+    <ul>
+      <li>🎒 <strong>이름 + 나만의 비밀번호</strong>로 로그인해요</li>
+      <li>🔐 처음 한 번만 핸드폰 뒤 4자리로 본인 확인</li>
+      <li>✋ 회원가입은 필요 없어요</li>
+      <li>🙋 비밀번호를 잊으면 혜빈쌤께 초기화를 요청하세요</li>
+    </ul>
+    <div><a href="index.html"><button class="btn btn-primary">로그인하러 가기 →</button></a></div>
+  </div>
+
+  <!-- 혜빈쌤 -->
+  <div class="links">
+    <a href="https://m.blog.naver.com/been_math" target="_blank" rel="noopener"><span class="i" style="background:#FEF3C7">📘</span><span><div class="t">BEEN MATH 소개</div><div class="d">인재와 고수 · 네이버 블로그</div></span></a>
+    <a href="https://m.blog.naver.com/been-math" target="_blank" rel="noopener"><span class="i" style="background:#DCFCE7">📂</span><span><div class="t">BEEN MATH 자료실</div><div class="d">수학 자료실 · 네이버 블로그</div></span></a>
+    <a href="https://www.instagram.com/hyebeen_math/" target="_blank" rel="noopener"><span class="i" style="background:#FCE7F3">📷</span><span><div class="t">혜빈쌤 인스타그램</div><div class="d">@hyebeen_math</div></span></a>
   </div>
 
   <footer>
-    © 2026 BEEN MATH · 혜빈쌤 수학 학습 관리 시스템
+    © 2026 BEEN MATH · 혜빈쌤 수학
   </footer>
-
 </body>
 </html>
