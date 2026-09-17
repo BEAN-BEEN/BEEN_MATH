@@ -38,6 +38,14 @@ ok('새 창으로 연다 (사이트를 떠나지 않게)', () => {
   const links = h.match(/<a href="[^"]*" target="_blank" rel="noopener" data-link=/g) || [];
   assert.strictEqual(links.length, 3, '새 창으로 안 여는 링크가 있음');
 });
+ok('쌤이 알려준 주소가 들어가 있다', () => {
+  assert.ok(h.includes('href="https://m.blog.naver.com/been_math" target="_blank" rel="noopener" data-link="blogIntro"'), '소개 블로그 주소가 다름');
+  assert.ok(h.includes('href="https://m.blog.naver.com/been-math" target="_blank" rel="noopener" data-link="blogLibrary"'), '자료실 블로그 주소가 다름');
+  assert.ok(h.includes('href="https://www.instagram.com/hyebeen_math/" target="_blank" rel="noopener" data-link="instagram"'), '인스타 주소가 다름');
+});
+ok('인스타 주소에 공유 추적값(igsh)을 안 남긴다', () => {
+  assert.ok(!h.includes('igsh='), '추적값이 남아 있음');
+});
 ok('주소를 아직 안 넣은 링크는 안 보인다', () => {
   assert.ok(h.includes('.links a[href=""]{display:none}'), '빈 링크가 보임');
   assert.ok(h.includes('.links:not(:has(a[href^="http"])){display:none}'), '링크가 하나도 없을 때 빈 칸이 보임');
