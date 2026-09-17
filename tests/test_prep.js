@@ -81,7 +81,7 @@ ok('★ 여러 반을 다니는 학생을 겹쳐 세지 않는다', () => {
   seed();
   const h = T.schoolInfoHtml();
   assert.ok(h.includes('📄 필요 4부'), '부흥고 필요 부수가 틀림: ' + (h.match(/📄 필요 \d+부/) || [])[0]);
-  assert.ok(h.includes('담임 3 + 부담임 1'), '담임·부담임 나눔이 틀림');
+  assert.ok(h.includes('✏️ 변형 3 · 📘 원본 1'), '담임·부담임 나눔이 틀림');
 });
 ok('반 이름에 T·S·A가 없는 학생도 빠뜨리지 않는다', () => {
   seed();
@@ -104,7 +104,10 @@ ok('반 없는 학생·휴원생은 명단에도 없다', () => {
 ok('머리에 전체 부수와 담임·부담임 합계', () => {
   seed();
   const h = T.schoolInfoHtml();
-  assert.ok(/📄 <strong style="font-size:16px">4부<\/strong> <span style="color:var\(--text-muted\)">\(담임 3 \+ 부담임 1\)/.test(h), '머리 합계가 틀림');
+  // 원본은 부담임반, 변형은 담임반에 준다
+  assert.ok(/✏️ 변형 <strong style="font-size:16px">3부<\/strong> <span style="color:var\(--text-muted\)">담임반/.test(h), '변형 합계가 틀림');
+  assert.ok(/📘 원본 <strong style="font-size:16px;color:var\(--orange\)">1부<\/strong> <span style="color:var\(--text-muted\)">부담임반/.test(h), '원본 합계가 틀림');
+  assert.ok(h.includes('📄 합 4부'), '전체 합이 틀림');
 });
 
 console.log('\n챙길 자료 네 가지');
@@ -148,6 +151,88 @@ ok('머리에 몇 곳 끝났는지', () => {
   assert.ok(T.schoolInfoHtml().includes('1/1곳'), '끝난 곳 수가 없음');
   seed();
   assert.ok(T.schoolInfoHtml().includes('0/1곳'), '안 끝난 곳 수가 없음');
+});
+
+console.log('\n📚 출판사·범위별 부수 — 원본은 부담임반, 변형은 담임반');
+function seedMany() {
+  T.__set('CLASSES', [{ id: 'ta', name: '고1T A1' }, { id: 'tz', name: '고1T Z2' }]);
+  const st = (id, school, cls) => ({ id, name: id, school, classIds: cls, status: '재원' });
+  T.__set('STUDENTS_CACHE', [
+    st('d1', '동안고', ['ta']), st('d2', '동안고', ['ta']),
+    st('y1', '양명고', ['ta']), st('y2', '양명고', ['tz']),      // 양명고: 담임 1 + 부담임 1
+    st('s1', '신성고', ['ta']), st('s2', '신성고', ['tz']),
+    st('b1', '백영고', ['ta'])
+  ]);
+  T.__set('SCHOOLBOOKS_CACHE', {
+    '동안고': { school: '동안고', publisher: '미래엔' },
+    '양명고': { school: '양명고', publisher: '미래엔' },
+    '신성고': { school: '신성고', publisher: '비상(김)' },
+    '백영고': { school: '백영고', publisher: '미래엔' }
+  });
+  return [
+    { id: 'e1', school: '동안고', title: '2학기 중간고사', scope: '도형의 방정식 ~ 집합' },
+    { id: 'e2', school: '양명고', title: '2학기 중간고사', scope: '도형의 방정식  ～ 집합' },   // 띄어쓰기·물결표만 다름
+    { id: 'e3', school: '신성고', title: '2학기 중간고사', scope: '도형의 방정식 ~ 집합' },     // 범위는 같지만 출판사가 다름
+    { id: 'e4', school: '백영고', title: '2학기 중간고사', scope: '도형의 방정식 ~ 집합(포함관계)' }   // 출판사는 같지만 범위가 다름
+  ];
+}
+ok('같은 출판사·같은 범위면 한 묶음으로', () => {
+  const g = T.prepGroups(seedMany());
+  const mirae = g.find(x => x.pub === '미래엔' && x.scope.indexOf('포함') < 0);
+  assert.ok(mirae, '미래엔 묶음이 없음');
+  assert.strictEqual(mirae.schools.map(x => x.name).join(','), '동안고,양명고', '띄어쓰기·물결표가 달라서 갈라짐');
+});
+ok('변형 = 담임반 인원, 원본 = 부담임반 인원', () => {
+  const g = T.prepGroups(seedMany());
+  const mirae = g.find(x => x.pub === '미래엔' && x.scope.indexOf('포함') < 0);
+  assert.strictEqual(mirae.hr, 3, '담임(변형)이 틀림');   // 동안 2 + 양명 1
+  assert.strictEqual(mirae.as, 1, '부담임(원본)이 틀림'); // 양명 1
+});
+ok('범위가 같아도 출판사가 다르면 따로', () => {
+  const g = T.prepGroups(seedMany());
+  assert.ok(g.some(x => x.pub === '비상(김)'), '비상 묶음이 없음');
+  assert.strictEqual(g.find(x => x.pub === '비상(김)').schools.length, 1);
+});
+ok("출판사가 같아도 범위가 다르면 따로 ('~ 집합' ≠ '~ 집합(포함관계)')", () => {
+  const g = T.prepGroups(seedMany());
+  assert.strictEqual(g.filter(x => x.pub === '미래엔').length, 2, '범위가 다른데 합쳐짐');
+});
+ok('출판사끼리 모아 둔다', () => {
+  const pubs = T.prepGroups(seedMany()).map(x => x.pub);
+  assert.strictEqual(pubs.join(','), [...pubs].sort((a, b) => a.localeCompare(b)).join(','), '출판사 순서가 뒤섞임');
+});
+ok('이번 시험 과목에 맞는 교과서의 출판사로 묶는다', () => {
+  const ex = seedMany();
+  T.__set('SCHOOLBOOKS_CACHE', Object.assign({}, T.__get('SCHOOLBOOKS_CACHE'), {
+    '신성고': { school: '신성고', publisher: '비상(김)', subjects: ['공통수학2', '대수'], subjectPub: { '대수': '천재(전)' } }
+  }));
+  ex[2].mathDates = [{ label: '공통수학2', date: '2026-10-06' }];
+  const g = T.prepGroups(ex).find(x => x.schools.some(s => s.name === '신성고'));
+  assert.strictEqual(g.pub, '비상(김)', '과목에 맞는 출판사가 아님');
+  assert.strictEqual(g.subj, '공통수학2', '과목이 안 붙음');
+});
+ok('같은 학교 시험 문서가 둘이어도 한 번만 센다', () => {
+  const ex = seedMany();
+  ex.push(Object.assign({}, ex[0], { id: 'e1dup' }));
+  const g = T.prepGroups(ex).find(x => x.schools.some(s => s.name === '동안고'));
+  assert.strictEqual(g.schools.filter(s => s.name === '동안고').length, 1, '동안고가 두 번 세어짐');
+});
+ok('범위가 비어 있으면 범위 미정으로 따로, 넣으라고 알려준다', () => {
+  const ex = seedMany(); ex[0].scope = '';
+  T.__set('SCHOOLEXAMS_CACHE', ex.map(e => Object.assign({ startDate: '2099-01-01', endDate: '2099-01-02' }, e)));
+  T.__set('naesinExamTitle', '2학기 중간고사');
+  const h = T.schoolInfoHtml();
+  assert.ok(h.includes('범위 미정'), '범위 미정 표시가 없음');
+  assert.ok(h.includes('범위를 넣으면 같은 범위 학교와 묶여요'), '안내가 없음');
+});
+ok('표에 변형(담임반) · 원본(부담임반) 칸', () => {
+  const ex = seedMany();
+  T.__set('SCHOOLEXAMS_CACHE', ex.map(e => Object.assign({ startDate: '2099-01-01', endDate: '2099-01-02' }, e)));
+  T.__set('naesinExamTitle', '2학기 중간고사');
+  const h = T.schoolInfoHtml();
+  assert.ok(h.includes('📚 출판사·범위별 부수'), '묶음 표가 없음');
+  assert.ok(/✏️ 변형<div[^>]*>담임반<\/div>/.test(h), '변형 칸이 없음');
+  assert.ok(/📘 원본<div[^>]*>부담임반<\/div>/.test(h), '원본 칸이 없음');
 });
 
 console.log('\n볼 시험');

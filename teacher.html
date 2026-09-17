@@ -1576,6 +1576,31 @@ function isAssistantStudent(s){
   const ids=(s&&s.classIds)||((s&&s.classId)?[s.classId]:[]);
   return ids.some(id=>{ const c=CLASSES.find(x=>x.id===id); return c && !classIsHomeroom(c); });
 }
+// 📚 같은 출판사·같은 범위끼리 묶는다 — 한 번에 뽑을 수 있는 묶음.
+//   원본은 부담임반, 변형은 담임반에 준다(쌤 계획). 그래서 원본 = 부담임 인원, 변형 = 담임 인원.
+//   출판사는 이번 시험 과목(수학 시험 이름)에 맞는 교과서의 출판사, 못 찾으면 학교 기본 출판사.
+//   범위는 글자만 다듬어 비교한다(띄어쓰기·물결표). '~ 집합'과 '~ 집합(포함관계)'는 다른 범위다.
+function prepGroups(exams){
+  const nz=v=>String(v||'').replace(/\s+/g,'').replace(/[～〜]/g,'~');
+  const groups={}, seen=new Set();
+  (exams||[]).forEach(e=>{
+    const sc=normSchool(e.school||''); if(!sc || seen.has(sc)) return;   // 같은 학교 시험 문서가 둘이어도 한 번만
+    seen.add(sc);
+    const b=getSchoolBook(sc), subs=bookSubjectsOf(b);
+    const ex=examMathDates(e).map(m=>String(m.label||'').replace(/\s+/g,'')).filter(Boolean);
+    const subj=subs.find(k=>ex.includes(k.replace(/\s+/g,''))) || '';
+    const pub=((subj?bookPubOf(b,subj):b.publisher)||'').trim();
+    const scope=String(e.scope||'').trim();
+    const key=nz(pub)+'|'+nz(subj)+'|'+nz(scope);
+    const hr=getStudents().filter(x=>isNaesinStudent(x) && normSchool(x.school||'')===sc).length;
+    const as=getStudents().filter(x=>isAssistantStudent(x) && normSchool(x.school||'')===sc).length;
+    if(!groups[key]) groups[key]={pub, subj, scope, schools:[], hr:0, as:0};
+    const g=groups[key];
+    g.schools.push({name:e.school, hr, as}); g.hr+=hr; g.as+=as;
+  });
+  // 출판사끼리 모아서, 같은 출판사 안에서는 많이 뽑는 것부터
+  return Object.values(groups).sort((a,b)=>(a.pub||'힣').localeCompare(b.pub||'힣') || (b.hr+b.as)-(a.hr+a.as));
+}
 // 사진형 학교 정보 표 (학교=열, 항목=행, 학생은 등급 T/S/A로 자동)
 function examTitleRank(t){ t=t||''; const h=t.includes('2학기')?2:1; const k=t.includes('기말')?2:1; return (t.includes('중간')||t.includes('기말'))?(h*10+k):99; }
 function schoolInfoHtml(){
@@ -1639,7 +1664,7 @@ function schoolInfoHtml(){
           <span style="font-size:11px;font-weight:800;color:var(--orange)">부담임 반 ${asst.length}명</span>
           <div style="margin-top:2px">${asst.map(s=>esc(s.name)).join(', ')}</div></div>`:''}
         <div style="margin-top:6px;font-size:12px;font-weight:800;color:var(--text)">📄 필요 ${totalN+asst.length}부
-          <span style="font-weight:500;color:var(--text-muted)">(담임 ${totalN}${asst.length?` + 부담임 ${asst.length}`:''})</span></div>
+          <span style="font-weight:500;color:var(--text-muted)">(✏️ 변형 ${totalN}${asst.length?` · 📘 원본 ${asst.length}`:''})</span></div>
       </div>
       <div style="margin-top:8px;border-top:1px dashed var(--border);padding-top:7px">
         <div style="font-size:11px;font-weight:800;color:var(--text-muted);margin-bottom:4px">📦 챙길 자료 ${done}/${PREP_ITEMS.length}</div>
@@ -1662,8 +1687,33 @@ function schoolInfoHtml(){
         if(prepDone(e)===PREP_ITEMS.length) fin++;
       });
       return `<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;background:var(--bg);border-radius:10px;padding:9px 12px;margin-bottom:10px;font-size:13px">
-        <span>📄 <strong style="font-size:16px">${hrN+asN}부</strong> <span style="color:var(--text-muted)">(담임 ${hrN} + 부담임 ${asN})</span></span>
+        <span>✏️ 변형 <strong style="font-size:16px">${hrN}부</strong> <span style="color:var(--text-muted)">담임반</span></span>
+        <span>📘 원본 <strong style="font-size:16px;color:var(--orange)">${asN}부</strong> <span style="color:var(--text-muted)">부담임반</span></span>
+        <span style="color:var(--text-muted)">📄 합 ${hrN+asN}부</span>
         <span>📦 챙김 <strong style="font-size:16px;color:${fin===shown.length?'var(--green)':'var(--text)'}">${fin}/${shown.length}곳</strong></span>
+      </div>`;
+    })()}
+    ${(function(){   // 📚 같은 출판사·같은 범위끼리 — 한 번에 뽑는 묶음
+      const gs=prepGroups(shown); if(!gs.length) return '';
+      const th='padding:7px 9px;font-size:12.5px;font-weight:800;border-bottom:2px solid var(--border);white-space:nowrap';
+      const td='padding:8px 9px;border-bottom:1px solid var(--border);vertical-align:top';
+      return `<div style="margin-bottom:14px">
+        <div style="font-size:14px;font-weight:800;margin-bottom:6px">📚 출판사·범위별 부수 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(같은 교과서·같은 범위면 한 번에 뽑아요 · 원본은 부담임반, 변형은 담임반)</span></div>
+        <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:560px">
+          <thead><tr style="background:var(--bg)">
+            <th style="${th};text-align:left">출판사</th><th style="${th};text-align:left">범위</th><th style="${th};text-align:left">학교 <span style="font-weight:400;color:var(--text-muted)">(담임+부담임)</span></th>
+            <th style="${th};text-align:center">✏️ 변형<div style="font-size:10.5px;font-weight:500;color:var(--text-muted)">담임반</div></th>
+            <th style="${th};text-align:center">📘 원본<div style="font-size:10.5px;font-weight:500;color:var(--text-muted)">부담임반</div></th>
+          </tr></thead>
+          <tbody>${gs.map(g=>`<tr>
+            <td style="${td}"><b style="color:var(--primary)">${g.pub?esc(g.pub):'<span style="color:var(--orange)">출판사 미정</span>'}</b>${g.subj?`<div style="font-size:11px;color:var(--text-muted)">${esc(bookSubjectLabel(g.subj))}</div>`:''}</td>
+            <td style="${td}">${g.scope?esc(g.scope):'<span style="color:var(--orange);font-weight:700">범위 미정</span>'}</td>
+            <td style="${td};font-size:12.5px;line-height:1.6">${g.schools.map(x=>`<span style="white-space:nowrap">${esc(x.name)} <span style="color:var(--text-muted)">${x.hr}${x.as?`+<b style="color:var(--orange)">${x.as}</b>`:''}</span></span>`).join(' · ')}</td>
+            <td style="${td};text-align:center"><strong style="font-size:17px">${g.hr}</strong><span style="font-size:12px">부</span></td>
+            <td style="${td};text-align:center">${g.as?`<strong style="font-size:17px;color:var(--orange)">${g.as}</strong><span style="font-size:12px;color:var(--orange)">부</span>`:'<span style="color:var(--border)">–</span>'}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>
+        ${gs.some(g=>!g.scope)?`<div style="font-size:11.5px;color:var(--orange);margin-top:5px">📌 범위 미정인 학교는 ‘📅 시험 정보’에서 범위를 넣으면 같은 범위 학교와 묶여요.</div>`:''}
       </div>`;
     })()}
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
