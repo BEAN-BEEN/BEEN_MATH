@@ -1520,6 +1520,22 @@ function schoolBooksHtml(){
     </table></div>
   </div>`;
 }
+// 📦 내신 대비 자료 — 학교마다 챙길 네 가지. 시험 문서(schoolExams)의 prep에 저장한다.
+const PREP_ITEMS=[['pubOrig','출판사 원본'],['pubVar','출판사 변형'],['printOrig','학교 프린트'],['printVar','프린트 변형']];
+function prepDone(e){ const p=(e&&e.prep)||{}; return PREP_ITEMS.filter(([k])=>p[k]).length; }
+async function doTogglePrep(examId, key){
+  const e=getSchoolExams().find(x=>x.id===examId); if(!e) return;
+  const prep=Object.assign({}, e.prep||{}); prep[key]=!prep[key];
+  try{ await updateSchoolExam(examId, {prep}); rNaesin(); }
+  catch(err){ showToast('저장 실패: '+err.message,'error'); }
+}
+// 부담임 반 학생 — 담임 반은 하나도 없고 부담임 반은 있는 학생.
+//   담임 반이 하나라도 있으면 담임 쪽에서 센다(두 번 세지 않는다). 반이 아예 없으면 안 센다.
+function isAssistantStudent(s){
+  if(!isActiveStudent(s) || isHomeroomStudent(s)) return false;
+  const ids=(s&&s.classIds)||((s&&s.classId)?[s.classId]:[]);
+  return ids.some(id=>{ const c=CLASSES.find(x=>x.id===id); return c && !classIsHomeroom(c); });
+}
 // 사진형 학교 정보 표 (학교=열, 항목=행, 학생은 등급 T/S/A로 자동)
 function examTitleRank(t){ t=t||''; const h=t.includes('2학기')?2:1; const k=t.includes('기말')?2:1; return (t.includes('중간')||t.includes('기말'))?(h*10+k):99; }
 function schoolInfoHtml(){
@@ -1530,20 +1546,32 @@ function schoolInfoHtml(){
   const tiers=['T','S','A'];
   // 시험(내신) 이름별로 묶기 — 시험마다 학교·인원이 다르니 선택해서 봄
   const titles=[...new Set(list.map(e=>(e.title||'').trim()).filter(Boolean))].sort((a,b)=>examTitleRank(a)-examTitleRank(b)||a.localeCompare(b));
-  let cur=naesinExamTitle && titles.includes(naesinExamTitle) ? naesinExamTitle : (titles[0]||'');
+  // 따로 고르지 않았으면 다가오는 시험부터 — 지난 시험이 먼저 열리면 매번 다시 눌러야 한다
+  const _today=new Date().toISOString().slice(0,10);
+  const _next=list.filter(e=>(e.endDate||e.startDate||'')>=_today).sort((a,b)=>(a.startDate||'').localeCompare(b.startDate||''))[0];
+  const _def=_next&&titles.includes((_next.title||'').trim()) ? (_next.title||'').trim() : (titles[0]||'');
+  let cur=naesinExamTitle && titles.includes(naesinExamTitle) ? naesinExamTitle : _def;
   const shown=list.filter(e=>(e.title||'').trim()===cur);
   const mathHtml=e=>examMathDates(e).map(m=>`${esc(m.label)||'수학'} ${m.date||''}`).join(' · ');
   const info=(lbl,v)=>v?`<span style="margin-right:10px"><b style="color:var(--text-sub)">${lbl}</b> ${esc(v)}</span>`:'';
   const card=e=>{
-    let totalN=0;
+    // 인원은 '사람 수'로 센다. 등급(T·S·A)마다 더하면 여러 반을 다니는 학생이 겹쳐 세어진다.
+    const hr=actives.filter(s=>(s.school||'')===e.school);
+    const totalN=hr.length;
+    const asst=getStudents().filter(s=>isAssistantStudent(s) && (s.school||'')===e.school);
+    const done=prepDone(e), allDone=done===PREP_ITEMS.length;
     const tierHtml=tiers.map(t=>{
-      const names=actives.filter(s=>(s.school||'')===e.school && studentTiers(s).has(t)).map(s=>esc(s.name));
-      totalN+=names.length;
+      const names=hr.filter(s=>studentTiers(s).has(t)).map(s=>esc(s.name));
       return names.length?`<div style="margin-top:3px"><span style="display:inline-block;min-width:18px;font-weight:800;color:var(--primary)">${t}</span> <span style="color:var(--text-muted)">(${names.length})</span> ${names.join(', ')}</div>`:'';
-    }).join('');
-    return `<div style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:var(--surface)">
+    }).join('')
+      // 반 이름에 T·S·A가 없는 학생(예: 고2 세마)도 빠뜨리지 않는다
+      + (function(){ const etc=hr.filter(s=>!studentTiers(s).size).map(s=>esc(s.name));
+          return etc.length?`<div style="margin-top:3px"><span style="display:inline-block;min-width:18px;font-weight:800;color:var(--text-muted)">기타</span> <span style="color:var(--text-muted)">(${etc.length})</span> ${etc.join(', ')}</div>`:''; })();
+    return `<div style="border:${allDone?'2px solid var(--green)':'1px solid var(--border)'};border-radius:12px;padding:12px 14px;background:var(--surface)">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px">
-        <div><strong style="font-size:15px">${esc(e.school)||'-'}</strong> <span class="badge b-gray" style="font-size:10px">${totalN}명</span></div>
+        <div><strong style="font-size:15px">${esc(e.school)||'-'}</strong>
+          <span class="badge ${allDone?'b-green':'b-gray'}" style="font-size:11px">${totalN+asst.length}부</span>
+          ${allDone?'<span style="font-size:11px;color:var(--green);font-weight:800">✓ 다 챙김</span>':''}</div>
         <button class="btn btn-outline btn-sm" style="padding:1px 7px;font-size:10px" onclick="seEditId='${e.id}';naesinTab='exam';rNaesin();window.scrollTo({top:0,behavior:'smooth'})">수정</button>
       </div>
       ${(function(){   // 📚 학교별 교재·출판사 (학교 정보 표에 적어둔 값)
@@ -1560,13 +1588,39 @@ function schoolInfoHtml(){
         <div>${info('시험일',mathHtml(e))}${info('직보',e.jikboStart)}</div>
       </div>
       <div style="margin-top:8px;border-top:1px dashed var(--border);padding-top:6px;font-size:12px">
-        ${tierHtml||'<span style="color:var(--text-muted)">이 학교 학생이 없어요</span>'}
+        <div style="font-size:11px;font-weight:800;color:var(--text-muted);margin-bottom:1px">담임 반 ${totalN}명 <span style="font-weight:500">(여러 반 다니면 반마다 이름이 나와요)</span></div>
+        ${tierHtml||'<span style="color:var(--text-muted)">담임 반 학생이 없어요</span>'}
+        ${asst.length?`<div style="margin-top:6px;padding-top:5px;border-top:1px dotted var(--border)">
+          <span style="font-size:11px;font-weight:800;color:var(--orange)">부담임 반 ${asst.length}명</span>
+          <div style="margin-top:2px">${asst.map(s=>esc(s.name)).join(', ')}</div></div>`:''}
+        <div style="margin-top:6px;font-size:12px;font-weight:800;color:var(--text)">📄 필요 ${totalN+asst.length}부
+          <span style="font-weight:500;color:var(--text-muted)">(담임 ${totalN}${asst.length?` + 부담임 ${asst.length}`:''})</span></div>
+      </div>
+      <div style="margin-top:8px;border-top:1px dashed var(--border);padding-top:7px">
+        <div style="font-size:11px;font-weight:800;color:var(--text-muted);margin-bottom:4px">📦 챙길 자료 ${done}/${PREP_ITEMS.length}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+          ${PREP_ITEMS.map(([k,l])=>{ const on=!!(e.prep&&e.prep[k]);
+            return `<button onclick="doTogglePrep('${e.id}','${k}')" style="border:1px solid ${on?'var(--green)':'var(--border)'};background:${on?'#DCFCE7':'var(--bg)'};color:${on?'#15803D':'var(--text-sub)'};border-radius:7px;padding:6px 4px;font-size:12px;font-weight:${on?'800':'600'};cursor:pointer;font-family:inherit">${on?'✅':'⬜'} ${l}</button>`; }).join('')}
+        </div>
       </div>
     </div>`;
   };
   return `<div class="card">
     <div class="card-title">🏫 학교 정보 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(시험 선택 → 학교별 준비 + 학생 자동 · ‘시험 정보’에서 입력)</span></div>
     ${hiddenSchoolNoteHtml()}
+    ${(function(){   // 📦 이번 시험 합계 — 몇 부 뽑고, 몇 곳 끝났나
+      if(!shown.length) return '';
+      let hrN=0, asN=0, fin=0;
+      shown.forEach(e=>{
+        hrN+=actives.filter(s=>(s.school||'')===e.school).length;
+        asN+=getStudents().filter(s=>isAssistantStudent(s)&&(s.school||'')===e.school).length;
+        if(prepDone(e)===PREP_ITEMS.length) fin++;
+      });
+      return `<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;background:var(--bg);border-radius:10px;padding:9px 12px;margin-bottom:10px;font-size:13px">
+        <span>📄 <strong style="font-size:16px">${hrN+asN}부</strong> <span style="color:var(--text-muted)">(담임 ${hrN} + 부담임 ${asN})</span></span>
+        <span>📦 챙김 <strong style="font-size:16px;color:${fin===shown.length?'var(--green)':'var(--text)'}">${fin}/${shown.length}곳</strong></span>
+      </div>`;
+    })()}
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
       ${titles.map(t=>`<button class="btn ${t===cur?'btn-primary':'btn-outline'} btn-sm" onclick="naesinExamTitle='${t.replace(/'/g,'')}';rNaesin()">${esc(t)}</button>`).join('')}
     </div>
