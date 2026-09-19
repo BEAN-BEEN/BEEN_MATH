@@ -32,7 +32,7 @@ function load(file) {
   };
   sb.window = sb; sb.globalThis = sb; sb.self = sb;
   vm.createContext(sb);
-  try { vm.runInContext(out.join('\n;\n') + '\n;globalThis.__get=(n)=>eval(n);', sb, { filename: file }); } catch (e) {}
+  try { vm.runInContext(out.join('\n;\n') + '\n;globalThis.__get=(n)=>eval(n);globalThis.__set=(n,v)=>eval(n+"=v");', sb, { filename: file }); } catch (e) {}
   return sb;
 }
 const T = load('teacher.html');
@@ -213,7 +213,8 @@ ok('플래너 시간도 선생님 화면과 같다', () => {
 });
 ok('옛 11시 규칙이 남아 있지 않다', () => {
   assert.ok(!ph.includes('오전 11시'), '토·일 11시가 그대로 남음');
-  assert.ok(ph.includes('const time = jikboTime(dateStr, e);'), '시간을 규칙에서 안 가져옴');
+  assert.ok(ph.includes('const time = jikboTimeOf(dateStr, e);'), '시간을 규칙에서 안 가져옴');
+  assert.ok(ph.includes('jikboSavedTime(dateStr, e&&e.school) || jikboTime(dateStr, e)'), '쌤이 고친 시간이 규칙보다 먼저가 아님');
 });
 ok('시험별로 한 번만 계산한다 (달력이 날짜마다 다시 부른다)', () => {
   const e = { id: 'p-cache', startDate: '2026-10-01', endDate: '2026-10-07', mathDate: '2026-10-07' };
@@ -321,8 +322,8 @@ ok("추석 연휴가 껴도 9일을 넘지 않는다", () => {
 
 console.log('\n자동 생성 — 이미 있는 항목');
 ok("자동으로 만든 옛 항목은 지금 규칙에 맞춰 고친다", () => {
-  assert.ok(th.includes('if(ex.auto && (ex.time!==p.time || ex.note!==note))'), '옛 항목 수정이 없음');
-  assert.ok(th.includes('updateMakeupFS(ex.id, {time:p.time, note})'), '수정 호출이 없음');
+  assert.ok(th.includes('if(!ex.timeFixed && ex.time!==p.time) patch.time=p.time;'), '옛 항목 시간 수정이 없음');
+  assert.ok(th.includes('updateMakeupFS(ex.id, patch)'), '수정 호출이 없음');
 });
 ok("손으로 만든 보강은 건드리지 않는다", () => {
   assert.ok(th.includes('손으로 만든 보강은 선생님이 정한 시간이므로 건드리지 않는다'), '수동 보강 보호 설명이 없음');
@@ -330,6 +331,74 @@ ok("손으로 만든 보강은 건드리지 않는다", () => {
 ok("안내에 생성·고침·그대로를 나눠 알려준다", () => {
   assert.ok(th.includes('건 고침(시간·메모)'), '고침 건수 안내가 없음');
   assert.ok(th.includes('건 그대로'), '그대로 건수 안내가 없음');
+});
+
+console.log('\n⏱ 직보 시간 바꾸기 — 자동 생성된 걸 그 자리에서 고친다');
+ok("표의 시간 칸을 고칠 수 있다 (예전엔 삭제밖에 없었다)", () => {
+  const h = T.mkTimeCellHtml({ id: 'm1', date: '2026-10-05', time: '12:00~' });
+  assert.ok(h.includes("doSetMakeupTime('m1'"), '시간 칸이 저장을 안 함');
+  assert.ok(h.includes('value="12:00~"'), '지금 시간이 안 채워짐');
+  assert.ok(h.includes('list="mk-times"'), '빠른 시간 목록이 없음');
+});
+ok("빠른 시간 목록에 규칙 시간 네 개가 있다", () => {
+  assert.ok(th.includes('<datalist id="mk-times">'), '목록이 없음');
+  ['12:00~', '14:00~', '15:00~', '17:00~'].forEach(t => {
+    assert.ok(th.includes('<option value="' + t + '">'), t + '가 목록에 없음');
+  });
+});
+ok("직접 고친 시간은 눈에 띄고 되돌릴 수 있다", () => {
+  const h = T.mkTimeCellHtml({ id: 'm1', date: '2026-10-05', time: '13:00~', timeFixed: true });
+  assert.ok(h.includes('직접 지정'), '직접 고쳤다는 표시가 없음');
+  assert.ok(h.includes("doResetMakeupTime('m1')"), '규칙으로 되돌리는 길이 없음');
+});
+ok("안 고친 건 되돌리기가 안 뜬다", () => {
+  const h = T.mkTimeCellHtml({ id: 'm2', date: '2026-10-05', time: '12:00~' });
+  assert.ok(!h.includes('doResetMakeupTime'), '고치지도 않았는데 되돌리기가 뜸');
+  assert.ok(!h.includes('직접 지정'));
+});
+ok("고치면 timeFixed를 같이 남긴다", () => {
+  assert.ok(th.includes('updateMakeupFS(id, {time:t, timeFixed:true})'), 'timeFixed를 안 남김');
+});
+ok("자동 생성이 직접 고친 시간을 덮지 않는다", () => {
+  assert.ok(th.includes('if(!ex.timeFixed && ex.time!==p.time) patch.time=p.time;'), '고친 시간이 다시 규칙으로 덮임');
+  assert.ok(th.includes('if(ex.note!==note) patch.note=note;'), '메모는 그대로 따라가야 함');
+});
+ok("되돌리면 규칙 시간으로 돌아간다", () => {
+  assert.ok(th.includes('jikboTime(m.date, makeupExamOf(m))'), '규칙 시간을 다시 계산하지 않음');
+  assert.ok(th.includes('{time:t, timeFixed:false}'), 'timeFixed를 안 끔');
+});
+ok("시간을 고칠 수 있다는 걸 화면에서 알려준다", () => {
+  assert.ok(th.includes('표의 시간 칸을 고치면'), '안내가 없음');
+});
+
+console.log('\n바꾼 시간이 학생·플래너까지 간다');
+ok("플래너는 저장된 시간을 규칙보다 먼저 본다", () => {
+  const e = { id: 'jt1', school: '신성고', startDate: '2026-10-05', endDate: '2026-10-08', mathDate: '2026-10-06' };
+  J.__set('P_MAKEUPS', [{ date: '2026-10-05', school: '신성고', time: '13:30~' }]);
+  assert.strictEqual(J.jikboTimeOf('2026-10-05', e), '13:30', '쌤이 고친 시간이 안 나옴');
+  J.__set('P_MAKEUPS', []);
+  assert.strictEqual(J.jikboTimeOf('2026-10-05', e), J.jikboTime('2026-10-05', e), '안 고쳤으면 규칙대로여야 함');
+});
+ok("다른 학교 직보 시간을 끌어오지 않는다", () => {
+  const e = { id: 'jt2', school: '신성고', startDate: '2026-10-05', endDate: '2026-10-08', mathDate: '2026-10-06' };
+  J.__set('P_MAKEUPS', [{ date: '2026-10-05', school: '백영고', time: '09:00~' }]);
+  assert.strictEqual(J.jikboTimeOf('2026-10-05', e), J.jikboTime('2026-10-05', e), '남의 학교 시간을 가져옴');
+  J.__set('P_MAKEUPS', []);
+});
+ok("학생 화면도 바뀐 시간을 본다", () => {
+  S.__set('ALL_MAKEUPS', [{ date: '2026-10-05', school: '신성고', time: '13:30~' }]);
+  assert.strictEqual(S._jbSavedTime('2026-10-05', '신성고'), '오후 1시 30분');
+  assert.strictEqual(S._jbSavedTime('2026-10-05', '백영고'), '', '남의 학교 시간을 가져옴');
+  S.__set('ALL_MAKEUPS', []);
+  assert.strictEqual(S._jbSavedTime('2026-10-05', '신성고'), '');
+});
+ok("시간 표기를 학생이 읽기 좋게 바꾼다", () => {
+  assert.strictEqual(S._jbTimeLabel('12:00~'), '낮 12시');
+  assert.strictEqual(S._jbTimeLabel('14:00~'), '오후 2시');
+  assert.strictEqual(S._jbTimeLabel('17:00~'), '오후 5시');
+  assert.strictEqual(S._jbTimeLabel('09:30~'), '오전 9시 30분');
+  assert.strictEqual(S._jbTimeLabel('14:00~16:00'), '14:00~16:00', '끝 시간까지 적은 건 그대로 둬야 함');
+  assert.strictEqual(S._jbTimeLabel(''), '');
 });
 
 console.log('\n화면');

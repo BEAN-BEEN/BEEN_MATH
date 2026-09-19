@@ -243,6 +243,17 @@ function jikboDates(e){
   if(ck) _JB_CACHE.set(ck, out);
   return out;
 }
+// ⏱ 쌤이 직보 일정 표에서 시간을 고쳤으면 그 시간이 규칙보다 우선한다.
+//   (선생님 화면 doSetMakeupTime → makeups.time / timeFixed)
+function jikboSavedTime(dateStr, school){
+  const sc=normSchool(school||''); if(!sc) return '';
+  const list=(P_MAKEUPS||[]).filter(m=>m.date===dateStr && String(m.time||'').trim());
+  const hit=list.find(m=>normSchool(m.school||'')===sc) || list.find(m=>String(m.className||'').includes(sc));
+  if(!hit) return '';
+  const t=String(hit.time).trim();
+  return t.endsWith('~') ? t.slice(0,-1) : t;     // '14:00~' → '14:00' (칸 표기에 맞춘다)
+}
+function jikboTimeOf(dateStr, e){ return jikboSavedTime(dateStr, e&&e.school) || jikboTime(dateStr, e); }
 function jikboOn(dateStr){
   const bySchoolTime={}; // key: school|time
   P_EXAMS.forEach(e=>{
@@ -250,7 +261,7 @@ function jikboOn(dateStr){
     const studs=P_STUDENTS.filter(s=>(s.school||'')===e.school && !isJikboExcluded(s));
     if(!studs.length) return;
     if(!jikboDates(e).includes(dateStr)) return;
-    const time = jikboTime(dateStr, e);
+    const time = jikboTimeOf(dateStr, e);
     const key=e.school+'|'+time;
     if(!bySchoolTime[key]) bySchoolTime[key]={school:e.school, time, students:[]};
     studs.forEach(s=>{ if(!bySchoolTime[key].students.includes(s.name)) bySchoolTime[key].students.push(s.name); });

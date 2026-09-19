@@ -1460,6 +1460,25 @@ function _jbDates(e){ const mds=_jbMathDates(e).filter(Boolean).sort(); if(!mds.
   mds.forEach(md=>set.delete(md));
   const mathSet=new Set(mds);
   return [...set].filter(d=>!_jbRestDay(e, d, mathSet)); }
+// ⏱ 쌤이 직보 시간을 바꿨으면 그 시간이 우선 — 안 바꿨으면 규칙대로 뜬다
+function _jbSavedTime(ds, school){
+  const sc=normSchool(school||''); if(!sc) return '';
+  const list=(ALL_MAKEUPS||[]).filter(m=>m.date===ds && String(m.time||'').trim());
+  const hit=list.find(m=>normSchool(m.school||'')===sc) || list.find(m=>String(m.className||'').includes(sc));
+  return hit ? _jbTimeLabel(hit.time) : '';
+}
+// '14:00~' 처럼 적힌 걸 학생이 읽기 좋게 — '오후 2시'. 끝 시간까지 적혀 있으면 그대로 보여준다.
+function _jbTimeLabel(raw){
+  const s=String(raw||'').trim(); if(!s) return '';
+  const parts=s.split('~');
+  if(parts.length>1 && parts[1].trim()) return s;
+  const hm=parts[0].trim().split(':');
+  const h=Number(hm[0]), mi=Number(hm[1]||0);
+  if(!(h>=0 && h<=23)) return s;
+  const ampm = h<12 ? '오전' : (h===12 ? '낮' : '오후');
+  const h12 = (h%12===0) ? 12 : (h%12);
+  return ampm+' '+h12+'시'+(mi?' '+mi+'분':'');
+}
 function myJikbo(){
   // 부담임 반(X/Y/Z)만 있는 학생은 직보 제외 — 담임 반이 하나라도 있으면 표시
   const _hr=c=>c.role?c.role==='담임':!/[XYZ]/.test(c.name||'');
@@ -1469,7 +1488,7 @@ function myJikbo(){
     const dow=new Date(ds+'T00:00:00').getDay();
     const inExam=!!(e.startDate&&e.endDate&&ds>=e.startDate&&ds<=e.endDate);
     // 토·일·공휴일 12시 / 금요일 3시 / 그 밖의 평일은 그날 시험 있으면 2시, 없으면 5시
-    const time=(dow===0||dow===6||holidayName(ds))?'낮 12시':(dow===5?'오후 3시':(inExam?'오후 2시':'오후 5시'));
+    const time=_jbSavedTime(ds, e.school) || ((dow===0||dow===6||holidayName(ds))?'낮 12시':(dow===5?'오후 3시':(inExam?'오후 2시':'오후 5시')));
     out.push({date:ds, time, title:e.title||'시험'}); }); });
   out.sort((a,b)=>a.date.localeCompare(b.date));
   return out;

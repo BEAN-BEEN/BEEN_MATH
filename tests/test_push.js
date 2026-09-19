@@ -194,6 +194,132 @@ console.log('Worker — 실패 이유를 버리지 않는가');
     assert.strictEqual(updated.length, 0, '성공했는데 토큰을 지움');
   });
 
+  // ── 🧪 쌤 기기 테스트 알림 — 권한이 풀린 뒤 '진짜 가는지'를 학생 없이 확인하는 길
+  console.log('\n쌤 기기 테스트 알림 — 학생에게는 안 간다');
+  const store = {};
+  sb.localStorage = {
+    getItem: k => (k in store ? store[k] : null),
+    setItem: (k, v) => { store[k] = String(v); },
+    removeItem: k => { delete store[k]; }
+  };
+  sb.rDashboard = () => {};
+  let tpDoc = { tokens: ['쌤기기1'] };
+  const cfgWrites = [];
+  set('db', {
+    collection: (c) => ({
+      doc: (id) => ({
+        get: async () => ({ exists: c === 'config' && !!tpDoc, data: () => tpDoc || {} }),
+        set: async (u) => { cfgWrites.push({ c, id, u }); if (c === 'config') tpDoc = Object.assign({}, tpDoc, u); },
+        update: async (u) => { updated.push({ id, u }); }
+      })
+    })
+  });
+  sb.fetch = async (u, o) => { lastFetch = { u, body: o && o.body ? JSON.parse(o.body) : null }; return { json: async () => fetchReply }; };
+
+  ok("등록 전에는 '이 기기에서 받기'가 뜬다", () => {
+    delete store['bm_teacher_push'];
+    const h = sb.teacherPushHtml();
+    assert.ok(/이 기기에서 받기/.test(h), h.slice(0, 300));
+    assert.ok(!/이 기기 받는 중/.test(h), '안 켰는데 받는 중이라고 함');
+  });
+  ok("켠 기기에서는 '받는 중'으로 바뀐다", () => {
+    store['bm_teacher_push'] = '1';
+    const h = sb.teacherPushHtml();
+    assert.ok(/이 기기 받는 중/.test(h), h.slice(0, 300));
+    assert.ok(!/이 기기에서 받기/.test(h), '이미 켰는데 또 켜라고 함');
+  });
+  ok("테스트 알림 · 설정 점검 버튼이 카드에 있다", () => {
+    const h = sb.teacherPushHtml();
+    assert.ok(/onclick="doTestPush\(\)"/.test(h), '테스트 버튼 없음');
+    assert.ok(/onclick="doPushCheck\(\)"/.test(h), '점검 버튼 없음');
+    assert.ok(/쌤 기기에만/.test(h), '학생에게 안 간다는 안내가 없음');
+  });
+
+  await okA("테스트 알림은 쌤 기기에만 가고 학생 토큰이 섞이지 않는다", async () => {
+    toasts.length = 0; lastFetch = null;
+    tpDoc = { tokens: ['쌤폰', '쌤PC'] };
+    set('STUDENTS_CACHE', [{ id: 's1', name: '가나', fcmTokens: ['학생토큰'], status: '재원' }]);
+    fetchReply = { sent: 2, failed: 0, total: 2, invalid: [], errors: [] };
+    await sb.doTestPush();
+    assert.strictEqual(lastFetch.u, '/api/notify');
+    assert.strictEqual(lastFetch.body.tokens.join(','), '쌤폰,쌤PC', '보낸 대상이 다름');
+    assert.ok(!lastFetch.body.tokens.includes('학생토큰'), '학생에게 테스트 알림이 갔다');
+    assert.ok(toasts.some(t => t.t === 'success'), '결과를 성공으로 안 알림');
+  });
+  await okA("켠 기기가 하나도 없으면 보내지 않고 안내만 한다", async () => {
+    toasts.length = 0; lastFetch = null;
+    tpDoc = { tokens: [] };
+    await sb.doTestPush();
+    assert.strictEqual(lastFetch, null, '보낼 곳이 없는데 발송함');
+    assert.ok(toasts.some(t => /이 기기에서 받기/.test(t.m)), '어떻게 하라는 안내가 없음');
+  });
+  await okA("끊긴 토큰 정리는 쌤 기기에도 적용된다 (학생 수에는 안 센다)", async () => {
+    updated.length = 0; cfgWrites.length = 0;
+    tpDoc = { tokens: ['죽은쌤', '살아있는쌤'] };
+    set('STUDENTS_CACHE', [{ id: 's1', name: '가나', fcmTokens: ['dead1', 'live1'] }]);
+    const cleaned = await sb.dropDeadTokens(['dead1', '죽은쌤']);
+    assert.strictEqual(cleaned, 1, '학생 수에 쌤 기기가 섞임');
+    const w = cfgWrites.find(x => x.c === 'config' && x.id === 'teacherPush');
+    assert.ok(w, '쌤 기기 토큰이 정리되지 않음');
+    assert.strictEqual(w.u.tokens.join(','), '살아있는쌤', '멀쩡한 기기까지 지움');
+  });
+  await okA("쌤 기기 토큰이 멀쩡하면 건드리지 않는다", async () => {
+    cfgWrites.length = 0;
+    tpDoc = { tokens: ['살아있는쌤'] };
+    set('STUDENTS_CACHE', [{ id: 's1', name: '가나', fcmTokens: ['dead1'] }]);
+    await sb.dropDeadTokens(['dead1']);
+    assert.strictEqual(cfgWrites.length, 0, '지울 게 없는데 썼다');
+  });
+
+  console.log('\n발송 설정 점검 — 아무에게도 안 간다');
+  await okA("점검은 토큰 없이 서버에만 묻는다", async () => {
+    toasts.length = 0; lastFetch = null;
+    fetchReply = { ok: true, fcm: 'INVALID_ARGUMENT', oauth: 'ok', why: '권한 정상 — 가짜 토큰이라 거절된 것뿐이에요. 실제 발송은 됩니다.' };
+    await sb.doPushCheck();
+    assert.strictEqual(lastFetch.u, '/api/pushcheck');
+    assert.strictEqual(lastFetch.body, null, '점검인데 토큰을 보냈다');
+    assert.ok(toasts.some(t => t.t === 'success'), '정상인데 정상이라고 안 함');
+  });
+  ok("점검 결과가 카드에 남아 나중에 다시 볼 수 있다", () => {
+    const h = sb.pushCheckHtml();
+    assert.ok(/설정 점검/.test(h) && /정상/.test(h), h.slice(0, 300));
+  });
+  await okA("점검이 문제를 찾으면 이유를 그대로 보여준다", async () => {
+    toasts.length = 0;
+    fetchReply = { ok: false, fcm: 'PERMISSION_DENIED', oauth: 'ok', why: '서버가 알림을 보낼 권한이 없어요' };
+    await sb.doPushCheck();
+    assert.ok(toasts.some(t => t.t === 'error'), '문제인데 오류로 안 알림');
+    const h = sb.pushCheckHtml();
+    assert.ok(/문제 있음/.test(h), h.slice(0, 300));
+    assert.ok(/권한이 없어요/.test(h), '이유가 안 보임');
+  });
+  await okA("점검 서버에 연결 못 하면 그렇다고 말한다", async () => {
+    toasts.length = 0;
+    fetchReply = null;
+    await sb.doPushCheck();
+    assert.ok(toasts.some(t => t.t === 'error' && /연결하지 못했어요/.test(t.m)), JSON.stringify(toasts));
+  });
+
+  console.log('\n화면·서비스워커에 제대로 붙었는가');
+  ok("🔔 카드 안(마지막 발송 바로 아래)에 있다 — 새 화면을 만들지 않았다", () => {
+    const h = fs.readFileSync(ROOT + '/teacher.html', 'utf8');
+    assert.ok(/\$\{lastPushHtml\(\)\}\s*\$\{teacherPushHtml\(\)\}/.test(h), '🔔 카드에 안 붙어 있음');
+  });
+  ok("알림 모듈(messaging)을 불러온다", () => {
+    const h = fs.readFileSync(ROOT + '/teacher.html', 'utf8');
+    assert.ok(h.includes('firebase-messaging-compat.js'), 'messaging SDK가 없어 getToken이 안 됨');
+  });
+  ok("새로고침해도 이 기기 알림 연결이 살아난다", () => {
+    const h = fs.readFileSync(ROOT + '/teacher.html', 'utf8');
+    assert.ok(/initTeacherPush\(\);/.test(h), 'init에서 다시 연결하지 않음');
+  });
+  ok("알림을 누르면 열려 있던 창을 띄운다 (엉뚱한 화면이 안 뜨게)", () => {
+    const sw = fs.readFileSync(ROOT + '/firebase-messaging-sw.js', 'utf8');
+    assert.ok(/clients\.matchAll/.test(sw), '무조건 새 창을 연다');
+    assert.ok(/w\.focus/.test(sw), '열린 창을 안 띄움');
+    assert.ok(/openWindow\('\/student\.html'\)/.test(sw), '열린 창이 없을 때가 빠짐');
+  });
+
   console.log('\n숙제 등록만으로는 알림을 안 보낸다');
   ok("숙제 관리 탭에서 등록해도 자동 발송하지 않는다", () => {
     const h = fs.readFileSync(ROOT + '/teacher.html', 'utf8');

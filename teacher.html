@@ -332,6 +332,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
 <script src="firebase-init.js?v=2026072602"></script>
 
 <script>
@@ -3999,6 +4000,7 @@ function rDashboard(){
         </div>
         <div style="font-size:11px;color:var(--text-muted);margin-top:5px">학생이 직접 '알림 켜기'를 눌러야 새 숙제 알림을 받아요</div>
         ${lastPushHtml()}
+        ${teacherPushHtml()}
         ${(typeof bmCanInstallUI==='function'&&bmCanInstallUI())?`<button class="btn btn-outline btn-sm" style="margin-top:8px;width:100%;justify-content:center" onclick="bmInstallClick()">📲 홈 화면에 추가</button>`:''}
       </div>
       <div class="card" style="margin:0">
@@ -6300,6 +6302,7 @@ async function dropDeadTokens(invalid){
     try{ await db.collection('students').doc(s.id).update({fcmTokens:left});
       if(!cachePut('students', s.id, {fcmTokens:left})) await loadStudents(); cleaned++; }catch(e){}
   }
+  await dropDeadTeacherTokens(dead);   // 쌤 기기 토큰도 같은 기준으로 — 학생 수에는 안 센다
   return cleaned;
 }
 // 토스트는 금방 사라져서 왜 실패했는지 다시 볼 수가 없다. 마지막 결과를 남겨둔다.
@@ -6324,6 +6327,110 @@ function lastPushHtml(){
     마지막 발송 <strong style="color:${color}">${p.sent}/${p.total}명</strong> · ${esc(p.at)}
     ${allOk?'':`<div style="color:${color};margin-top:2px;line-height:1.5">${esc(why)}${p.code?` <span style="opacity:.65">(${esc(p.code)})</span>`:''}</div>
       ${p.detail?`<div style="color:var(--text-muted);margin-top:3px;font-size:10.5px;line-height:1.45">${esc(p.detail)}</div>`:''}`}
+  </div>`;
+}
+// 🧪 쌤 기기로 보내는 테스트 알림 — 학생을 건드리지 않고 발송이 진짜 되는지 끝까지 확인한다.
+//   학생 토큰은 students.fcmTokens, 쌤 토큰은 config/teacherPush 에 따로 둔다.
+//   (섞으면 '알림 켠 학생 N명' 집계와 독촉 발송에 쌤 기기가 끼어든다)
+const TPUSH_DOC='teacherPush';
+function tPushOnHere(){ try{ return localStorage.getItem('bm_teacher_push')==='1'; }catch(e){ return false; } }
+// 화면을 보고 있을 땐 FCM이 알림창을 안 띄우고 여기로만 준다 → 토스트 + 알림창을 직접 띄워 확실히 보이게
+function bindTeacherPushMsg(messaging, reg){
+  try{
+    messaging.onMessage(p=>{
+      const t=(p.notification&&p.notification.title)||'새 알림', b=(p.notification&&p.notification.body)||'';
+      showToast('🔔 '+t+(b?' — '+b:''),'success');
+      try{ reg && reg.showNotification(t,{body:b, icon:'/icon.svg', badge:'/icon.svg'}); }catch(e){}
+    });
+  }catch(e){}
+}
+// 🔔 이 기기에서 알림 받기 — 권한 요청 + 토큰을 config/teacherPush 에 저장
+async function enableTeacherPush(){
+  try{
+    if(!('Notification' in window) || !('serviceWorker' in navigator)){ showToast('이 기기는 알림을 지원하지 않아요','error'); return; }
+    if(typeof firebase.messaging!=='function'){ showToast('알림 모듈을 못 불러왔어요 — 새로고침 해보세요','error'); return; }
+    const perm=await Notification.requestPermission();
+    if(perm!=='granted'){ showToast('알림이 거부되었어요. 브라우저 설정에서 허용해주세요','warning'); return; }
+    const reg=await navigator.serviceWorker.register('firebase-messaging-sw.js');
+    const messaging=firebase.messaging();
+    const token=await messaging.getToken({ vapidKey: FCM_VAPID_KEY, serviceWorkerRegistration: reg });
+    if(!token){ showToast('알림 토큰을 받지 못했어요','error'); return; }
+    await db.collection('config').doc(TPUSH_DOC).set({ tokens: firebase.firestore.FieldValue.arrayUnion(token) }, { merge:true });
+    bindTeacherPushMsg(messaging, reg);
+    try{ localStorage.setItem('bm_teacher_push','1'); }catch(e){}
+    showToast('이 기기에서 알림을 받아요 🔔 — 🧪 테스트 알림으로 확인해보세요','success');
+    rDashboard();
+  }catch(e){ showToast('알림 설정 실패: '+e.message,'error'); }
+}
+// 새로고침하면 onMessage 연결이 풀린다 — 받기로 한 기기면 다시 이어둔다
+async function initTeacherPush(){
+  if(!tPushOnHere()) return;
+  try{
+    if(typeof firebase.messaging!=='function' || !('serviceWorker' in navigator)) return;
+    const reg=await navigator.serviceWorker.register('firebase-messaging-sw.js');
+    bindTeacherPushMsg(firebase.messaging(), reg);
+  }catch(e){}
+}
+// 쌤 기기 토큰 — 필요할 때만 읽는다(접속마다 읽으면 읽기만 늘어난다)
+async function teacherTokens(){
+  try{
+    const d=await db.collection('config').doc(TPUSH_DOC).get();
+    const t=d.exists ? (d.data().tokens||[]) : [];
+    return Array.isArray(t) ? t.filter(Boolean) : [];
+  }catch(e){ return []; }
+}
+// FCM이 '없는 토큰'이라 한 것 중 쌤 기기 것 정리 (학생 정리와 같은 기준)
+async function dropDeadTeacherTokens(dead){
+  try{
+    const tk=await teacherTokens();
+    if(!tk.some(t=>dead[t])) return;
+    const left=tk.filter(t=>!dead[t]);
+    await db.collection('config').doc(TPUSH_DOC).set({tokens:left},{merge:true});
+    if(!left.length){ try{ localStorage.removeItem('bm_teacher_push'); }catch(e){} }
+  }catch(e){}
+}
+// 🧪 테스트 알림 — 쌤 기기에만 간다. 결과는 기존 sendPush 경로를 그대로 지나 '마지막 발송'에 남는다.
+async function doTestPush(){
+  const tk=await teacherTokens();
+  if(!tk.length){ showToast("먼저 '🔔 이 기기에서 받기'를 눌러주세요 — 학생에게는 안 가요",'warning'); return; }
+  showToast(`테스트 알림 보내는 중… (쌤 기기 ${tk.length}대)`);
+  await sendPush(tk, '🔔 테스트 알림', '이 알림이 보이면 발송이 정상이에요 · '+new Date().toLocaleTimeString('ko-KR'));
+  rDashboard();
+}
+// 🔎 발송 설정 점검 — 서버가 가짜 토큰으로 한 번 찔러본다. 아무에게도 안 간다.
+async function doPushCheck(){
+  showToast('발송 설정을 확인하는 중…');
+  let j=null;
+  try{ const r=await fetch('/api/pushcheck'); j=await r.json().catch(()=>null); }catch(e){ j=null; }
+  if(!j){ showToast('점검 서버에 연결하지 못했어요','error'); return; }
+  try{ localStorage.setItem('bm_pushCheck', JSON.stringify({
+    at:new Date().toLocaleString('ko-KR'), ok:!!j.ok, fcm:j.fcm||'', why:j.why||'', oauth:j.oauth||''
+  })); }catch(e){}
+  showToast(j.ok ? '발송 설정 정상 ✓ 알림이 나갈 수 있어요' : ('설정 문제 — '+(j.why||j.fcm||'원인 불명')), j.ok?'success':'error');
+  rDashboard();
+}
+function pushCheckHtml(){
+  let p=null; try{ p=JSON.parse(localStorage.getItem('bm_pushCheck')||'null'); }catch(e){}
+  if(!p) return '';
+  const color=p.ok?'var(--green)':'var(--red)';
+  const esc=v=>String(v==null?'':v).replace(/</g,'&lt;');
+  return `<div style="margin-top:6px;font-size:11px;color:var(--text-muted);line-height:1.5">
+    설정 점검 <strong style="color:${color}">${p.ok?'정상':'문제 있음'}</strong> · ${esc(p.at)}
+    ${p.ok?'':`<div style="color:${color};margin-top:2px">${esc(p.why||p.fcm)}</div>`}
+  </div>`;
+}
+function teacherPushHtml(){
+  const here=tPushOnHere();
+  return `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">🧪 학생은 건드리지 않아요 — 테스트 알림은 쌤 기기에만 갑니다</div>
+    <div style="display:flex;gap:5px;flex-wrap:wrap">
+      ${here
+        ? `<span style="font-size:11px;color:var(--green);align-self:center;font-weight:600">✅ 이 기기 받는 중</span>`
+        : `<button class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px" onclick="enableTeacherPush()">🔔 이 기기에서 받기</button>`}
+      <button class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px" onclick="doTestPush()">🧪 테스트 알림</button>
+      <button class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px" onclick="doPushCheck()">🔎 설정 점검</button>
+    </div>
+    ${pushCheckHtml()}
   </div>`;
 }
 // 알림 한 번 보내기 — 결과 안내와 죽은 토큰 정리를 한곳에서 처리한다
@@ -7372,18 +7479,56 @@ function makeupBlockHtml(){
         <button class="btn btn-outline btn-sm" onclick="document.getElementById('mk-time').value='14:00~'">🕑 2시 (그날 학교시험 본 경우)</button>
         <button class="btn btn-outline btn-sm" onclick="document.getElementById('mk-time').value='17:00~'">🕔 5시 (학교시험 없는 날)</button>
         <button class="btn btn-primary btn-sm" onclick="doAutoMakeups()">🪄 시험 전날 직보 자동 생성</button>
+        <datalist id="mk-times"><option value="12:00~"><option value="14:00~"><option value="15:00~"><option value="17:00~"></datalist>
       </div>
-      <div style="font-size:12px;color:var(--text-muted);margin-top:6px">🪄 자동 생성: <strong>수학시험</strong> 기준 — 전날부터 거슬러 올라가며 <strong>주말이 끼면 그 앞 금요일까지</strong> 잡아요 (월요일 시험이면 금·토·일, 화요일 시험이면 금·토·일·월). 시간은 토·일·공휴일 <strong>12시</strong> / 금요일 <strong>3시</strong> / 그 밖의 평일은 그날 학교시험이 있으면 <strong>2시</strong>, 없으면 <strong>5시</strong>. (자동으로 만든 건 다시 눌러도 지금 규칙에 맞게 고쳐져요)</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:6px">🪄 자동 생성: <strong>수학시험</strong> 기준 — 전날부터 거슬러 올라가며 <strong>주말이 끼면 그 앞 금요일까지</strong> 잡아요 (월요일 시험이면 금·토·일, 화요일 시험이면 금·토·일·월). 시간은 토·일·공휴일 <strong>12시</strong> / 금요일 <strong>3시</strong> / 그 밖의 평일은 그날 학교시험이 있으면 <strong>2시</strong>, 없으면 <strong>5시</strong>. (자동으로 만든 건 다시 눌러도 지금 규칙에 맞게 고쳐져요) <strong style="color:#C2410C">⏱ 표의 시간 칸을 고치면 그 날만 그 시간으로 정해지고, 자동 생성이 다시 돌아도 안 바뀌어요.</strong></div>
       ${makeups.length?`<div class="table-wrap" style="margin-top:10px"><table>
         <thead><tr><th>날짜</th><th>반/대상</th><th>시간</th><th>메모</th><th></th></tr></thead>
         <tbody>${makeups.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(m=>`<tr>
-          <td><strong>${m.date}</strong></td><td>${m.className||'-'}</td><td style="color:var(--text-muted)">${m.time||'-'}</td><td style="color:var(--text-muted)">${m.note||'-'}</td>
+          <td><strong>${m.date}</strong></td><td>${m.className||'-'}</td>${mkTimeCellHtml(m)}<td style="color:var(--text-muted)">${m.note||'-'}</td>
           <td style="white-space:nowrap"><button class="btn ${mkRosterOpenId===m.id?'btn-primary':'btn-outline'} btn-sm" onclick="mkRosterOpenId=(mkRosterOpenId==='${m.id}'?null:'${m.id}');rNaesin()">🙋 참석 ${(m.attendees||[]).length}</button>
             <button class="btn btn-red btn-sm" onclick="doDelMakeup('${m.id}')">삭제</button></td>
         </tr>`).join('')}</tbody>
       </table></div>`:'<div style="margin-top:10px;font-size:13px;color:var(--text-muted)">아직 등록된 보강·직보가 없어요.</div>'}
     </div>
     ${mkRosterOpenId?(function(){ const m=makeups.find(x=>x.id===mkRosterOpenId); return m?makeupRosterPanel(m):''; })():''}`;
+}
+// ⏱ 직보·보강 시간 바꾸기 — 자동 생성된 시간이 그날 사정과 안 맞을 때 표에서 바로 고친다.
+//   고치면 timeFixed가 켜져서 '🪄 자동 생성'을 다시 눌러도 이 시간은 안 건드린다.
+//   학생 화면과 플래너도 저장된 시간을 먼저 보므로, 여기서 고치면 학생에게도 그 시간이 보인다.
+async function doSetMakeupTime(id, val){
+  const m=getMakeups().find(x=>x.id===id); if(!m) return;
+  const t=String(val||'').trim();
+  if(t===String(m.time||'').trim()) return;
+  try{
+    await updateMakeupFS(id, {time:t, timeFixed:true});
+    showToast(t?`${m.date} 시간을 ${t}로 바꿨어요 ⏱ (자동 생성이 안 건드려요)`:'시간을 비웠어요','success');
+    rNaesin();
+  }catch(e){ showToast('시간 저장 실패: '+e.message,'error'); }
+}
+// 이 보강 날짜에 걸린 시험 — 규칙 시간으로 되돌릴 때 쓴다
+function makeupExamOf(m){
+  const sc=normSchool((m&&m.school)||'');
+  const list=getSchoolExams().filter(e=>normSchool(e.school||'')===sc);
+  return list.find(e=>jikboDatesOf(e).includes(m.date)) || list.find(e=>jikboInPeriod(e, m.date)) || null;
+}
+// ↩︎ 규칙 시간으로 되돌리기 (토·일·공휴일 12시 / 금 3시 / 평일 시험O 2시·X 5시)
+async function doResetMakeupTime(id){
+  const m=getMakeups().find(x=>x.id===id); if(!m) return;
+  const t=jikboTime(m.date, makeupExamOf(m));
+  try{ await updateMakeupFS(id, {time:t, timeFixed:false}); showToast(`규칙 시간 ${t}로 되돌렸어요 ↩︎`,'success'); rNaesin(); }
+  catch(e){ showToast('되돌리기 실패: '+e.message,'error'); }
+}
+// 표의 시간 칸 — 그 자리에서 고친다(빠른 시간은 목록으로 뜬다)
+function mkTimeCellHtml(m){
+  const fixed=!!m.timeFixed;
+  return `<td style="white-space:nowrap">
+    <input class="form-input" list="mk-times" value="${anEsc(m.time||'')}" placeholder="예: 14:00~"
+      onchange="doSetMakeupTime('${m.id}', this.value)"
+      style="width:112px;padding:3px 6px;font-size:12px${fixed?';border-color:var(--orange);font-weight:700':''}">
+    ${fixed?`<button class="btn btn-outline btn-sm" style="padding:2px 6px;font-size:10.5px;margin-left:3px" title="자동 생성 규칙 시간으로 되돌려요" onclick="doResetMakeupTime('${m.id}')">↩︎</button>
+      <div style="font-size:10px;color:var(--orange);margin-top:2px">✏️ 직접 지정</div>`:''}
+  </td>`;
 }
 async function doAddMakeup(){
   const date=document.getElementById('mk-date').value;
@@ -7592,7 +7737,7 @@ async function doAutoMakeups(){
   if(!plans.length){ showToast('자동 생성할 다가오는 수학 시험이 없어요','warning'); return; }
   const restMsg = rests.length ? `\n\n🛑 쉬는 날 (다음날 다른 과목 시험):\n${rests.map(r=>'· '+r).join('\n')}` : '';
   const staleMsg = stale.length ? `\n\n🗑 지울 직보 ${stale.length}건 — 지금 규칙으로는 직보가 아닌 날이에요:\n${stale.map(m=>'· '+m.date+' '+(m.className||'')).join('\n')}` : '';
-  if(!confirm(`다가오는 수학시험 기준으로 직보 ${plans.length}일을 자동 생성할까요?\n· 토·일·공휴일 → 12시\n· 금요일 → 3시\n· 그 밖의 평일: 그날 학교시험 O → 2시 / X → 5시\n(주말이 끼면 그 앞 금요일까지 잡아요)\n(자동으로 만든 건 지금 규칙에 맞게 고쳐집니다)${restMsg}${staleMsg}`)) return;
+  if(!confirm(`다가오는 수학시험 기준으로 직보 ${plans.length}일을 자동 생성할까요?\n· 토·일·공휴일 → 12시\n· 금요일 → 3시\n· 그 밖의 평일: 그날 학교시험 O → 2시 / X → 5시\n(주말이 끼면 그 앞 금요일까지 잡아요)\n(자동으로 만든 건 지금 규칙에 맞게 고쳐집니다 — ✏️ 시간을 직접 고친 날은 그대로 둡니다)${restMsg}${staleMsg}`)) return;
   let created=0, fixed=0, skipped=0, removed=0;
   for(const m of stale){ try{ await deleteMakeupFS(m.id); removed++; }catch(err){} }
   for(const p of plans){
@@ -7601,8 +7746,13 @@ async function doAutoMakeups(){
     if(ex){
       // 자동으로 만든 건 지금 규칙에 맞게 시간을 고쳐준다(예전 규칙으로 만들어진 게 그대로 남지 않게).
       // 손으로 만든 보강은 선생님이 정한 시간이므로 건드리지 않는다.
-      if(ex.auto && (ex.time!==p.time || ex.note!==note)){
-        try{ await updateMakeupFS(ex.id, {time:p.time, note}); fixed++; }catch(e){ skipped++; }
+      // ✏️ 시간을 직접 고친 건 그대로 둔다 — 규칙이 아니라 그날 사정으로 정한 시간이니까.
+      if(ex.auto){
+        const patch={};
+        if(!ex.timeFixed && ex.time!==p.time) patch.time=p.time;
+        if(ex.note!==note) patch.note=note;
+        if(Object.keys(patch).length){ try{ await updateMakeupFS(ex.id, patch); fixed++; }catch(e){ skipped++; } }
+        else skipped++;
       } else skipped++;
       continue;
     }
@@ -8213,6 +8363,7 @@ async function init(){
   try{ const n=await applyPendingMoves(); if(n) showToast(`예약된 반 이동 ${n}건이 오늘 적용됐어요 🔜`,'success'); }catch(e){}
   rDashboard();
   pruneOldFirebase();            // 3개월 지난 사진·기록 자동 정리 (백그라운드)
+  initTeacherPush();             // 이 기기에서 알림을 받기로 했으면 화면을 보고 있을 때도 뜨게 연결
   // 홈 화면 '숙제 입력' 바로가기로 들어오면 빠른 입력창 자동 열기
   if(location.search.indexOf('quick=hw')>=0) setTimeout(openQuickHw, 300);
 }

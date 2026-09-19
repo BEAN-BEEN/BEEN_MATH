@@ -26,8 +26,13 @@ messaging.onBackgroundMessage(function (payload) {
   });
 });
 
-// 알림 클릭하면 사이트 열기
+// 알림 클릭하면 사이트 열기 — 이미 열어둔 창이 있으면 그 창을 띄운다
+//   (쌤은 teacher.html, 학생은 student.html을 보고 있어서 무조건 새 창을 열면 엉뚱한 화면이 뜬다)
 self.addEventListener('notificationclick', function (event) {
   event.notification.close();
-  event.waitUntil(clients.openWindow('/student.html'));
+  event.waitUntil((async function () {
+    const wins = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const w of wins) { if (w && w.focus) return w.focus(); }
+    return clients.openWindow('/student.html');
+  })());
 });
