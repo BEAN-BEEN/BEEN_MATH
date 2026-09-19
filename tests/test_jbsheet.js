@@ -164,8 +164,8 @@ ok('칸에 학생 이름이 그대로 나온다', () => {
 });
 ok('칸 맨 아래에 직보 · 부별 인원 · 총원', () => {
   // '수업 N명' 한 덩어리로는 몇 시에 몇 명 오는지 알 수가 없었다
-  assert.ok(/직보 <span style="font-size:15px">\$\{N}<\/span>명/.test(ph), '직보 인원이 없음');
-  assert.ok(ph.includes('${x.slot||x.name} <span style="font-size:15px">${x.n}</span>명'), '부별 인원이 없음');
+  assert.ok(/직보 <span style="font-size:16px">\$\{N}<\/span>명/.test(ph), '직보 인원이 없음');
+  assert.ok(ph.includes('${x.slot||x.name} <span style="font-size:16px">${x.n}</span>명'), '부별 인원이 없음');
   assert.ok(ph.includes('총 ${total}명'), '총원이 없음');
   assert.ok(!ph.includes('수업 ${M}'), '옛 수업 덩어리가 남아 있음');
 });
@@ -180,8 +180,8 @@ ok('아무도 안 오는 반은 굳이 안 적는다', () => {
 });
 ok('캡처해서 보내는 것이라 글씨가 크다', () => {
   // 원래는 이름이 10.5px이라 캡처하면 안 읽혔다
-  assert.ok(ph.includes('font-size:12.5px;line-height:1.45;word-break:keep-all'), '학생 이름이 작음');
-  assert.ok(ph.includes('font-size:16px;color:var(--text);margin-top:2px">총 ${total}명'), '총원이 작음');
+  assert.ok(ph.includes('font-size:13.5px;line-height:1.45;word-break:keep-all'), '학생 이름이 작음');
+  assert.ok(ph.includes('font-size:17px;color:var(--text);margin-top:2px">총 ${total}명'), '총원이 작음');
   assert.ok(!/font-size:10\.5px/.test(ph), '옛 10.5px가 남아 있음');
 });
 ok('수학 시험일과 공휴일도 칸 머리에 적는다', () => {
@@ -246,7 +246,7 @@ console.log('\n같은 시간은 한 줄로');
 ok('시간을 한 번만 적고 그 아래에 학교별 인원·이름', () => {
   // 전에는 🔶15:00 관양 / 🔶15:00 신성 / 🔶15:00 백운 … 시간이 네 번 반복됐다
   assert.ok(ph.includes('시간이 네 번 반복되면 읽기 어렵다'), '시간으로 안 묶음');
-  assert.ok(/🔶\$\{t(?:m|\.time)} <span style="font-size:13.5px">\$\{tot}명<\/span>/.test(ph), '시간별 합계가 없음');
+  assert.ok(/🔶\$\{t(?:m|\.time)} <span style="font-size:14.5px">\$\{tot}명<\/span>/.test(ph), '시간별 합계가 없음');
 });
 
 console.log('\n말은 쉽게');

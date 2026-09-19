@@ -27,12 +27,12 @@ ok('주마다 날짜 범위와 직보 일수', () => {
 
 console.log('\n칸 — 직보 · 1부 · 2부 · 총원');
 ok('직보 인원과 오는 학생 이름', () => {
-  assert.ok(/직보 <span style="font-size:15px">\$\{N}<\/span>명/.test(th), '직보 인원이 없음');
+  assert.ok(/직보 <span style="font-size:16px">\$\{N}<\/span>명/.test(th), '직보 인원이 없음');
   assert.ok(th.includes('${g.who.map(x=>anEsc(x.name)).join(\', \')}'), '학생 이름이 없음');
 });
 ok('부별 인원', () => {
   assert.ok(th.includes('function jbSlotsOn(ds)'), '부별 집계가 없음');
-  assert.ok(th.includes('${anEsc(x.slot||x.name)} <span style="font-size:15px">${x.coming.length}</span>명'), '부별 인원이 없음');
+  assert.ok(th.includes('${anEsc(x.slot||x.name)} <span style="font-size:16px">${x.coming.length}</span>명'), '부별 인원이 없음');
   assert.ok(/String\(a\.slot\|\|''\)\.localeCompare\(String\(b\.slot\|\|''\)\)/.test(th), '부 순서대로 안 세움');
 });
 ok('총원은 1부·2부를 다 듣는 학생을 한 번만 센다', () => {
@@ -112,7 +112,7 @@ console.log('\n같은 시간은 한 줄로');
 ok('시간을 한 번만 적고 그 아래에 학교별 인원·이름', () => {
   // 전에는 🔶15:00 관양 / 🔶15:00 신성 / 🔶15:00 백운 … 시간이 네 번 반복됐다
   assert.ok(th.includes('시간이 네 번 반복되면 읽기 어렵다'), '시간으로 안 묶음');
-  assert.ok(/🔶\$\{t(?:m|\.time)} <span style="font-size:13.5px">\$\{tot}명<\/span>/.test(th), '시간별 합계가 없음');
+  assert.ok(/🔶\$\{t(?:m|\.time)} <span style="font-size:14.5px">\$\{tot}명<\/span>/.test(th), '시간별 합계가 없음');
 });
 
 console.log('\n안전');

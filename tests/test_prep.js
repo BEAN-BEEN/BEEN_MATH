@@ -105,8 +105,8 @@ ok('머리에 전체 부수와 담임·부담임 합계', () => {
   seed();
   const h = T.schoolInfoHtml();
   // 원본은 부담임반, 변형은 담임반에 준다
-  assert.ok(/✏️ 변형 <strong style="font-size:16px">3부<\/strong> <span style="color:var\(--text-muted\)">담임반/.test(h), '변형 합계가 틀림');
-  assert.ok(/📘 원본 <strong style="font-size:16px;color:var\(--orange\)">1부<\/strong> <span style="color:var\(--text-muted\)">부담임반/.test(h), '원본 합계가 틀림');
+  assert.ok(/✏️ 변형 <strong style="font-size:17px">3부<\/strong> <span style="color:var\(--text-muted\)">담임반/.test(h), '변형 합계가 틀림');
+  assert.ok(/📘 원본 <strong style="font-size:17px;color:var\(--orange\)">1부<\/strong> <span style="color:var\(--text-muted\)">부담임반/.test(h), '원본 합계가 틀림');
   assert.ok(h.includes('📄 합 4부'), '전체 합이 틀림');
 });
 

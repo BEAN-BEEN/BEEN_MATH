@@ -30,32 +30,32 @@
     [data-theme="autumn"]{ --primary:#DD7A2E; --primary-dark:#C2641C; --primary-light:#FFF6EC; --primary-2:#F0A862; }
     [data-theme="winter"]{ --primary:#3F6FD1; --primary-dark:#3257AE; --primary-light:#EEF3FF; --primary-2:#7BA0E8; }
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'Noto Sans KR',-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;overflow-x:hidden;-webkit-text-size-adjust:100%}
+    body{font-family:'Noto Sans KR',-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:15px;overflow-x:hidden;-webkit-text-size-adjust:100%}
     .wrap{max-width:980px;margin:0 auto;padding:18px 16px 60px}
     .topbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
     .topbar h1{font-size:22px;font-weight:800;color:var(--primary);letter-spacing:-.5px}
-    .topbar .date{font-size:13px;color:var(--text-muted)}
-    .card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px 20px;margin-bottom:16px}
-    .card-title{font-size:15px;font-weight:700;margin-bottom:12px}
-    .btn{display:inline-flex;align-items:center;gap:5px;padding:9px 14px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;border:none;font-family:inherit;transition:all .15s}
+    .topbar .date{font-size:14px;color:var(--text-muted)}
+    .card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:20px 22px;margin-bottom:18px}
+    .card-title{font-size:16px;font-weight:700;margin-bottom:12px}
+    .btn{display:inline-flex;align-items:center;gap:5px;padding:9px 14px;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer;border:none;font-family:inherit;transition:all .15s}
     .btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{background:var(--primary-dark)}
     .btn-outline{background:var(--surface);color:var(--text-sub);border:1.5px solid var(--border)}.btn-outline:hover{border-color:var(--primary);color:var(--primary)}
     .btn-red{background:var(--red-light);color:var(--red)}
-    .btn-sm{padding:5px 10px;font-size:12px;border-radius:7px}
-    .form-input,.form-select,.form-textarea{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14px;font-family:inherit;color:var(--text)}
+    .btn-sm{padding:6px 11px;font-size:13px;border-radius:7px}
+    .form-input,.form-select,.form-textarea{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:15px;font-family:inherit;color:var(--text)}
     .form-input:focus,.form-select:focus,.form-textarea:focus{outline:none;border-color:var(--primary)}
-    .form-label{display:block;font-size:12px;font-weight:600;color:var(--text-sub);margin-bottom:5px}
-    .chip{display:inline-block;padding:3px 9px;border-radius:7px;font-size:12px;font-weight:600}
-    .layer-btn{padding:7px 13px;border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;border:2px solid var(--border);background:var(--surface);color:var(--text-muted);transition:all .15s;font-family:inherit}
+    .form-label{display:block;font-size:13px;font-weight:600;color:var(--text-sub);margin-bottom:5px}
+    .chip{display:inline-block;padding:3px 9px;border-radius:7px;font-size:13px;font-weight:600}
+    .layer-btn{padding:7px 13px;border-radius:20px;font-size:14px;font-weight:700;cursor:pointer;border:2px solid var(--border);background:var(--surface);color:var(--text-muted);transition:all .15s;font-family:inherit}
     .layer-btn.on-teach{border-color:var(--primary);background:var(--primary-light);color:var(--primary)}
     .layer-btn.on-academy{border-color:var(--purple);background:var(--purple-light);color:var(--purple)}
     .layer-btn.on-personal{border-color:var(--green);background:var(--green-light);color:var(--green)}
     .todo-row{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--border)}
     .todo-row input[type=checkbox]{width:19px;height:19px;accent-color:var(--primary);cursor:pointer;flex:0 0 auto}
-    .todo-text{flex:1;font-size:14px}
+    .todo-text{flex:1;font-size:15px}
     .todo-done .todo-text{text-decoration:line-through;color:var(--text-muted)}
     .toast-container{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:2000;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none}
-    .toast{background:#1E293B;color:#fff;padding:10px 20px;border-radius:24px;font-size:13px;font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,.2);animation:tIn .3s ease,tOut .3s ease 2.2s forwards;display:flex;align-items:center;gap:8px}
+    .toast{background:#1E293B;color:#fff;padding:10px 20px;border-radius:24px;font-size:14px;font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,.2);animation:tIn .3s ease,tOut .3s ease 2.2s forwards;display:flex;align-items:center;gap:8px}
     .toast.success{background:var(--green)}.toast.error{background:var(--red)}.toast.warning{background:var(--orange)}
     @keyframes tIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
     @keyframes tOut{to{opacity:0;transform:translateY(8px)}}
@@ -80,13 +80,13 @@
       <div class="card-title" style="margin:0">📆 캘린더</div>
       <div style="display:flex;align-items:center;gap:8px">
         <button class="btn btn-outline btn-sm" onclick="pShift(-1)">◀</button>
-        <strong style="font-size:16px;min-width:100px;text-align:center" id="calMonthLabel"></strong>
+        <strong style="font-size:17px;min-width:100px;text-align:center" id="calMonthLabel"></strong>
         <button class="btn btn-outline btn-sm" onclick="pShift(1)">▶</button>
         <button class="btn btn-outline btn-sm" onclick="pY=null;rCal()">오늘</button>
       </div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px" id="layerBtns"></div>
-    <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--text-muted);margin-bottom:10px">
+    <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--text-muted);margin-bottom:10px">
       <span><span style="display:inline-block;width:10px;height:10px;background:var(--primary-light);border:1px solid var(--primary);border-radius:2px;vertical-align:middle"></span> 수업</span>
       <span><span style="display:inline-block;width:10px;height:10px;background:var(--orange);border-radius:2px;vertical-align:middle"></span> 보강</span>
       <span>📕 시험기간 · 📐 수학시험일</span>
@@ -117,7 +117,7 @@
   </div>
 
   <div class="card">
-    <div class="card-title">🗓️ 다가오는 일정 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(2주)</span></div>
+    <div class="card-title">🗓️ 다가오는 일정 <span style="font-size:13px;color:var(--text-muted);font-weight:400">(2주)</span></div>
     <div id="upcomingList"></div>
   </div>
 
@@ -429,10 +429,10 @@ function jikboDayCell(d,i,tStr){
   const isToday=ds===tStr, hol=holidayName(ds), isSel=ds===selDate;
   const math=[]; P_EXAMS.forEach(e=>examMathDates(e).forEach(m=>{ const nm=shortSchool(e.school); if(m.date===ds && nm && math.indexOf(nm)<0) math.push(nm); }));
   let c=`<div onclick="jbPick('${ds}')" title="누르면 아래에서 누가 오고 누가 빠지는지 봐요" style="cursor:pointer;min-width:0;border:1px solid var(--border);border-radius:9px;overflow:hidden;background:${isToday?'var(--primary-light)':'var(--surface)'};${isSel?'box-shadow:inset 0 0 0 2px var(--primary)':''}">`;
-  c+=`<div style="text-align:center;padding:6px 3px;background:${(i>=5||hol)?'#FEF2F2':'var(--bg)'};font-weight:800;font-size:15px;color:${i===6?'#EF4444':(i===5?'#2563EB':'var(--text-sub)')}">${JB_DOW[i]}
+  c+=`<div style="text-align:center;padding:6px 3px;background:${(i>=5||hol)?'#FEF2F2':'var(--bg)'};font-weight:800;font-size:16px;color:${i===6?'#EF4444':(i===5?'#2563EB':'var(--text-sub)')}">${JB_DOW[i]}
     <span style="font-weight:800;color:var(--text);margin-left:3px">${d.getMonth()+1}/${d.getDate()}</span>
-    ${hol?`<div style="font-size:11px;font-weight:700;color:#EA580C">${hol}</div>`:''}
-    ${math.length?`<div style="font-size:11.5px;font-weight:800;color:#DC2626">📐 ${math.join(' ')}</div>`:''}</div>`;
+    ${hol?`<div style="font-size:12.5px;font-weight:700;color:#EA580C">${hol}</div>`:''}
+    ${math.length?`<div style="font-size:12.5px;font-weight:800;color:#DC2626">📐 ${math.join(' ')}</div>`:''}</div>`;
   c+=`<div style="padding:6px;min-height:52px">`;
   if(entries.length){
     // 같은 시간에 오는 학교는 시간 한 줄 아래에 모아 적는다 — 시간이 네 번 반복되면 읽기 어렵다
@@ -441,16 +441,16 @@ function jikboDayCell(d,i,tStr){
     Object.keys(byTime).sort().forEach(tm=>{
       const list=byTime[tm], tot=list.reduce((a,x)=>a+x.students.length,0);
       c+=`<div style="margin-bottom:7px">
-        <div style="font-size:12.5px;font-weight:800;color:var(--orange);word-break:keep-all">🔶${tm} <span style="font-size:13.5px">${tot}명</span></div>
-        ${list.map(x=>`<div style="font-size:12.5px;line-height:1.45;word-break:keep-all;margin-top:2px">
+        <div style="font-size:13.5px;font-weight:800;color:var(--orange);word-break:keep-all">🔶${tm} <span style="font-size:14.5px">${tot}명</span></div>
+        ${list.map(x=>`<div style="font-size:13.5px;line-height:1.45;word-break:keep-all;margin-top:2px">
           <span style="font-weight:800;color:#C2410C">${shortSchool(x.school)} ${x.students.length}명</span>
           <span style="color:var(--text-sub)"> ${x.students.join(', ')}</span></div>`).join('')}</div>`;
     });
-  } else if(!total){ c+='<div style="font-size:13px;color:var(--text-muted);text-align:center;padding:8px 0">-</div>'; }
-  if(total){ c+=`<div style="font-size:13px;font-weight:800;border-top:1px dashed var(--border);padding-top:5px;margin-top:3px;line-height:1.6;word-break:keep-all">
-    ${N?`<div style="color:var(--orange)">직보 <span style="font-size:15px">${N}</span>명</div>`:''}
-    ${slots.map(x=>`<div title="${x.name} — ${x.names.join(', ')}" style="color:var(--primary)">${x.slot||x.name} <span style="font-size:15px">${x.n}</span>명</div>`).join('')}
-    <div style="font-size:16px;color:var(--text);margin-top:2px">총 ${total}명</div></div>`; }
+  } else if(!total){ c+='<div style="font-size:14px;color:var(--text-muted);text-align:center;padding:8px 0">-</div>'; }
+  if(total){ c+=`<div style="font-size:14px;font-weight:800;border-top:1px dashed var(--border);padding-top:5px;margin-top:3px;line-height:1.6;word-break:keep-all">
+    ${N?`<div style="color:var(--orange)">직보 <span style="font-size:16px">${N}</span>명</div>`:''}
+    ${slots.map(x=>`<div title="${x.name} — ${x.names.join(', ')}" style="color:var(--primary)">${x.slot||x.name} <span style="font-size:16px">${x.n}</span>명</div>`).join('')}
+    <div style="font-size:17px;color:var(--text);margin-top:2px">총 ${total}명</div></div>`; }
   c+='</div></div>';
   return {html:c, N, total};
 }
@@ -470,16 +470,16 @@ function rJikbo(){
     jbDays+=wDays;
     const we=new Date(ws); we.setDate(ws.getDate()+6);
     weeksHtml+=`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:${w?'18px':'2px'} 0 6px">
-      <span style="font-size:16px;font-weight:800">${ws.getMonth()+1}/${ws.getDate()} ~ ${we.getMonth()+1}/${we.getDate()}</span>
+      <span style="font-size:17px;font-weight:800">${ws.getMonth()+1}/${ws.getDate()} ~ ${we.getMonth()+1}/${we.getDate()}</span>
       ${dStr(ws)===thisMon?'<span class="badge b-green">이번 주</span>':''}
-      ${wDays?`<span style="font-size:13.5px;font-weight:800;color:#C2410C">🔶 직보 ${wDays}일</span>`
-             :'<span style="font-size:13px;color:var(--text-muted)">직보 없음</span>'}</div>`;
+      ${wDays?`<span style="font-size:14.5px;font-weight:800;color:#C2410C">🔶 직보 ${wDays}일</span>`
+             :'<span style="font-size:14px;color:var(--text-muted)">직보 없음</span>'}</div>`;
     weeksHtml+=`<div data-jbscroll style="overflow-x:auto"><div style="display:grid;grid-template-columns:repeat(7,minmax(94px,1fr));gap:4px;min-width:672px">${cells}</div></div>`;
   }
   const wkBtn=n=>`<button class="btn btn-sm ${jbWeeks===n?'btn-primary':'btn-outline'}" onclick="jbSetWeeks(${n})">${n}주</button>`;
   el.innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
-      <div class="card-title" style="margin:0">🔶 직보 일정 <span style="font-size:12px;color:var(--text-muted);font-weight:400">(주차별 · 날짜를 누르면 아래에 명단 · 이대로 캡처해서 보내세요)</span></div>
+      <div class="card-title" style="margin:0">🔶 직보 일정 <span style="font-size:13px;color:var(--text-muted);font-weight:400">(주차별 · 날짜를 누르면 아래에 명단 · 이대로 캡처해서 보내세요)</span></div>
       <div data-jbhide style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
         <button class="btn btn-primary btn-sm" id="jbShotBtn" onclick="jbCapture()">📸 캡처</button>
         ${[1,2,3,4].map(wkBtn).join('')}
@@ -488,13 +488,13 @@ function rJikbo(){
         <button class="btn btn-outline btn-sm" onclick="jbWeekStart=null;rJikbo()">이번 주</button>
       </div>
     </div>
-    <div style="font-size:13px;color:var(--text-muted);margin-bottom:10px">부별 인원은 그날 <strong>올 것 같은 사람</strong>이에요 — 직보 가는 학생과 다음 날 학교 시험이 있는 학생은 빼고 셉니다. <strong>총</strong>은 그날 오는 사람 수(1부·2부를 다 듣는 학생은 한 번).</div>
+    <div style="font-size:14px;color:var(--text-muted);margin-bottom:10px">부별 인원은 그날 <strong>올 것 같은 사람</strong>이에요 — 직보 가는 학생과 다음 날 학교 시험이 있는 학생은 빼고 셉니다. <strong>총</strong>은 그날 오는 사람 수(1부·2부를 다 듣는 학생은 한 번).</div>
     ${weeksHtml}
-    <div style="font-size:11.5px;color:var(--text-muted);margin-top:12px;border-top:1px dashed var(--border);padding-top:8px">
+    <div style="font-size:12.5px;color:var(--text-muted);margin-top:12px;border-top:1px dashed var(--border);padding-top:8px">
       수학시험 <strong>전날부터 거슬러</strong> — 주말·공휴일이 붙으면 그 앞 평일까지 (주말 낀 화요일 시험이면 금·토·일·월) · <strong>다음 날 다른 과목 시험이면 그날은 쉬어요</strong><br>
       시간은 토·일·공휴일 12시 / 금요일 15시 / 그 밖의 평일은 그날 학교시험이 있으면 14시, 없으면 17시
     </div>
-    ${P_EXAMS.length===0?'<div style="font-size:13px;color:var(--text-muted);margin-top:10px">학교 시험 일정을 입력하면(성적관리 → 학교별 내신 시험) 자동으로 직보가 생성돼요.</div>':''}`;
+    ${P_EXAMS.length===0?'<div style="font-size:14px;color:var(--text-muted);margin-top:10px">학교 시험 일정을 입력하면(성적관리 → 학교별 내신 시험) 자동으로 직보가 생성돼요.</div>':''}`;
 }
 function isClassActive(c, dateStr){
   if(c.endDate && dateStr>c.endDate) return false;
@@ -584,7 +584,7 @@ function rCal(){
   const tStr=todayStr();
   const dowL=['일','월','화','수','목','금','토'];
   let h=`<div style="display:grid;grid-template-columns:repeat(7,minmax(88px,1fr));gap:4px;min-width:650px">`;
-  h+=dowL.map((l,i)=>`<div style="text-align:center;font-size:13px;font-weight:800;color:${i===0?'#EF4444':(i===6?'#2563EB':'var(--text-muted)')};padding:3px">${l}</div>`).join('');
+  h+=dowL.map((l,i)=>`<div style="text-align:center;font-size:14px;font-weight:800;color:${i===0?'#EF4444':(i===6?'#2563EB':'var(--text-muted)')};padding:3px">${l}</div>`).join('');
   h+=cells.map(d=>{
     if(!d) return '<div></div>';
     const dateStr=`${pY}-${pad(pM+1)}-${pad(d)}`;
@@ -594,13 +594,13 @@ function rCal(){
     const isToday=dateStr===tStr, isSel=dateStr===selDate;
     let cell=`<div onclick="selDate='${dateStr}';rDayDetail();rCal()" style="cursor:pointer;min-height:104px;border:1px solid var(--border);border-radius:8px;padding:5px 6px;background:${shade?'#FEF2F2':(isToday?'var(--primary-light)':'var(--surface)')};${isSel?'box-shadow:inset 0 0 0 2px var(--primary)':''}">`;
     const _hol=holidayName(dateStr);
-    cell+=`<div style="font-size:15px;font-weight:800;color:${(_hol||dow===0)?'#EF4444':(dow===6?'#2563EB':'var(--text-sub)')}">${d}${shade?' <span style="font-size:12px;color:#DC2626">📕</span>':''}</div>`;
-    if(_hol) cell+=`<div style="font-size:11px;font-weight:800;color:#EA580C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🇰🇷 ${_hol}</div>`;
+    cell+=`<div style="font-size:16px;font-weight:800;color:${(_hol||dow===0)?'#EF4444':(dow===6?'#2563EB':'var(--text-sub)')}">${d}${shade?' <span style="font-size:13px;color:#DC2626">📕</span>':''}</div>`;
+    if(_hol) cell+=`<div style="font-size:12.5px;font-weight:800;color:#EA580C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🇰🇷 ${_hol}</div>`;
     const _exS=examSchoolsOn(dateStr);
     // 학교마다 한 줄씩 (겹쳐도 다 보이게)
-    _exS.forEach(s=>{ cell+=`<div title="${s} 시험기간" style="font-size:11px;font-weight:800;color:#B91C1C;background:#FEE2E2;border-radius:4px;padding:1px 4px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📕 ${s}</div>`; });
-    items.slice(0,5).forEach(it=>{ cell+=`<div style="font-size:12px;font-weight:600;border-radius:4px;padding:2px 4px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${ITEM_STYLE[it.type]}">${it.text}</div>`; });
-    if(items.length>5) cell+=`<div style="font-size:11px;color:var(--text-muted);margin-top:2px">+${items.length-5}개 더</div>`;
+    _exS.forEach(s=>{ cell+=`<div title="${s} 시험기간" style="font-size:12.5px;font-weight:800;color:#B91C1C;background:#FEE2E2;border-radius:4px;padding:1px 4px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📕 ${s}</div>`; });
+    items.slice(0,5).forEach(it=>{ cell+=`<div style="font-size:13px;font-weight:600;border-radius:4px;padding:2px 4px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${ITEM_STYLE[it.type]}">${it.text}</div>`; });
+    if(items.length>5) cell+=`<div style="font-size:12.5px;color:var(--text-muted);margin-top:2px">+${items.length-5}개 더</div>`;
     cell+='</div>'; return cell;
   }).join('');
   h+='</div>';
@@ -615,10 +615,10 @@ function jikboRosterHtml(dateStr){
   if(!on.length) return '';
   const total=on.reduce((a,x)=>a+x.students.length,0);
   return `<div style="margin-top:10px;border-top:1px dashed var(--border);padding-top:10px">
-    <div style="font-size:13px;font-weight:700;margin-bottom:6px">🔶 직보 <span style="color:var(--orange)">${total}명</span></div>
+    <div style="font-size:14px;font-weight:700;margin-bottom:6px">🔶 직보 <span style="color:var(--orange)">${total}명</span></div>
     ${on.map(x=>`<div style="background:#FFF7ED;border-radius:8px;padding:8px 10px;margin-bottom:6px">
-      <div style="font-size:13px;font-weight:800;color:#C2410C">${x.time} ${shortSchool(x.school)} <span style="font-size:12px">${x.students.length}명</span></div>
-      <div style="font-size:12.5px;color:var(--text-sub);margin-top:3px">${x.students.join(', ')}</div>
+      <div style="font-size:14px;font-weight:800;color:#C2410C">${x.time} ${shortSchool(x.school)} <span style="font-size:13px">${x.students.length}명</span></div>
+      <div style="font-size:13.5px;color:var(--text-sub);margin-top:3px">${x.students.join(', ')}</div>
     </div>`).join('')}</div>`;
 }
 function classAttendanceHtml(dateStr){
@@ -626,16 +626,16 @@ function classAttendanceHtml(dateStr){
   const classes=P_CLASSES.filter(c=>c.weekday===wd && isClassActive(c,dateStr) && (!c.type||c.type==='정규')).sort((a,b)=>(a.slot||'').localeCompare(b.slot||''));
   if(!classes.length) return '';
   const jb=jikboStudentIdsOn(dateStr);
-  let html='<div style="margin-top:10px;border-top:1px dashed var(--border);padding-top:10px"><div style="font-size:13px;font-weight:700;margin-bottom:6px">👥 수업별 출결 예상 <span style="font-size:11px;color:var(--text-muted);font-weight:400">(직보·다음날 시험 학생은 빠짐)</span></div>';
+  let html='<div style="margin-top:10px;border-top:1px dashed var(--border);padding-top:10px"><div style="font-size:14px;font-weight:700;margin-bottom:6px">👥 수업별 출결 예상 <span style="font-size:12.5px;color:var(--text-muted);font-weight:400">(직보·다음날 시험 학생은 빠짐)</span></div>';
   classes.forEach(c=>{
     const roster=P_STUDENTS.filter(s=>{ const ids=Array.isArray(s.classIds)?s.classIds:(s.classId?[s.classId]:[]); return ids.includes(c.id); });
     const coming=[], jikbo=[], exam=[];
     roster.forEach(s=>{ if(jb.has(s.id)) jikbo.push(s.name); else if(hasOtherExamNextDay(s,dateStr)) exam.push(s.name); else coming.push(s.name); });
     html+=`<div style="background:var(--bg);border-radius:8px;padding:8px 10px;margin-bottom:6px">
-      <div style="font-size:13px;font-weight:700">${c.slot?`<span style="color:var(--primary)">${c.slot}</span> `:''}${c.name} <span style="font-size:11px;color:var(--text-muted)">${c.startTime&&c.endTime?(c.startTime+'~'+c.endTime):''}</span> · <span style="color:var(--green)">올 ${coming.length}명</span>${(jikbo.length+exam.length)?` / <span style="color:var(--text-muted)">빠짐 ${jikbo.length+exam.length}명</span>`:''}</div>
-      <div style="font-size:12px;color:var(--text-sub);margin-top:3px">✅ ${coming.join(', ')||'-'}</div>
-      ${jikbo.length?`<div style="font-size:12px;color:var(--orange);margin-top:2px">🔶 직보로 빠짐: ${jikbo.join(', ')}</div>`:''}
-      ${exam.length?`<div style="font-size:12px;color:var(--red);margin-top:2px">📝 다음날 시험 준비: ${exam.join(', ')}</div>`:''}
+      <div style="font-size:14px;font-weight:700">${c.slot?`<span style="color:var(--primary)">${c.slot}</span> `:''}${c.name} <span style="font-size:12.5px;color:var(--text-muted)">${c.startTime&&c.endTime?(c.startTime+'~'+c.endTime):''}</span> · <span style="color:var(--green)">올 ${coming.length}명</span>${(jikbo.length+exam.length)?` / <span style="color:var(--text-muted)">빠짐 ${jikbo.length+exam.length}명</span>`:''}</div>
+      <div style="font-size:13px;color:var(--text-sub);margin-top:3px">✅ ${coming.join(', ')||'-'}</div>
+      ${jikbo.length?`<div style="font-size:13px;color:var(--orange);margin-top:2px">🔶 직보로 빠짐: ${jikbo.join(', ')}</div>`:''}
+      ${exam.length?`<div style="font-size:13px;color:var(--red);margin-top:2px">📝 다음날 시험 준비: ${exam.join(', ')}</div>`:''}
     </div>`;
   });
   return html+'</div>';
@@ -652,9 +652,9 @@ function rDayDetail(){
     </div>
     ${items.length?items.map(it=>`
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 6px;border-bottom:1px solid var(--border)">
-        <div><span class="chip" style="${ITEM_STYLE[it.type]}">${it.text}</span> <span style="font-size:12px;color:var(--text-muted)">${it.sub||''}${it.repeat?' · 🔁'+({daily:'매일',weekly:'매주',monthly:'매월'}[it.repeat]||''):''}</span></div>
+        <div><span class="chip" style="${ITEM_STYLE[it.type]}">${it.text}</span> <span style="font-size:13px;color:var(--text-muted)">${it.sub||''}${it.repeat?' · 🔁'+({daily:'매일',weekly:'매주',monthly:'매월'}[it.repeat]||''):''}</span></div>
         ${it.id?`<button class="btn btn-red btn-sm" onclick="doDelEvent('${it.id}')">삭제</button>`:''}
-      </div>`).join(''):'<div style="color:var(--text-muted);padding:10px;font-size:13px">이 날은 일정이 없어요 🍃</div>'}
+      </div>`).join(''):'<div style="color:var(--text-muted);padding:10px;font-size:14px">이 날은 일정이 없어요 🍃</div>'}
     ${jikboRosterHtml(selDate)}
     ${classAttendanceHtml(selDate)}
   </div>`;
@@ -670,8 +670,8 @@ function rBriefing(){
   const dueTodos=P_TODOS.filter(x=>!x.done&&x.due&&x.due<=t);
   const within7=[]; P_EXAMS.forEach(e=>examMathDates(e).forEach(m=>{ const diff=Math.round((new Date(m.date+'T00:00:00')-new Date(t+'T00:00:00'))/86400000); if(diff>=0&&diff<=7) within7.push(`${e.school} ${m.label} D-${diff===0?'DAY':diff}`); }));
   document.getElementById('briefing').innerHTML=`<div class="card" style="background:linear-gradient(135deg,var(--primary) 0%,var(--primary-2) 100%);color:#fff">
-    <div style="font-size:16px;font-weight:800;margin-bottom:10px">☀️ 오늘 브리핑</div>
-    <div style="display:flex;flex-direction:column;gap:6px;font-size:14px">
+    <div style="font-size:17px;font-weight:800;margin-bottom:10px">☀️ 오늘 브리핑</div>
+    <div style="display:flex;flex-direction:column;gap:6px;font-size:15px">
       <div>📚 수업 ${cls.length?cls.map(c=>`<strong>${c.text}</strong>`).join(', '):'없음'}</div>
       ${jbs.length?`<div>🔶 직보 <strong>${jbs.map(j=>j.sub||'').join(' / ')}</strong></div>`:''}
       ${mks.length?`<div>🔶 보강 ${mks.map(m=>`<strong>${m.text.replace('🔶 ','')}</strong> ${m.sub||''}`).join(', ')}</div>`:''}
@@ -718,12 +718,12 @@ function rUpcoming(){
   document.getElementById('upcomingList').innerHTML = out.length? out.map(e=>`
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid var(--border)">
       <div>
-        <span style="font-size:12px;font-weight:700;color:var(--text-muted);margin-right:8px">${fmtMD(e.on)}</span>
+        <span style="font-size:13px;font-weight:700;color:var(--text-muted);margin-right:8px">${fmtMD(e.on)}</span>
         <span class="chip" style="${e.category==='academy'?ITEM_STYLE.academy:(e.category==='personal'?ITEM_STYLE.personal:ITEM_STYLE.makeup)}">${e.title}</span>
-        <span style="font-size:12px;color:var(--text-muted)">${e.time||''}${e.repeat?' · 🔁':''}</span>
+        <span style="font-size:13px;color:var(--text-muted)">${e.time||''}${e.repeat?' · 🔁':''}</span>
       </div>
       ${e.id?`<button class="btn btn-red btn-sm" onclick="doDelEvent('${e.id}')">삭제</button>`:''}
-    </div>`).join('') : '<div style="color:var(--text-muted);padding:10px;font-size:13px">2주 안에 등록된 일정이 없어요</div>';
+    </div>`).join('') : '<div style="color:var(--text-muted);padding:10px;font-size:14px">2주 안에 등록된 일정이 없어요</div>';
 }
 
 // ----- 투두 -----
@@ -749,12 +749,12 @@ function rTodos(){
   const open=P_TODOS.filter(x=>!x.done), done=P_TODOS.filter(x=>x.done);
   const row=x=>`<div class="todo-row ${x.done?'todo-done':''}">
     <input type="checkbox" ${x.done?'checked':''} onchange="doToggleTodo('${x.id}',this.checked)">
-    <span class="todo-text">${x.text}${x.due?` <span style="font-size:11px;font-weight:700;color:${(!x.done&&x.due<=t)?'var(--red)':'var(--text-muted)'}">📅 ${fmtMD(x.due)}${(!x.done&&x.due<t)?' 지남!':''}</span>`:''}</span>
+    <span class="todo-text">${x.text}${x.due?` <span style="font-size:12.5px;font-weight:700;color:${(!x.done&&x.due<=t)?'var(--red)':'var(--text-muted)'}">📅 ${fmtMD(x.due)}${(!x.done&&x.due<t)?' 지남!':''}</span>`:''}</span>
     <button class="btn btn-red btn-sm" onclick="doDelTodo('${x.id}')">삭제</button>
   </div>`;
   document.getElementById('todoList').innerHTML=
-    (open.length?open.map(row).join(''):'<div style="color:var(--text-muted);padding:10px;font-size:13px">할 일이 없어요! 여유를 즐기세요 ☕</div>')
-    +(done.length?`<div style="font-size:12px;color:var(--text-muted);margin-top:10px;font-weight:700">완료 (${done.length})</div>`+done.slice(0,8).map(row).join(''):'');
+    (open.length?open.map(row).join(''):'<div style="color:var(--text-muted);padding:10px;font-size:14px">할 일이 없어요! 여유를 즐기세요 ☕</div>')
+    +(done.length?`<div style="font-size:13px;color:var(--text-muted);margin-top:10px;font-weight:700">완료 (${done.length})</div>`+done.slice(0,8).map(row).join(''):'');
 }
 
 // ----- 시작 -----
@@ -772,11 +772,11 @@ document.addEventListener('DOMContentLoaded', init);
 <div id="jbShotModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.78);z-index:1700;align-items:flex-start;justify-content:center;overflow:auto;padding:16px" onclick="if(event.target===this)closeJbShot()">
   <div style="width:100%;max-width:860px">
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
-      <button onclick="jbShotCopy()" style="border:none;border-radius:9px;padding:9px 16px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;background:#22C55E;color:#fff">📋 복사</button>
-      <button onclick="jbShotSave()" style="border:none;border-radius:9px;padding:9px 16px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;background:#F97316;color:#fff">💾 저장</button>
-      <button id="jbShotShareBtn" onclick="jbShotShare()" style="display:none;border:none;border-radius:9px;padding:9px 16px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;background:#5B6CF5;color:#fff">📤 보내기</button>
-      <button onclick="closeJbShot()" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:9px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">닫기</button>
-      <span style="color:rgba(255,255,255,.75);font-size:11px;margin-left:2px">복사한 뒤 카톡에 붙여넣기 하시면 돼요</span>
+      <button onclick="jbShotCopy()" style="border:none;border-radius:9px;padding:9px 16px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;background:#22C55E;color:#fff">📋 복사</button>
+      <button onclick="jbShotSave()" style="border:none;border-radius:9px;padding:9px 16px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;background:#F97316;color:#fff">💾 저장</button>
+      <button id="jbShotShareBtn" onclick="jbShotShare()" style="display:none;border:none;border-radius:9px;padding:9px 16px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;background:#5B6CF5;color:#fff">📤 보내기</button>
+      <button onclick="closeJbShot()" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:9px;padding:9px 16px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">닫기</button>
+      <span style="color:rgba(255,255,255,.75);font-size:12.5px;margin-left:2px">복사한 뒤 카톡에 붙여넣기 하시면 돼요</span>
     </div>
     <div id="jbShotPreview" style="background:#fff;border-radius:12px;overflow:hidden;min-height:80px"></div>
     <div style="height:24px"></div>
