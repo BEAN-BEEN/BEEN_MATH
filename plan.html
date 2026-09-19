@@ -338,7 +338,7 @@ async function jbCapture(){
     const w=Math.max(card.scrollWidth, 720);
     card.style.width=w+'px';
     const canvas=await html2canvas(card, {scale:2, backgroundColor:'#ffffff', width:w, windowWidth:w+48, useCORS:true});
-    _jbShotName=`직보_${new Date().toISOString().slice(0,10)}.png`;
+    _jbShotName=`직보_${todayStr()}.png`;
     _jbShotBlob=await new Promise(r=>canvas.toBlob(r,'image/png'));
     const pv=document.getElementById('jbShotPreview');
     if(pv) pv.innerHTML=`<img src="${canvas.toDataURL('image/png')}" alt="직보 일정" style="width:100%;display:block">`;

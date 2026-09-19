@@ -383,6 +383,10 @@ async function deleteClassFS(id){ await db.collection('classes').doc(id).delete(
 // ===== 학생 명단: Firebase Firestore에서 불러옴 (캐시) =====
 let STUDENTS_CACHE=[];
 // 🏫 학교명 통일: "ㅇㅇ고등학교" → "ㅇㅇ고" (앞뒤 공백 제거). 입력·표시·매칭 모두 이걸로 통일.
+// 📅 오늘 날짜 — 한국 시간 기준.
+//   toISOString()은 UTC라서 자정~오전 9시 사이에는 어제 날짜가 나온다.
+//   그 시간대에 D-day·마감 지남·오늘 수업이 하루씩 밀렸다.
+function bmToday(){ const d=new Date(); const p=x=>String(x).padStart(2,"0"); return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); }
 function normSchool(v){ return (v||'').trim().replace(/고등학교$/,'고'); }
 async function loadStudents(){
   const snap=await db.collection('students').orderBy('name').get();
@@ -414,6 +418,7 @@ const CACHE_DEF={
   notices:      {get:()=>NOTICES_CACHE,     sort:a=>a.sort((x,y)=>(y.ts||0)-(x.ts||0))},
   schoolExams:  {get:()=>SCHOOLEXAMS_CACHE, sort:a=>a.sort((x,y)=>cmpStr(x.mathDate,y.mathDate)), norm:d=>{ if(d.school) d.school=normSchool(d.school); return d; }},
   mockExams:    {get:()=>MOCKEXAMS_CACHE,   sort:a=>a.sort((x,y)=>cmpStr(y.date,x.date))},
+  mockSchedule: {get:()=>MOCKSCHED_CACHE,   sort:a=>a.sort((x,y)=>cmpStr(x.date,y.date))},
   mockSubs:     {get:()=>MOCKSUBS_CACHE},
   makeups:      {get:()=>MAKEUPS_CACHE,     sort:a=>a.sort((x,y)=>cmpStr(x.date,y.date))},
   absences:     {get:()=>ABSENCES_CACHE},
@@ -532,7 +537,7 @@ function hwStudents(a){
 async function addStudentFS(data){ const ref=await db.collection('students').add(data); if(!cacheAdd('students', ref.id, data)) await loadStudents(); }
 // 🔜 예약 반 변경 — 예약일이 되면 자동으로 반을 바꿔주고 이력(classHistory)까지 남김
 async function applyPendingMoves(){
-  const today=new Date().toISOString().slice(0,10);
+  const today=bmToday();
   const due=STUDENTS_CACHE.filter(s=>s.pendingMove && s.pendingMove.date && s.pendingMove.date<=today);
   if(!due.length) return 0;
   for(const s of due){
@@ -595,7 +600,7 @@ function hwPunctuality(asgns, subs){
     onTimeRate: total?Math.round(onTime/total*100):null,
     lateRate: total?Math.round(lateN/total*100):null };
 }
-async function saveAssignment(d){ d.createdAt=new Date().toISOString().slice(0,10); const ref=await db.collection('assignments').add(d); if(!cacheAdd('assignments', ref.id, d)) await loadAssignments(); return ref.id; }
+async function saveAssignment(d){ d.createdAt=bmToday(); const ref=await db.collection('assignments').add(d); if(!cacheAdd('assignments', ref.id, d)) await loadAssignments(); return ref.id; }
 async function updateSub(sid,u){ await db.collection('submissions').doc(sid).update(u); if(!cachePut('submissions', sid, u)) await loadSubmissions(); }
 
 // ===== 📚 교재 서랍 = 자주 내는 숙제 프리셋(교재+범위) — 드래그로 반에 뿌리기 =====
@@ -650,7 +655,7 @@ function applyPreset(pid,classId){
   const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=(v==null?'':v); };
   set('hw-textbook',p.textbook); set('hw-title', p.title||p.textbook); set('hw-content', p.content||'');
   set('hw-pstart', p.probStart||''); set('hw-pend', p.probEnd||''); set('hw-plabel', p.probLabel||''); set('hw-photos', p.maxPhotos||30);
-  const st=document.getElementById('hw-start'); if(st && !st.value) st.value=new Date().toISOString().slice(0,10);
+  const st=document.getElementById('hw-start'); if(st && !st.value) st.value=bmToday();
   hwSyncDue();   // 마감일이 비어 있으면 출제일 +1주로 채워둠
   const cls=CLASSES.find(c=>c.id===classId);
   if(classId){ const cs=document.getElementById('hw-cls'); if(cs) cs.value=classId; }
@@ -681,7 +686,7 @@ async function upsertNaesin(student, subject, term, fields){
   const exist=getNaesin(student.id,subject,term);
   const base={ score:(fields.score||'').trim(), grade:(fields.grade||'').trim(), note:(fields.note||'').trim(), updatedAt:new Date().toLocaleString('ko-KR'), ts:Date.now() };
   if(exist){ await db.collection('naesin').doc(exist.id).update(base); if(!cachePut('naesin', exist.id, base)) await loadNaesin(); }
-  else{ const doc={ studentId:student.id, studentName:student.name, school:student.school||'', className:(classNamesOf?classNamesOf(student).join(','):''), subject, term, createdAt:new Date().toISOString().slice(0,10), ...base };
+  else{ const doc={ studentId:student.id, studentName:student.name, school:student.school||'', className:(classNamesOf?classNamesOf(student).join(','):''), subject, term, createdAt:bmToday(), ...base };
     const ref=await db.collection('naesin').add(doc); if(!cacheAdd('naesin', ref.id, doc)) await loadNaesin(); }
 }
 async function deleteNaesin(id){ await db.collection('naesin').doc(id).delete(); if(!cacheDel('naesin', id)) await loadNaesin(); }
@@ -692,7 +697,7 @@ async function loadReviews(){ const s=await db.collection('reviews').get(); REVI
 async function loadReviewSubs(){ const s=await db.collection('reviewSubs').get(); REVIEWSUBS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})); }
 function getReviews(){return REVIEWS_CACHE;}
 function getReviewSubs(rid){return REVIEWSUBS_CACHE.filter(s=>s.reviewId===rid);}
-async function saveReview(d){ d.createdAt=new Date().toISOString().slice(0,10); const ref=await db.collection('reviews').add(d); if(!cacheAdd('reviews', ref.id, d)) await loadReviews(); }
+async function saveReview(d){ d.createdAt=bmToday(); const ref=await db.collection('reviews').add(d); if(!cacheAdd('reviews', ref.id, d)) await loadReviews(); }
 async function updateReview(id,d){ await db.collection('reviews').doc(id).update(d); if(!cachePut('reviews', id, d)) await loadReviews(); }
 async function deleteReview(id){ await db.collection('reviews').doc(id).delete(); if(!cacheDel('reviews', id)) await loadReviews(); }
 // 한 복습 제출 상태 — 지정 번호가 모두 사진이 올라오면 done
@@ -710,7 +715,7 @@ async function loadExams(){ const s=await db.collection('exams').get(); EXAMS_CA
 async function loadExamSubs(){ const s=await db.collection('examSubs').get(); EXAMSUBS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})); }
 function getExams(){return EXAMS_CACHE;}
 function getExamSubs(){return EXAMSUBS_CACHE;}
-async function saveExam(d){ d.createdAt=new Date().toISOString().slice(0,10); const ref=await db.collection('exams').add(d); if(!cacheAdd('exams', ref.id, d)) await loadExams(); return ref.id; }
+async function saveExam(d){ d.createdAt=bmToday(); const ref=await db.collection('exams').add(d); if(!cacheAdd('exams', ref.id, d)) await loadExams(); return ref.id; }
 async function updateExamSub(sid,u){ await db.collection('examSubs').doc(sid).update(u); if(!cachePut('examSubs', sid, u)) await loadExamSubs(); }
 
 // ===== 질문 = Firebase 공유 (학생이 올리면 선생님이 봄) =====
@@ -744,13 +749,21 @@ function getSchoolExams(){ return SCHOOLEXAMS_CACHE; }
 async function addSchoolExam(d){ const doc={...d, ts:Date.now()}; const ref=await db.collection('schoolExams').add(doc); if(!cacheAdd('schoolExams', ref.id, doc)) await loadSchoolExams(); }
 async function updateSchoolExam(id,d){ await db.collection('schoolExams').doc(id).update(d); if(!cachePut('schoolExams', id, d)) await loadSchoolExams(); }
 async function deleteSchoolExam(id){ await db.collection('schoolExams').doc(id).delete(); if(!cacheDel('schoolExams', id)) await loadSchoolExams(); }
+// 📅 모의고사 일정 — 학생 홈 D-day가 보는 일정. 쌤이 직접 등록·수정한다.
+//   '모의고사(자가 등록)'는 점수를 넣는 것이고, 이건 언제 보는지만 적는 것.
+let MOCKSCHED_CACHE=[];
+async function loadMockSchedule(){ try{ const s=await db.collection('mockSchedule').get(); MOCKSCHED_CACHE=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.date||'').localeCompare(b.date||'')); }catch(e){ MOCKSCHED_CACHE=[]; } }
+function getMockSchedule(){ return MOCKSCHED_CACHE; }
+async function addMockSched(d){ const doc={...d, ts:Date.now()}; const ref=await db.collection('mockSchedule').add(doc); if(!cacheAdd('mockSchedule', ref.id, doc)) await loadMockSchedule(); }
+async function updateMockSched(id,d){ await db.collection('mockSchedule').doc(id).update(d); if(!cachePut('mockSchedule', id, d)) await loadMockSchedule(); }
+async function deleteMockSched(id){ await db.collection('mockSchedule').doc(id).delete(); if(!cacheDel('mockSchedule', id)) await loadMockSchedule(); }
 // 📝 모의고사 (학생 자가 등록)
 let MOCKEXAMS_CACHE=[], MOCKSUBS_CACHE=[];
 async function loadMockExams(){ const s=await db.collection('mockExams').get(); MOCKEXAMS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.date||'').localeCompare(a.date||'')); }
 async function loadMockSubs(){ const s=await db.collection('mockSubs').get(); MOCKSUBS_CACHE=s.docs.map(d=>({id:d.id,...d.data()})); }
 function getMockExams(){ return MOCKEXAMS_CACHE; }
 function getMockSubs(){ return MOCKSUBS_CACHE; }
-async function addMockExam(d){ const doc={...d, createdAt:new Date().toISOString().slice(0,10), ts:Date.now()}; const ref=await db.collection('mockExams').add(doc); if(!cacheAdd('mockExams', ref.id, doc)) await loadMockExams(); }
+async function addMockExam(d){ const doc={...d, createdAt:bmToday(), ts:Date.now()}; const ref=await db.collection('mockExams').add(doc); if(!cacheAdd('mockExams', ref.id, doc)) await loadMockExams(); }
 async function updateMockExam(id,d){ await db.collection('mockExams').doc(id).update(d); if(!cachePut('mockExams', id, d)) await loadMockExams(); }
 async function deleteMockExam(id){ await db.collection('mockExams').doc(id).delete(); if(!cacheDel('mockExams', id)) await loadMockExams(); }
 // 🔶 보강 일정 (특정 날짜 단발성)
@@ -767,7 +780,7 @@ async function loadSeasons(){ try{ const s=await db.collection('seasons').get();
 function getSeasons(){ return SEASONS_CACHE; }
 async function addSeason(d){ const doc={...d, ts:Date.now()}; const ref=await db.collection('seasons').add(doc); if(!cacheAdd('seasons', ref.id, doc)) await loadSeasons(); }
 async function deleteSeasonFS(id){ await db.collection('seasons').doc(id).delete(); if(!cacheDel('seasons', id)) await loadSeasons(); }
-function currentSeason(){ const t=new Date().toISOString().slice(0,10); const list=getSeasons();
+function currentSeason(){ const t=bmToday(); const list=getSeasons();
   return list.find(s=>s.startDate&&s.startDate<=t&&(!s.endDate||s.endDate>=t)) || list[0] || null; }
 function asnInSeason(a, season){ if(!season) return true; const d=a.startDate||a.createdAt||a.dueDate||''; if(!d) return true; return (!season.startDate||d>=season.startDate)&&(!season.endDate||d<=season.endDate); }
 let gradeSeasonId=null;   // 반별 관리에서 보고 있는 시즌(null=현재)
@@ -836,7 +849,7 @@ function examMathDates(e){
 }
 // 목록 정렬: 아직 안 끝난 시험을 가까운 순으로 위에, 이미 끝난 시험은 최근 순으로 아래에.
 function cmpExamUpcomingFirst(a,b){
-  const today=new Date().toISOString().slice(0,10);
+  const today=bmToday();
   const endOf=e=>e.endDate||e.startDate||'';
   const doneA=!!(endOf(a) && endOf(a)<today), doneB=!!(endOf(b) && endOf(b)<today);
   if(doneA!==doneB) return doneA?1:-1;                              // 끝난 건 아래로
@@ -1035,7 +1048,7 @@ function rNaesin(){
   el.innerHTML = naesinTab==='exam' ? schoolExamCardHtml()
     : naesinTab==='jikbo' ? makeupBlockHtml()
     : naesinTab==='bogang' ? bogangCheckHtml()
-    : naesinTab==='neis' ? (examTimelineHtml() + schoolLookupHtml() + neisScheduleHtml())
+    : naesinTab==='neis' ? (mockSchedCardHtml() + examTimelineHtml() + schoolLookupHtml() + neisScheduleHtml())
     // 매일 보는 총정리(출판사·범위별 부수, 학교 카드)를 위로 — 23개 학교 출판사 입력표 밑에 깔려 안 보였다
     : (schoolInfoHtml() + schoolBooksHtml());
 }
@@ -1241,7 +1254,7 @@ function scheduleGaps(todayStr){
   return gaps;
 }
 function scheduleGapHtml(){
-  let gaps=[]; try{ gaps=scheduleGaps(new Date().toISOString().slice(0,10)); }catch(e){ return ''; }
+  let gaps=[]; try{ gaps=scheduleGaps(bmToday()); }catch(e){ return ''; }
   if(!gaps.length) return '';
   return `<div class="card" style="margin:0;border-left:4px solid #F59E0B;background:#FFFBEB">
     <div style="font-size:14px;font-weight:800;color:#92400E;margin-bottom:6px">🗓 미리 채워둘 일정 ${gaps.length}가지</div>
@@ -1259,7 +1272,7 @@ async function doSaveExamScope(id, val){
 }
 // 🔔 내 학생은 있는데 시험 일정이 아직 없는 학교 — 이걸 알려줘야 새로 등록할 수 있어요.
 function schoolsMissingExamHtml(){
-  const today=new Date().toISOString().slice(0,10);
+  const today=bmToday();
   const cnt={};
   getStudents().forEach(st=>{ if(!isActiveStudent(st)) return; const sc=normSchool(st.school||''); if(!sc) return; cnt[sc]=(cnt[sc]||0)+1; });
   const hasUpcoming=new Set();
@@ -1353,9 +1366,103 @@ function examTimelineHtml(){
     </div>
   </div>`;
 }
+// ───── 📅 모의고사 일정 (학생 홈 D-day)
+//   6월·9월 '모의평가'는 평가원 주관이라 고3만 봐요. 학력평가는 고1·2·3 다 봅니다.
+//   교육청 일정이 아직 안 나온 해는 '잠정'으로 표시해 학생 화면에 (잠정)이라고 붙여줍니다.
+const MOCK_SEED=[
+  {date:'2026-03-24', name:'3월 학력평가', grades:[1,2,3]},
+  {date:'2026-05-07', name:'5월 학력평가', grades:[3]},
+  {date:'2026-06-04', name:'6월 모의평가', grades:[3]},
+  {date:'2026-07-08', name:'7월 학력평가', grades:[3]},
+  {date:'2026-09-02', name:'9월 모의고사', grades:[1,2,3]},
+  {date:'2026-10-20', name:'10월 학력평가', grades:[1,2,3]},
+  {date:'2026-11-19', name:'수능', grades:[3]},
+  {date:'2027-06-03', name:'6월 모의평가', grades:[3], tentative:true},
+  {date:'2027-09-01', name:'9월 모의고사', grades:[1,2,3], tentative:true},
+  {date:'2027-11-18', name:'수능', grades:[3], tentative:true}
+];
+const MOCK_NAMES=['3월 학력평가','5월 학력평가','6월 모의평가','7월 학력평가','9월 모의고사','10월 학력평가','11월 학력평가','수능'];
+let msEditId=null, msPick={for:undefined, grades:[1,2,3]};
+function msGradeLabel(g){ const a=(g||[]).map(Number).filter(Boolean).sort(); return a.length?('고'+a.join('·')):''; }
+function msSync(e){ const key=e?e.id:''; if(msPick.for===key) return; msPick={for:key, grades:(e&&Array.isArray(e.grades)&&e.grades.length)?e.grades.slice():[1,2,3]}; }
+function msToggleGrade(g){ const i=msPick.grades.indexOf(g); if(i>=0) msPick.grades.splice(i,1); else msPick.grades.push(g);
+  const b=document.getElementById('ms-grade-box'); if(b) b.innerHTML=msGradeBoxHtml(); }
+function msGradeBoxHtml(){
+  return [1,2,3].map(g=>{ const on=msPick.grades.includes(g);
+    return `<button class="btn btn-sm" style="padding:5px 13px;font-size:12px;${on?'background:var(--primary);color:#fff;font-weight:800':'background:var(--bg);color:var(--text-sub)'}" onclick="msToggleGrade(${g})">${on?'✓ ':''}고${g}</button>`;
+  }).join('')+`<span style="font-size:11px;color:var(--text-muted);margin-left:6px">${msPick.grades.length?'→ '+msGradeLabel(msPick.grades):'보는 학년을 골라요'}</span>`;
+}
+function msSetName(v){ const el=document.getElementById('ms-name'); if(el) el.value=v; const b=document.getElementById('ms-name-box'); if(b) b.innerHTML=msNameBoxHtml(); }
+function msNameBoxHtml(cur){
+  const v = cur!=null ? cur : ((document.getElementById('ms-name')||{}).value||'');
+  return MOCK_NAMES.map(t=>`<button class="btn btn-sm" style="padding:4px 9px;font-size:11.5px;${v===t?'background:var(--primary);color:#fff;font-weight:800':'background:var(--bg);color:var(--text-sub)'}" onclick="msSetName('${t}')">${t.replace(' 학력평가','월').replace(' 모의평가','월 모평').replace(' 모의고사','월 모의')}</button>`).join('');
+}
+async function doSaveMockSched(){
+  const date=document.getElementById('ms-date').value;
+  const name=document.getElementById('ms-name').value.trim();
+  if(!date||!name){ showToast('날짜와 이름을 넣어주세요','error'); return; }
+  if(!msPick.grades.length){ showToast('보는 학년을 하나는 골라주세요','error'); return; }
+  const data={date, name, grades:msPick.grades.slice().sort(), tentative:!!document.getElementById('ms-tent').checked};
+  try{
+    if(msEditId){ await updateMockSched(msEditId, data); msEditId=null; showToast('모의고사 일정 수정 ✏️','success'); }
+    else{ await addMockSched(data); showToast(`${name} 등록 ✓ 학생 홈 D-day에 바로 떠요`,'success'); }
+    msPick={for:undefined, grades:[1,2,3]}; rNaesin();
+  }catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+async function doDelMockSched(id, label){
+  if(!confirm(`"${label}" 일정을 지울까요?`)) return;
+  try{ await deleteMockSched(id); if(msEditId===id) msEditId=null; showToast('지웠어요','warning'); rNaesin(); }
+  catch(e){ showToast('삭제 실패: '+e.message,'error'); }
+}
+// 아직 안 넣은 해의 일정을 한 번에 — 이미 있는 날짜는 건드리지 않는다
+async function doSeedMockSched(){
+  const have=new Set(getMockSchedule().map(x=>x.date));
+  const add=MOCK_SEED.filter(x=>!have.has(x.date));
+  if(!add.length){ showToast('이미 다 들어가 있어요','warning'); return; }
+  if(!confirm(`알려진 일정 ${add.length}건을 넣을까요?\n${add.map(x=>'· '+x.date+' '+x.name+(x.tentative?' (잠정)':'')).join('\n')}\n\n이미 있는 날짜는 그대로 둬요.`)) return;
+  try{ for(const x of add) await addMockSched(x); showToast(`${add.length}건 넣었어요 📅`,'success'); rNaesin(); }
+  catch(e){ showToast('넣기 실패: '+e.message,'error'); }
+}
+function mockSchedCardHtml(){
+  const list=getMockSchedule().slice().sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const editM=msEditId?list.find(x=>x.id===msEditId):null;
+  msSync(editM);
+  const today=bmToday();
+  const esc=v=>String(v||'').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+  const next=list.filter(x=>(x.date||'')>=today)[0];
+  return `<div class="card" ${editM?'style="border-left:4px solid var(--orange)"':''}>
+    <div class="card-title">${editM?'✏️ 모의고사 일정 수정':'📝 모의고사 일정'} <span style="font-size:12px;color:var(--text-muted);font-weight:400">(학생 홈 D-day에 뜨는 일정 · 학년별로)</span></div>
+    ${next?`<div style="background:var(--primary-light);border-radius:10px;padding:9px 12px;margin-bottom:12px;font-size:13px">다음 모의고사 <strong>${esc(next.name)}</strong> · ${next.date} <span class="badge b-blue">${msGradeLabel(next.grades)}</span>${next.tentative?' <span style="color:var(--orange);font-weight:700">잠정</span>':''}</div>`:''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+      <div class="form-group" style="margin:0"><label class="form-label">날짜 *</label><input class="form-input" id="ms-date" type="date" value="${editM?(editM.date||''):''}" style="width:160px"></div>
+      <div class="form-group" style="margin:0;flex:1;min-width:220px"><label class="form-label">이름 *</label>
+        <div id="ms-name-box" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:5px">${msNameBoxHtml(editM?editM.name:'')}</div>
+        <input class="form-input" id="ms-name" value="${editM?esc(editM.name):''}" placeholder="눌러서 고르거나 직접 입력" onchange="document.getElementById('ms-name-box').innerHTML=msNameBoxHtml()"></div>
+      <div class="form-group" style="margin:0"><label class="form-label">보는 학년</label>
+        <div id="ms-grade-box" style="display:flex;gap:5px;align-items:center;min-height:30px">${msGradeBoxHtml()}</div></div>
+      <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--text-sub);padding-bottom:8px">
+        <input type="checkbox" id="ms-tent" ${editM&&editM.tentative?'checked':''}> 잠정 (아직 발표 전)</label>
+      <button class="btn btn-primary" onclick="doSaveMockSched()">${editM?'수정 저장 💾':'일정 추가'}</button>
+      ${editM?`<button class="btn btn-outline" onclick="msEditId=null;rNaesin()">취소</button>`:''}
+    </div>
+    <div style="margin-top:8px"><button class="btn btn-outline btn-sm" onclick="doSeedMockSched()">📥 알려진 일정 한 번에 넣기</button>
+      <span style="font-size:11px;color:var(--text-muted);margin-left:6px">2026·2027 학력평가·모의평가·수능 · 이미 있는 날짜는 그대로 둬요</span></div>
+    ${list.length?`<div class="table-wrap" style="margin-top:12px"><table>
+      <thead><tr><th>날짜</th><th>이름</th><th>보는 학년</th><th>D-day</th><th></th></tr></thead>
+      <tbody>${list.map(x=>{ const past=(x.date||'')<today;
+        return `<tr style="${past?'opacity:.5':''}">
+        <td><strong>${x.date||'-'}</strong></td>
+        <td>${esc(x.name)}${x.tentative?' <span style="font-size:11px;color:var(--orange);font-weight:700">잠정</span>':''}</td>
+        <td><span class="badge b-blue">${msGradeLabel(x.grades)}</span></td>
+        <td style="color:var(--text-muted)">${past?'지남':ddayBadge(x.date)}</td>
+        <td style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="msEditId='${x.id}';rNaesin()">수정</button> <button class="btn btn-red btn-sm" onclick="doDelMockSched('${x.id}','${esc(x.name)}')">삭제</button></td>
+      </tr>`; }).join('')}</tbody></table></div>`
+      :'<div style="margin-top:12px;font-size:13px;color:var(--text-muted)">아직 등록된 모의고사 일정이 없어요. <strong>📥 알려진 일정 한 번에 넣기</strong>를 누르면 2026·2027 일정이 들어가요.</div>'}
+  </div>`;
+}
 // 🔎 학교 조회 — 학생 학교의 급식·시간표를 선생님도 바로 확인
 let SL={school:'', tab:'meal', date:null, grade:'1', cls:'1', data:null, loading:false};
-function slDay(){ return SL.date || new Date().toISOString().slice(0,10); }
+function slDay(){ return SL.date || bmToday(); }
 function slShift(n){ const d=new Date(slDay()); d.setDate(d.getDate()+n); SL.date=d.toISOString().slice(0,10); SL.data=null; rNaesin(); doSchoolLookup(); }
 function slSet(k,v){ SL[k]=v; SL.data=null; rNaesin(); doSchoolLookup(); }
 async function doSchoolLookup(){
@@ -1613,7 +1720,7 @@ function schoolInfoHtml(){
   // 시험(내신) 이름별로 묶기 — 시험마다 학교·인원이 다르니 선택해서 봄
   const titles=[...new Set(list.map(e=>(e.title||'').trim()).filter(Boolean))].sort((a,b)=>examTitleRank(a)-examTitleRank(b)||a.localeCompare(b));
   // 따로 고르지 않았으면 다가오는 시험부터 — 지난 시험이 먼저 열리면 매번 다시 눌러야 한다
-  const _today=new Date().toISOString().slice(0,10);
+  const _today=bmToday();
   const _next=list.filter(e=>(e.endDate||e.startDate||'')>=_today).sort((a,b)=>(a.startDate||'').localeCompare(b.startDate||''))[0];
   const _def=_next&&titles.includes((_next.title||'').trim()) ? (_next.title||'').trim() : (titles[0]||'');
   let cur=naesinExamTitle && titles.includes(naesinExamTitle) ? naesinExamTitle : _def;
@@ -1933,9 +2040,9 @@ function getVideoViews(){ return VIDEOVIEWS_CACHE; }
 function getMaterials(){ return MATERIALS_CACHE; }
 function getConsultations(){ return CONSULTS_CACHE; }
 function getReports(){ return REPORTS_CACHE; }
-async function saveVideo(d){ d.createdAt=new Date().toISOString().slice(0,10); const ref=await db.collection('videos').add(d); if(!cacheAdd('videos', ref.id, d)) await loadVideos(); }
+async function saveVideo(d){ d.createdAt=bmToday(); const ref=await db.collection('videos').add(d); if(!cacheAdd('videos', ref.id, d)) await loadVideos(); }
 async function deleteVideo(id){ await db.collection('videos').doc(id).delete(); if(!cacheDel('videos', id)) await loadVideos(); }
-async function saveMaterial(d){ d.uploadDate=new Date().toISOString().slice(0,10); const ref=await db.collection('materials').add(d); if(!cacheAdd('materials', ref.id, d)) await loadMaterials(); }
+async function saveMaterial(d){ d.uploadDate=bmToday(); const ref=await db.collection('materials').add(d); if(!cacheAdd('materials', ref.id, d)) await loadMaterials(); }
 async function deleteMaterial(id){
   try{ const snap=await db.collection('materials').doc(id).get(); const d=snap.exists?snap.data():null; if(d&&d.fileUrl){ try{ await firebase.storage().refFromURL(d.fileUrl).delete(); }catch(e){} } }catch(e){}
   await db.collection('materials').doc(id).delete(); if(!cacheDel('materials', id)) await loadMaterials();
@@ -2476,7 +2583,7 @@ async function doRegisterAnalyzedExam(){
   const source=((document.getElementById('an-source')||{}).value||'').trim();
   try{
     // 고른 반마다 한 건씩 등록한다 (반별로 정오표·분석서가 따로 나와야 하므로)
-    const today=new Date().toISOString().slice(0,10);
+    const today=bmToday();
     const summary=(lastAnalysis&&lastAnalysis.summary)||'';
     // 분석서에 적힌 정답을 정답표로 같이 저장한다 — 따로 입력하지 않아도 바로 채점된다
     const keyFromProbs=answerKeyFromAnalysis({analysis:probs});
@@ -3947,7 +4054,7 @@ async function doSetMakeupPlan(absId, field, val){
   catch(e){ showToast('저장 실패: '+e.message,'error'); }
 }
 function absentMakeupHtml(){
-  const today=new Date().toISOString().slice(0,10);
+  const today=bmToday();
   const from=(function(){ const d=new Date(); d.setDate(d.getDate()-21); return d.toISOString().slice(0,10); })();
   const abs=getAbsences().filter(a=>a.date>=from && a.date<=today).sort((x,y)=>(y.date||'').localeCompare(x.date||''));
   const notSent=abs.filter(a=>!a.videoSent).length;
@@ -4099,7 +4206,7 @@ function renderEditCard(){
         <div style="font-size:13px;font-weight:800;color:var(--primary);margin-bottom:3px">🔀 반이 바뀌었어요</div>
         <div id="es-movesum" style="font-size:12px;margin-bottom:7px"></div>
         <label class="form-label" style="margin-bottom:4px">언제부터 새 반인가요?</label>
-        <input class="form-input" id="es-movedate" type="date" value="${new Date().toISOString().slice(0,10)}" style="max-width:200px">
+        <input class="form-input" id="es-movedate" type="date" value="${bmToday()}" style="max-width:200px">
         <div style="font-size:11px;color:var(--text-muted);margin-top:5px">이 날 <strong>이전에 낸 숙제는 이전 반 것</strong>으로, <strong>이 날부터는 새 반 숙제</strong>가 보여요.<br>미래 날짜를 넣으면 그날 자동으로 옮겨져요(예약).</div>
       </div>
       ${classHistoryHtml(s)}
@@ -4118,7 +4225,7 @@ function renderEditCard(){
       <input class="form-input" id="es-statusmemo" value="${(s.statusMemo||'').replace(/"/g,'&quot;')}" placeholder="사유·메모 (예: 관양고 학원으로 이동)" style="margin-top:8px">
       <div style="margin-top:8px">
         <label class="form-label" style="margin-bottom:4px">📅 휴원·퇴원 시작일 <span style="color:var(--text-muted);font-weight:400">(마지막으로 나온 날 다음 날)</span></label>
-        <input class="form-input" id="es-statusdate" type="date" value="${s.statusDate||new Date().toISOString().slice(0,10)}" style="max-width:200px">
+        <input class="form-input" id="es-statusdate" type="date" value="${s.statusDate||bmToday()}" style="max-width:200px">
         <div style="font-size:11px;color:var(--text-muted);margin-top:4px">‘재원’으로 두면 이 날짜는 저장되지 않아요. 이번 달 요약의 퇴원생 수도 이 날짜로 세요.</div>
       </div>
     </div>
@@ -4157,7 +4264,7 @@ async function doSaveEdit(){
   const addedCls=classIds.filter(id=>!oldClassIds.includes(id));
   let moveNote='';
   if(removedCls.length||addedCls.length){
-    const todayStr=new Date().toISOString().slice(0,10);
+    const todayStr=bmToday();
     // 이동일은 폼의 '언제부터 새 반인가요?' 칸에서 가져옵니다 (비어 있으면 오늘)
     const dEl=document.getElementById('es-movedate');
     let moveDate=(dEl&&/^\d{4}-\d{2}-\d{2}$/.test(dEl.value)) ? dEl.value : todayStr;
@@ -4184,7 +4291,7 @@ async function doSaveEdit(){
   if(status!=='재원'){
     const sdEl=document.getElementById('es-statusdate');
     patch.statusDate=(sdEl&&/^\d{4}-\d{2}-\d{2}$/.test(sdEl.value)) ? sdEl.value
-      : (s.statusDate || new Date().toISOString().slice(0,10));
+      : (s.statusDate || bmToday());
   } else { patch.statusDate=''; }
   try{ await updateStudentFS(editStudentId,patch); editStudentId=null; showToast(`${name} 정보 수정 완료 ✓${status!=='재원'?' · '+status+' 처리됨':''}${moveNote}`,'success'); rStudents(); }
   catch(e){ showToast('수정 실패: '+e.message,'error'); }
@@ -4222,7 +4329,7 @@ function rStudents(){
         </div>
         <div class="form-group" style="background:var(--primary-light);border-radius:10px;padding:11px 13px">
           <label class="form-label" style="margin-bottom:4px">📅 등원 시작일 <span style="color:var(--text-muted);font-weight:400">(이 학생이 처음 나온 날)</span></label>
-          <input class="form-input" id="ns-enroll" type="date" value="${new Date().toISOString().slice(0,10)}" style="max-width:200px">
+          <input class="form-input" id="ns-enroll" type="date" value="${bmToday()}" style="max-width:200px">
           <div style="font-size:11px;color:var(--text-muted);margin-top:5px">이 날짜 <strong>이전에 낸 숙제</strong>는 이 학생 화면에 안 보여요. 중간에 들어온 학생이 예전 숙제까지 떠안지 않게 하는 장치예요.</div>
         </div>
         <div class="btn-row">
@@ -4286,7 +4393,7 @@ function renderBulkBar(){
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <label style="font-size:11px;color:var(--text-muted)">언제부터</label>
-      <input class="form-input" id="bulk-movedate" type="date" value="${new Date().toISOString().slice(0,10)}" style="max-width:160px;padding:5px 8px;font-size:12px">
+      <input class="form-input" id="bulk-movedate" type="date" value="${bmToday()}" style="max-width:160px;padding:5px 8px;font-size:12px">
       <button class="btn btn-primary btn-sm" onclick="doBulkMove('replace')">🔀 이 반으로 이동</button>
       <button class="btn btn-outline btn-sm" onclick="doBulkMove('add')">➕ 이 반 추가</button>
     </div>
@@ -4298,7 +4405,7 @@ async function doBulkMove(mode){
   if(!ids.length){ showToast('학생을 먼저 고르세요','warning'); return; }
   const targetIds=[].slice.call(document.querySelectorAll('.bulk-cls-chk')).filter(x=>x.checked).map(x=>x.value);
   if(!targetIds.length){ showToast('옮길 반을 고르세요','warning'); return; }
-  const todayStr=new Date().toISOString().slice(0,10);
+  const todayStr=bmToday();
   const dEl=document.getElementById('bulk-movedate');
   const moveDate=(dEl&&/^\d{4}-\d{2}-\d{2}$/.test(dEl.value))?dEl.value:todayStr;
   const nameOf=id=>{ const c=CLASSES.find(x=>x.id===id); return c?c.name:id; };
@@ -4372,7 +4479,7 @@ async function doAddSt(){
   if(!name||!phone){showToast('이름과 핸드폰 번호를 입력해주세요','error');return;}
   const last4=phone.replace(/[^0-9]/g,'').slice(-4);
   if(last4.length<4){showToast('핸드폰 번호를 정확히 입력해주세요','error');return;}
-  const enrollDate=(document.getElementById('ns-enroll').value||'')||new Date().toISOString().slice(0,10);
+  const enrollDate=(document.getElementById('ns-enroll').value||'')||bmToday();
   // 등원일부터 이 반 소속으로 기록해 둡니다 — 그래야 그 전 숙제가 안 딸려옵니다
   const classHistory=classIds.map(id=>({classId:id, from:enrollDate, to:''}));
   try{
@@ -4438,7 +4545,7 @@ function rClassroom(){
   const hwAsgns=asgns.filter(a=>asnInSeason(a,_season));   // 제출률은 선택 시즌 구간 숙제만
   const exams=getExams().filter(e=>e.classId===cls.id);
   const esubs=getExamSubs(), allSubs=getSubmissions();
-  const today=new Date().toISOString().slice(0,10);
+  const today=bmToday();
   const rows=sts.map(st=>{
     const mySubs=allSubs.filter(s=>s.studentId===st.id && asgns.some(a=>a.id===s.assignmentId));
     const hwRate=hwAsgns.length?Math.round(hwAsgns.reduce((sum,a)=>sum+subCompletion(mySubs.find(s=>s.assignmentId===a.id)),0)/hwAsgns.length):null;
@@ -4609,7 +4716,7 @@ function hwGroupHeader(key){
     const d=new Date(key+'T00:00:00');
     if(isNaN(d.getTime())) return '📆 날짜 없음';
     const wd=['일','월','화','수','목','금','토'][d.getDay()];
-    const today=new Date().toISOString().slice(0,10);
+    const today=bmToday();
     return `📆 ${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 (${wd})${key===today?' <span class="badge b-primary" style="font-size:10px">오늘</span>':''}`;
   }
   if(hwGroupBy==='day'){ return `📅 ${WD_LABEL[key]?WD_LABEL[key]+'요일반':'요일 미지정'}`; }
@@ -4672,7 +4779,7 @@ function doDupAsgn(aid){
   set('hw-textbook',a.textbook); set('hw-title',a.title||''); set('hw-content',a.content||'');
   set('hw-pstart',a.probStart||''); set('hw-pend',a.probEnd||''); set('hw-plabel',a.probLabel||''); set('hw-photos',a.maxPhotos||30);
   const cs=document.getElementById('hw-cls'); if(cs) cs.value=a.classId||'';
-  const st=document.getElementById('hw-start'); if(st) st.value=new Date().toISOString().slice(0,10);
+  const st=document.getElementById('hw-start'); if(st) st.value=bmToday();
   const du=document.getElementById('hw-due'); if(du){ du.value=''; du.dataset.auto='1'; }
   hwSyncDue();   // 복제한 숙제도 마감일은 오늘 +1주로
   const anchor=document.getElementById('hw-cls'); if(anchor&&anchor.scrollIntoView) anchor.scrollIntoView({behavior:'smooth',block:'center'});
@@ -4698,7 +4805,7 @@ async function doCheckAllOffline(aid){
 //   '이번 주'만 보면 지난주에 마감된 미제출이 조용히 사라진다. 그게 제일 급한 건데.
 //   마감 지난 것 먼저, 그다음 마감이 가까운 순.
 function hwMissingList(){
-  const today=new Date().toISOString().slice(0,10);
+  const today=bmToday();
   const from=weekMonday(-1);        // 지난 주 월요일 — 여기까지가 아직 챙길 수 있는 범위
   return getAssignments()
     .filter(a=>{
@@ -4769,7 +4876,7 @@ function dashMissingHtml(){
 }
 // 🚨 이번 주 미제출 한눈에 (반·숙제별 미제출자 모아보기 + 독촉)
 function hwMissingBoardHtml(){
-  const _t=new Date().toISOString().slice(0,10);
+  const _t=bmToday();
   const items=hwMissingList();      // 대시보드와 같은 목록 (마감 지난 것 + 이번 주)
   const total=items.reduce((n,x)=>n+x.missing.length,0);
   if(!hwBoardOpen){
@@ -4799,7 +4906,7 @@ function rHomework(){
   const allAsgn=getAssignments();
   const _hwSeason=hwSelSeason();
   const asgn=allAsgn.filter(a=>asnInSeason(a, _hwSeason));   // 고른 시즌 구간(출제일 기준) 숙제만 — 학생 포털과 동일
-  const _today=new Date().toISOString().slice(0,10);
+  const _today=bmToday();
   const editA=hwEditId?asgn.find(x=>x.id===hwEditId):null;
   const tbChips=allTextbooks();
   const esc=s=>(s||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -4809,8 +4916,8 @@ function rHomework(){
       <div class="card-title">${editA?'✏️ 과제 수정':'➕ 새 과제 만들기'}</div>
       <div class="form-row-3">
         <div class="form-group"><label class="form-label">대상 반</label>${classSelect('hw-cls')}</div>
-        <div class="form-group"><label class="form-label">출제일 (내준 날)</label><input class="form-input" id="hw-start" type="date" onchange="hwSyncDue()" value="${editA?(editA.startDate||''):new Date().toISOString().slice(0,10)}"></div>
-        <div class="form-group"><label class="form-label">마감일 <span style="font-size:11px;color:var(--text-muted)">(출제일 +1주 자동 · 바꿔도 돼요)</span></label><input class="form-input" id="hw-due" type="date" onchange="hwDueTouched()" ${editA?'':'data-auto="1"'} value="${editA?(editA.dueDate||''):hwAddWeek(new Date().toISOString().slice(0,10))}"></div>
+        <div class="form-group"><label class="form-label">출제일 (내준 날)</label><input class="form-input" id="hw-start" type="date" onchange="hwSyncDue()" value="${editA?(editA.startDate||''):bmToday()}"></div>
+        <div class="form-group"><label class="form-label">마감일 <span style="font-size:11px;color:var(--text-muted)">(출제일 +1주 자동 · 바꿔도 돼요)</span></label><input class="form-input" id="hw-due" type="date" onchange="hwDueTouched()" ${editA?'':'data-auto="1"'} value="${editA?(editA.dueDate||''):hwAddWeek(bmToday())}"></div>
       </div>
       <div class="form-group"><label class="form-label">교재 <span style="font-size:11px;color:var(--text-muted)">(칩을 누르면 자동 입력 · ✕ 누르면 그 칩만 숨겨요)</span></label>
         <input class="form-input" id="hw-textbook" placeholder="예: 쎈 공통수학1" value="${editA?esc(editA.textbook):''}">
@@ -5020,7 +5127,7 @@ const HW_SHOT_SCOPES=[['week','이번 주'],['next','앞으로 낼 것'],['all',
 function openHwShot(classId){
   // 반을 안 정하고 열면 — 대시보드에서 보고 있는 날 수업하는 반을 먼저 (방금 숙제 낸 반일 가능성이 크다)
   if(!classId){
-    const day=(typeof dashDay==='function')?dashDay():new Date().toISOString().slice(0,10);
+    const day=(typeof dashDay==='function')?dashDay():bmToday();
     const key=['sun','mon','tue','wed','thu','fri','sat'][new Date(day+'T00:00:00').getDay()];
     const todayCls=CLASSES.find(c=>clsHasDay(c,key) && isClassActive(c, day));
     classId=todayCls?todayCls.id:'';
@@ -5034,7 +5141,7 @@ function closeHwShot(){ const m=document.getElementById('hwShotModal'); if(m) m.
 function setHwShot(k,v){ if(k==='cls') hwShotClassId=v; else hwShotScope=v; renderHwShot(); }
 // 캡처에 담을 숙제 고르기
 function hwShotList(classId, scope){
-  const today=new Date().toISOString().slice(0,10);
+  const today=bmToday();
   const list=getAssignments().filter(a=>a.classId===classId);
   const dOf=a=>a.dueDate||a.startDate||a.createdAt||'';
   let out=list;
@@ -5524,7 +5631,7 @@ async function doQuickSaveHw(notify, shot){
   const title=v('qhw-title').trim();
   if(!title){ showToast('제목을 입력해주세요','error'); return; }
   const cls=CLASSES.find(c=>c.id===qhwClassId);
-  const today=new Date().toISOString().slice(0,10);
+  const today=bmToday();
   const par=document.querySelector('input[name="qhw-parity"]:checked');
   const parity=(par&&(par.value==='odd'||par.value==='even'))?par.value:'';
   const data={ classId:qhwClassId, className:cls?cls.name:'', title,
@@ -5570,9 +5677,9 @@ async function dashCheck(sid){
 // 🗓️ 오늘 수업 반 통합 보드 — 반 시간·숙제·진도 + 학생(접기) + 결석/단원 체크
 //   dashDay: 보고 있는 날짜(YYYY-MM-DD). 어제·지난 수업도 그대로 볼 수 있어요.
 let dashClsCollapsed={}, dashDateStr=null;
-function dashDay(){ return dashDateStr || new Date().toISOString().slice(0,10); }
+function dashDay(){ return dashDateStr || bmToday(); }
 function dashDateObj(){ const s=dashDay(); return new Date(+s.slice(0,4), +s.slice(5,7)-1, +s.slice(8,10)); }
-function dashIsToday(){ return dashDay()===new Date().toISOString().slice(0,10); }
+function dashIsToday(){ return dashDay()===bmToday(); }
 function dashShift(n){ const d=dashDateObj(); d.setDate(d.getDate()+n); dashDateStr=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; rDashboard(); }
 function dashGoToday(){ dashDateStr=null; rDashboard(); }
 function dashPickDate(v){ if(v) dashDateStr=v; rDashboard(); }
@@ -6860,7 +6967,7 @@ async function doAddVid(){
   const classId=document.getElementById('vi-cls').value, url=document.getElementById('vi-url').value.trim();
   if(!classId||!url){showToast('반과 영상 링크를 입력해주세요','error');return;}
   const cls=CLASSES.find(c=>c.id===classId);
-  const today=new Date().toISOString().slice(0,10);
+  const today=bmToday();
   const title=document.getElementById('vi-title').value.trim() || (today+' 수업 영상');
   const colors=['#6366F1','#F97316','#10B981','#8B5CF6','#EF4444','#F59E0B'];
   try{
@@ -6924,13 +7031,13 @@ async function doDelMat(id){if(!confirm('이 자료를 삭제할까요?'))return
 const TYPE_BADGE={'정규':'b-primary','보강':'b-orange','특강':'b-yellow'};
 // 운영기간 있는 반(특강 등)은 기간 내에만 시간표에 표시
 function isClassActive(c, today){
-  today=today||new Date().toISOString().slice(0,10);
+  today=today||bmToday();
   if(c.endDate && today>c.endDate) return false;
   if(c.startDate && today<c.startDate) return false;
   return true;
 }
 function classPeriodStatus(c, today){
-  today=today||new Date().toISOString().slice(0,10);
+  today=today||bmToday();
   if(!c.startDate && !c.endDate) return '';
   if(c.endDate && today>c.endDate) return '<span class="badge b-gray">종료</span>';
   if(c.startDate && today<c.startDate) return '<span class="badge b-yellow">예정</span>';
@@ -7173,7 +7280,7 @@ async function jbCapture(){
     const w=Math.max(card.scrollWidth, 720);
     card.style.width=w+'px';
     const canvas=await html2canvas(card, {scale:2, backgroundColor:'#ffffff', width:w, windowWidth:w+48, useCORS:true});
-    _jbShotName=`직보_${new Date().toISOString().slice(0,10)}.png`;
+    _jbShotName=`직보_${bmToday()}.png`;
     _jbShotBlob=await new Promise(r=>canvas.toBlob(r,'image/png'));
     const pv=document.getElementById('jbShotPreview');
     if(pv) pv.innerHTML=`<img src="${canvas.toDataURL('image/png')}" alt="직보 일정" style="width:100%;display:block">`;
@@ -7217,7 +7324,7 @@ async function jbShotShare(){
 }
 function jbWeekBoardHtml(){
   if(jbWeekStart==null) jbWeekStart=jbMonday(new Date());
-  const tStr=new Date().toISOString().slice(0,10), thisMon=jbStr(jbMonday(new Date()));
+  const tStr=bmToday(), thisMon=jbStr(jbMonday(new Date()));
   let weeksHtml='', jbDays=0;
   for(let w=0; w<jbWeeks; w++){
     const ws=new Date(jbWeekStart); ws.setDate(jbWeekStart.getDate()+w*7);
@@ -7291,7 +7398,7 @@ async function doDelMakeup(id){ if(!confirm('이 보강을 삭제할까요?'))re
 //   · 직보(makeups)와 완전 분리된 bogang 컬렉션. 기본 슬롯 3개(화/수/금) + 필요시 직접 추가.
 // ================================================================
 let BOGANG_CACHE=[];
-let bogangDate=new Date().toISOString().slice(0,10);   // 보고 있는 날짜
+let bogangDate=bmToday();   // 보고 있는 날짜
 const BOGANG_SLOTS=[   // 기본 정기 보강 슬롯 (wd: 0=일 … 6=토)
   {wd:2, label:'화 3-5시'},
   {wd:3, label:'수 4:30-7:30'},
@@ -7447,7 +7554,7 @@ function jikboRestDatesOf(e){
   return [...all].filter(d=>jikboRestDay(e, d, mathSet)).sort();
 }
 async function doAutoMakeups(){
-  const today=new Date().toISOString().slice(0,10);
+  const today=bmToday();
   const pad=n=>String(n).padStart(2,'0');
   const plans=[];
   visibleSchoolExams().forEach(e=>{
@@ -7620,7 +7727,7 @@ async function doSaveClassSubject(id){
   const changed=c && (c.subject||'')!==subject && subject;
   const patch={subject};
   if(changed && confirm(`📚 새 교재로 바꾸는 건가요?\n\n[확인] 지금부터 이 반 숙제 제출률을 새로 집계해요 (이전 숙제·성적·출석 기록은 그대로 남아요)\n[취소] 교재 이름만 바꿔요`)){
-    patch.hwStart=new Date().toISOString().slice(0,10);
+    patch.hwStart=bmToday();
   }
   try{ await updateClassFS(id,patch); showToast(`교재 저장 — ${subject||'(비움)'}${patch.hwStart?' · 제출률 새로 집계 시작 📊':''}`,'success'); rSchedule(); }
   catch(e){ showToast('저장 실패: '+e.message,'error'); }
@@ -7820,7 +7927,7 @@ function journalListHtml(classes){
   const W=['일','월','화','수','목','금','토'];
   const esc=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;');
   // 수업이 있었는데 일지가 비어 있는 날 — 빠뜨린 걸 바로 알 수 있게
-  const today=new Date().toISOString().slice(0,10);
+  const today=bmToday();
   const missed=[];
   (classes||[]).forEach(c=>{
     for(let d=from; d<today; d=addDays(d,1)){
@@ -7911,7 +8018,7 @@ function studentStats(st){
   mySubs.forEach(sub=>{ if(!Array.isArray(sub.wrongNos)) return;
     sub.wrongNos.map(String).forEach(n=>{ oapTotal++; if(sub.oapOk && sub.oapOk[n]) oapDone++; }); });
   const retryRate = oapTotal ? Math.round(oapDone/oapTotal*100)+'%' : '-';
-  const attInfo=calcAttendance(myAsgn, absentDatesOf(st.id), new Date().toISOString().slice(0,10));
+  const attInfo=calcAttendance(myAsgn, absentDatesOf(st.id), bmToday());
   const attRate=attInfo.total?attInfo.rate+'%':'-';
   const myScores=getExamSubs().filter(s=>s.studentId===st.id&&s.score!=null).sort((a,b)=>(b.ts||0)-(a.ts||0));
   const recent=myScores.length?myScores[0].score+'점':'-';
@@ -8019,7 +8126,7 @@ function logout(){
 //  · 학사일정(schoolExams)·공휴일·시즌·진도표 같은 학원 자료는 건드리지 않는다
 //  · 퇴원 6개월 지난 학생만 개인정보 보호 차원에서 통째로 정리한다
 async function pruneOldFirebase(){
-  const today=new Date().toISOString().slice(0,10);
+  const today=bmToday();
   if(localStorage.getItem('bm_lastPrune')===today) return;  // 하루 1회만
   const cutoff=Date.now() - 92*24*60*60*1000;  // 약 3개월
   const delPhotos=async (urls)=>{ if(Array.isArray(urls)) for(const u of urls){ try{ await firebase.storage().refFromURL(u).delete(); }catch(e){} } };
@@ -8088,6 +8195,7 @@ async function init(){
     loadNotices(),       // 공지사항
     loadSchoolExams(),   // 학교별 내신 시험 일정
     loadMockExams(),     // 모의고사 (자가 등록)
+    loadMockSchedule(),  // 모의고사 일정 (학생 D-day)
     loadMockSubs(),      // 모의고사 학생 제출
     loadMakeups(),       // 보강 일정
     loadAbsences(),      // 결석 기록
