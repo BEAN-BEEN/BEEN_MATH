@@ -37,44 +37,36 @@
     img{max-width:100%;height:auto}
     .app-layout{display:flex;min-height:100vh}
 
-    /* SIDEBAR */
-    .sidebar{width:var(--sidebar-w);background:#1E293B;position:fixed;top:0;left:0;bottom:0;display:flex;flex-direction:column;z-index:200;overflow-y:auto;transition:width .18s}
-    .sidebar-logo{position:relative}
-    .sidebar-logo{padding:22px 20px 16px;border-bottom:1px solid rgba(255,255,255,.1)}
-    .sidebar-logo h1{font-size:19px;font-weight:800;color:#fff;letter-spacing:-.5px}
-    .sidebar-logo p{font-size:13px;color:rgba(255,255,255,.5);margin-top:3px}
-    .sidebar-nav{padding:12px 10px;flex:1}
-    .nav-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--radius-sm);cursor:pointer;transition:all .15s;color:rgba(255,255,255,.6);font-size:15px;font-weight:500;user-select:none}
-    .nav-item:hover{background:rgba(255,255,255,.08);color:#fff}
-    .nav-item.active{background:var(--primary);color:#fff;font-weight:600}
-    .nav-icon{width:22px;display:inline-flex;align-items:center;justify-content:center;opacity:.9}
-    /* 🗂 접기 — 넓은 화면에서만. 좁은 화면은 이미 서랍으로 숨는다. */
-    .sb-toggle{position:absolute;top:16px;right:10px;width:28px;height:28px;border:none;border-radius:8px;background:rgba(255,255,255,.12);color:rgba(255,255,255,.75);font-size:16px;line-height:1;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center}
-    .sb-toggle:hover{background:rgba(255,255,255,.22);color:#fff}
-    @media(min-width:901px){
-      body.sb-fold{--sidebar-w:64px}
-      body.sb-fold .sb-label{display:none}
-      body.sb-fold .sidebar-logo{padding:12px 0 10px;text-align:center}
-      body.sb-fold .sidebar-logo h1{justify-content:center;font-size:0}
-      body.sb-fold .sidebar-logo h1 img{margin-right:0}
-      body.sb-fold .sb-toggle{position:static;margin:10px auto 0}
-      body.sb-fold .sidebar-nav{padding:12px 8px}
-      body.sb-fold .nav-item{justify-content:center;padding:11px 0;gap:0}
-      body.sb-fold .nav-icon{width:auto}
-      body.sb-fold .sidebar-footer{padding:12px 8px}
-      body.sb-fold .sidebar-footer a{font-size:18px;padding:9px 0}
-      body.sb-fold .sidebar-footer button{font-size:17px;padding:9px 0}
+    /* 🔝 위쪽 메뉴 — 왼쪽 바 대신. 윗줄은 큰 메뉴(대단원), 아랫줄은 그 메뉴의 하위 탭(소단원).
+       아이콘만으로는 뭐가 뭔지 알기 어려워서 글자를 늘 보이게 둔다. 스크롤해도 위에 붙어 있다. */
+    .topbar{position:sticky;top:0;z-index:120;padding-top:env(safe-area-inset-top);background:#1E293B;box-shadow:0 2px 10px rgba(15,23,42,.12)}
+    .topbar-main{display:flex;align-items:center;gap:10px;padding:8px 20px}
+    .tb-logo{display:flex;align-items:center;gap:7px;color:#fff;font-size:17px;font-weight:800;letter-spacing:-.5px;white-space:nowrap;flex-shrink:0;cursor:pointer}
+    .tb-logo img{height:26px;border-radius:6px}
+    .topnav{display:flex;gap:4px;flex-wrap:wrap;flex:1;min-width:0}   /* 좁으면 두 줄로 — 옆으로 밀려 안 보이는 메뉴가 없게 */
+    .tn-item{flex-shrink:0;display:inline-flex;align-items:center;gap:6px;border:none;background:transparent;color:rgba(255,255,255,.72);border-radius:9px;padding:8px 13px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap}
+    .tn-item:hover{background:rgba(255,255,255,.1);color:#fff}
+    .tn-item.active{background:var(--primary);color:#fff;font-weight:800}
+    .nav-icon{width:20px;display:inline-flex;align-items:center;justify-content:center;opacity:.9}
+    .tb-right{display:flex;align-items:center;gap:5px;flex-shrink:0;position:relative}
+    .tb-btn{display:inline-flex;align-items:center;gap:4px;border:none;background:rgba(255,255,255,.1);color:rgba(255,255,255,.85);border-radius:8px;padding:7px 10px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit;text-decoration:none;white-space:nowrap}
+    .tb-btn:hover{background:rgba(255,255,255,.2);color:#fff}
+    .theme-pop{position:absolute;top:calc(100% + 8px);right:0;background:#1E293B;border:1px solid rgba(255,255,255,.15);border-radius:12px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.3);z-index:130;min-width:190px}
+    .subnav{display:flex;gap:6px;overflow-x:auto;padding:8px 20px;background:var(--surface);border-bottom:1px solid var(--border)}
+    .subnav:empty{display:none}
+    .sn-item{flex-shrink:0;border:1px solid var(--border);background:var(--bg);color:var(--text-sub);border-radius:999px;padding:6px 14px;font-size:14.5px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap}
+    .sn-item:hover{border-color:var(--primary);color:var(--primary)}
+    .sn-item.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+    @media(max-width:1400px){ .tb-txt{display:none} }
+    /* 휴대폰 — 여러 줄로 쌓이면 화면을 다 가린다. 메뉴만 한 줄로 두고 옆으로 민다. */
+    @media(max-width:700px){
+      .topbar-main{flex-wrap:wrap}
+      .tb-right{margin-left:auto}
+      .topnav{order:3;flex-basis:100%;flex-wrap:nowrap;overflow-x:auto}
     }
-    .sidebar-footer{padding:16px 20px;border-top:1px solid rgba(255,255,255,.1)}
-    .sidebar-footer p{font-size:13px;color:rgba(255,255,255,.4)}
 
     /* MAIN */
-    .main-content{margin-left:var(--sidebar-w);flex:1;min-height:100vh;padding-bottom:48px;transition:margin-left .18s}
-    /* 🔝 위쪽 바로가기 — 어느 화면에서든 한 번에 다른 메뉴로. 스크롤해도 위에 붙어 있다. */
-    .topnav{position:sticky;top:0;z-index:120;display:flex;gap:6px;overflow-x:auto;padding:8px 28px;background:var(--surface);border-bottom:1px solid var(--border)}
-    .tn-item{flex-shrink:0;border:1px solid var(--border);background:var(--bg);color:var(--text-sub);border-radius:999px;padding:7px 14px;font-size:14.5px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap}
-    .tn-item:hover{border-color:var(--primary);color:var(--primary)}
-    .tn-item.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+    .main-content{flex:1;min-width:0;min-height:100vh;padding-bottom:48px}
     /* 넓은 모니터에서 내용이 양 끝으로 벌어지지 않게 최대 너비 + 가운데 정렬 */
     .page-header{padding:24px 28px 0;margin:0 auto 20px;max-width:1560px}
     .page-title{font-size:22px;font-weight:700;letter-spacing:-.5px}
@@ -183,20 +175,12 @@
     @keyframes tOut{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(-10px)}}
 
     /* MOBILE */
-    .mobile-header{display:none;position:fixed;top:0;left:0;right:0;height:56px;background:#1E293B;z-index:160;align-items:center;padding:0 16px;justify-content:space-between}
-    .mobile-header h1{font-size:17px;font-weight:800;color:#fff;white-space:nowrap;display:flex;align-items:center}
-    .m-menu-btn{font-size:20px;color:rgba(255,255,255,.8);cursor:pointer;padding:8px;border:none;background:transparent}
-    .mob-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:150}
-    .mob-overlay.open{display:block}
-    .sidebar.mob-open{transform:translateX(0)!important}
 
     @media(max-width:900px){
-      .sidebar{transform:translateX(-100%);transition:transform .3s}
-      .sb-toggle{display:none}
-      .main-content{margin-left:0;padding-top:calc(56px + env(safe-area-inset-top))}
-      .mobile-header{display:flex;height:auto;min-height:56px;padding-top:env(safe-area-inset-top)}
+      .topbar-main{padding:7px 10px;gap:6px}
+      .subnav{padding:7px 10px}
+      .tn-item{padding:8px 10px;font-size:14.5px}
       .page-header{padding:16px 16px 0}
-      .topnav{top:calc(56px + env(safe-area-inset-top));padding:7px 12px}
       .content-area{padding:0 16px}
       .stats-grid{grid-template-columns:repeat(2,1fr)}
       .form-row-3,.form-row-4{grid-template-columns:1fr 1fr}
@@ -214,11 +198,6 @@
 <body>
 <div class="toast-container" id="toastContainer"></div>
 
-<header class="mobile-header">
-  <h1><img src="icon.svg" alt="" style="height:24px;vertical-align:-6px;border-radius:6px;margin-right:5px">BEEN MATH 관리자</h1>
-  <button class="m-menu-btn" onclick="toggleMob()">☰</button>
-</header>
-<div class="mob-overlay" id="mobOverlay" onclick="toggleMob()"></div>
 
 <!-- ➕ 빠른 숙제 입력 (어느 화면에서나) -->
 <button id="quickHwFab" onclick="openQuickHw()" style="position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:1500;background:var(--primary);color:#fff;border:none;border-radius:30px;padding:14px 20px;font-size:16px;font-weight:800;box-shadow:0 6px 20px rgba(91,108,245,.45);cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px">➕ 숙제</button>
@@ -254,37 +233,35 @@
 </div>
 
 <div class="app-layout">
-  <nav class="sidebar" id="sidebar">
-    <div class="sidebar-logo">
-      <button class="sb-toggle" id="sbToggle" onclick="toggleFold()" title="메뉴 접기 · 펼치기">«</button>
-      <h1><img src="icon.svg" alt="" style="height:26px;vertical-align:-6px;border-radius:6px;margin-right:6px"><span class="sb-label">BEEN MATH</span></h1>
-      <p class="sb-label">선생님 관리자 포털</p>
-    </div>
-    <div class="sidebar-nav" id="sidebarNav"></div>
-    <div class="sidebar-footer">
-      <a href="plan.html" title="나의 플래너" style="display:block;text-align:center;padding:9px;margin-bottom:12px;background:rgba(255,255,255,.12);color:#fff;border-radius:8px;font-size:14px;font-weight:700;text-decoration:none">📒<span class="sb-label"> 나의 플래너 →</span></a>
-      <div class="sb-label" style="font-size:12.5px;color:rgba(255,255,255,.5);font-weight:600;margin-bottom:7px">🎨 테마 색상</div>
-      <div class="sb-label" id="themeDots" style="margin-bottom:12px"></div>
-      <p class="sb-label" style="margin-bottom:8px">👩‍🏫 혜빈쌤 로그인 중</p>
-      <button onclick="logout()" title="로그아웃" style="width:100%;padding:8px;background:rgba(255,255,255,.1);color:rgba(255,255,255,.8);border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">🚪<span class="sb-label"> 로그아웃</span></button>
-    </div>
-  </nav>
 
   <main class="main-content">
-    <div class="topnav" id="topNav"></div>
+    <div class="topbar" id="topBar">
+      <div class="topbar-main">
+        <span class="tb-logo" onclick="navigate('dashboard')" title="대시보드로"><img src="icon.svg" alt=""><span class="tb-txt">BEEN MATH</span></span>
+        <div class="topnav" id="topNav"></div>
+        <div class="tb-right">
+          <a class="tb-btn" href="plan.html" title="나의 플래너">📒<span class="tb-txt"> 플래너</span></a>
+          <button type="button" class="tb-btn" title="테마 색상" onclick="toggleThemePop()">🎨</button>
+          <button type="button" class="tb-btn" title="로그아웃" onclick="logout()">🚪<span class="tb-txt"> 로그아웃</span></button>
+          <div class="theme-pop" id="themePop" style="display:none">
+            <div style="font-size:12.5px;color:rgba(255,255,255,.6);font-weight:600;margin-bottom:8px">🎨 테마 색상</div>
+            <div id="themeDots"></div>
+          </div>
+        </div>
+      </div>
+      <div class="subnav" id="subNav"></div>
+    </div>
     <div class="section active" id="sec-dashboard">
       <div class="page-header"><div class="page-title">대시보드</div><div class="page-subtitle" id="todayDate"></div></div>
       <div class="content-area" id="dashboardContent"></div>
     </div>
     <div class="section" id="sec-manage">
       <div class="page-header"><div class="page-title">학생 · 반별 관리</div></div>
-      <div class="content-area" style="padding-bottom:0"><div class="card" style="padding:10px 14px;margin-bottom:12px"><div style="display:flex;gap:6px;flex-wrap:wrap" id="mgTabs"></div></div></div>
       <div class="content-area" id="studentsContent"></div>
       <div class="content-area" id="classroomContent" style="display:none"></div>
     </div>
     <div class="section" id="sec-homework">
       <div class="page-header"><div class="page-title">숙제 관리</div></div>
-      <div class="content-area"><div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap" id="hwTabs"></div></div>
       <div class="content-area" id="homeworkContent"></div>
       <div class="content-area" id="wrongContent" style="display:none"></div>
       <div class="content-area" id="reviewContent" style="display:none"></div>
@@ -296,7 +273,6 @@
     </div>
     <div class="section" id="sec-naesin">
       <div class="page-header"><div class="page-title">내신 관리</div></div>
-      <div class="content-area"><div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap" id="naesinTabs"></div></div>
       <div class="content-area" id="naesinContent"></div>
     </div>
     <div class="section" id="sec-questions">
@@ -1098,6 +1074,7 @@ async function doDelSchoolExam(id,label){ if(!confirm(`"${label}" 내신 일정�
 let naesinTab='school';   // school / jikbo / exam
 let naesinExamTitle='';   // 학교 정보에서 보고 있는 시험(내신) 이름
 function rNaesin(){
+  renderSubNav();
   const tabs=[['school','🏫 학교 정보'],['neis','🗓 학사일정'],['jikbo','🔶 직보 일정'],['exam','📅 시험 정보'],['bogang','🙋 보강 체크']];
   const tb=document.getElementById('naesinTabs'); if(tb) tb.innerHTML=tabs.map(([k,l])=>`<button class="btn ${naesinTab===k?'btn-primary':'btn-outline'} btn-sm" onclick="naesinTab='${k}';rNaesin()">${l}</button>`).join('');
   const el=document.getElementById('naesinContent'); if(!el) return;
@@ -2140,34 +2117,46 @@ const ICONS={
   teacher:_svg('<path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1.5 3 3 6 3s6-1.5 6-3v-5"/>')
 };
 const NAV=[
-  {id:'dashboard',label:'대시보드',short:'🏠 오늘'},
-  {id:'manage',label:'학생 · 반별 관리',short:'👥 학생·반'},
-  {id:'homework',label:'숙제 관리',short:'📝 숙제'},
-  {id:'grades',label:'성적 관리',short:'💯 성적'},
-  {id:'naesin',label:'내신 관리',short:'🏫 내신'},
-  {id:'curriculum',label:'진도표',short:'📓 진도표'},
-  {id:'videos',label:'수업 영상 관리',short:'🎬 영상'},{id:'materials',label:'자료실 관리',short:'📁 자료실'},
-  {id:'schedule',label:'시간표 관리',short:'🗓 시간표'},
-  {id:'report',label:'리포트',short:'📊 리포트'}
+  {id:'dashboard',label:'대시보드',short:'오늘 수업'},
+  {id:'manage',label:'학생 · 반별 관리',short:'학생·반'},
+  {id:'homework',label:'숙제 관리',short:'숙제'},
+  {id:'grades',label:'성적 관리',short:'성적'},
+  {id:'naesin',label:'내신 관리',short:'내신'},
+  {id:'curriculum',label:'진도표',short:'진도표'},
+  {id:'videos',label:'수업 영상 관리',short:'수업 영상'},{id:'materials',label:'자료실 관리',short:'자료실'},
+  {id:'schedule',label:'시간표 관리',short:'시간표'},
+  {id:'report',label:'리포트',short:'리포트'}
 ];
 let curSec='dashboard';
 
+// 소단원 — 큰 메뉴마다 딸린 하위 탭. 예전엔 화면 안에 줄로 있던 것을 위쪽 아랫줄로 올렸다.
+const SUBNAV={
+  manage:  {get:()=>mgTab,     set:v=>{mgTab=v;},     tabs:[['students','👥 학생 관리'],['classroom','🏫 반별 관리']]},
+  homework:{get:()=>hwTab,     set:v=>{hwTab=v;},     tabs:[['homework','📝 숙제'],['wrong','❌ 오답'],['review','🔁 복습']]},
+  grades:  {get:()=>gradeTab,  set:v=>{gradeTab=v;},  tabs:[['naesin','🏫 내신 성적'],['daily','📅 학원 데일리 테스트'],['mock','📝 모의 시험'],['analysis','📋 시험지 분석서']]},
+  naesin:  {get:()=>naesinTab, set:v=>{naesinTab=v;}, tabs:[['school','🏫 학교 정보'],['neis','🗓 학사일정'],['jikbo','🔶 직보 일정'],['exam','📅 시험 정보'],['bogang','🙋 보강 체크']]}
+};
+function subNavHtml(sec){
+  const d=SUBNAV[sec]; if(!d) return '';
+  const cur=d.get();
+  return d.tabs.map(([k,l])=>`<button type="button" class="sn-item ${cur===k?'active':''}" onclick="goSub('${sec}','${k}')">${l}</button>`).join('');
+}
+function renderSubNav(){ const el=document.getElementById('subNav'); if(el) el.innerHTML=subNavHtml(curSec); }
+function goSub(sec, k){ const d=SUBNAV[sec]; if(!d) return; d.set(k); if(curSec!==sec) navigate(sec); else renderSection(sec); }
+function toggleThemePop(){ const p=document.getElementById('themePop'); if(p) p.style.display=(p.style.display==='none'?'block':'none'); }
 function buildSidebar(){
-  document.getElementById('sidebarNav').innerHTML=NAV.map(n=>`
-    <div class="nav-item ${n.id===curSec?'active':''}" onclick="navigate('${n.id}')" data-sec="${n.id}" title="${n.label}">
-      <span class="nav-icon">${ICONS[n.id]||''}</span><span class="sb-label">${n.label}</span>
-    </div>`).join('');
-  // 위쪽 바로가기도 같은 메뉴로 — 왼쪽 메뉴를 접어 두고 이것만 써도 된다
+  // 대단원 — 아이콘과 이름을 같이 보여준다
   const tn=document.getElementById('topNav');
-  if(tn) tn.innerHTML=NAV.map(n=>`<button type="button" class="tn-item ${n.id===curSec?'active':''}" data-sec="${n.id}" title="${n.label}" onclick="navigate('${n.id}')">${n.short||n.label}</button>`).join('');
+  if(tn) tn.innerHTML=NAV.map(n=>`<button type="button" class="tn-item ${n.id===curSec?'active':''}" data-sec="${n.id}" title="${n.label}" onclick="navigate('${n.id}')"><span class="nav-icon">${ICONS[n.id]||''}</span>${n.short||n.label}</button>`).join('');
+  renderSubNav();
   renderThemeDots();
 }
 function navigate(s){
   window.__curView=s;
   document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));
   document.getElementById('sec-'+s)?.classList.add('active');
-  document.querySelectorAll('.nav-item,.tn-item').forEach(n=>n.classList.toggle('active',n.dataset.sec===s));
-  curSec=s;renderSection(s);window.scrollTo(0,0);closeMob();
+  document.querySelectorAll('.tn-item').forEach(n=>n.classList.toggle('active',n.dataset.sec===s));
+  curSec=s;renderSection(s);renderSubNav();window.scrollTo(0,0);
 }
 function renderSection(s){
   ({dashboard:rDashboard,manage:rManage,homework:rHomeworkHub,grades:rGrades,naesin:rNaesin,curriculum:rCurriculum,videos:rVideos,materials:rMaterials,schedule:rSchedule,report:rReport,
@@ -2176,6 +2165,7 @@ function renderSection(s){
 // 관리 하위탭: 학생 관리 / 반별 관리
 let mgTab='students';
 function rManage(){
+  renderSubNav();
   const tabs=[['students','👥 학생 관리'],['classroom','🏫 반별 관리']];
   const el=document.getElementById('mgTabs'); if(el) el.innerHTML=tabs.map(([k,l])=>`<button class="btn ${mgTab===k?'btn-primary':'btn-outline'} btn-sm" onclick="mgTab='${k}';rManage()">${l}</button>`).join('');
   const sc=document.getElementById('studentsContent'), cc=document.getElementById('classroomContent');
@@ -2186,6 +2176,8 @@ function rManage(){
 // 숙제 관리 하위탭: 숙제 / 오답 / 복습
 let hwTab='homework';
 function rHomeworkHub(){
+  if(hwTab==='check') hwTab='homework';
+  renderSubNav();
   const tabs=[['homework','📝 숙제'],['wrong','❌ 오답'],['review','🔁 복습']];   // '검사'는 대시보드 명단에서 바로 판정하는 방식으로 대체
   const el=document.getElementById('hwTabs'); if(el) el.innerHTML=tabs.map(([k,l])=>`<button class="btn ${hwTab===k?'btn-primary':'btn-outline'} btn-sm" onclick="hwTab='${k}';rHomeworkHub()">${l}</button>`).join('');
   // 활성 하위탭에 맞춰 제목 변경 (오답/복습인데 '숙제 관리'로 남던 문제 해결)
@@ -2197,23 +2189,6 @@ function rHomeworkHub(){
 // 대시보드 → 숙제 관리의 특정 하위탭으로 바로 이동
 const NL_T='\n';   // 복사용 줄바꿈
 function goHw(tab){ hwTab=tab||'homework'; navigate('homework'); }
-// 🗂 메뉴 접기 — 아이패드 가로·작은 노트북에서 본문을 250px 넓게 쓴다.
-//   한 번 접어두면 다음에 들어와도 그대로. 좁은 화면은 이미 서랍으로 숨으니 그대로 둔다.
-function setFold(on){
-  const bd=document.body;
-  if(bd && bd.classList) bd.classList.toggle('sb-fold', !!on);
-  const b=document.getElementById('sbToggle');
-  if(b){ b.textContent = on?'»':'«'; b.title = on?'메뉴 펼치기':'메뉴 접기'; }
-}
-function toggleFold(){
-  const bd=document.body;
-  const on=!(bd && bd.classList && bd.classList.contains('sb-fold'));
-  setFold(on);
-  try{ localStorage.setItem('bm_sbFold', on?'1':'0'); }catch(e){}
-}
-(function(){ let on=false; try{ on=localStorage.getItem('bm_sbFold')==='1'; }catch(e){} setFold(on); })();
-function toggleMob(){document.getElementById('sidebar').classList.toggle('mob-open');document.getElementById('mobOverlay').classList.toggle('open');}
-function closeMob(){document.getElementById('sidebar').classList.remove('mob-open');document.getElementById('mobOverlay').classList.remove('open');}
 
 function showToast(msg,type=''){
   const icons={success:'✅',error:'❌',warning:'⚠️'};
@@ -6954,17 +6929,10 @@ async function doSaveAllNaesin(){
 }
 
 function rGrades(){
+  renderSubNav();
   const exams=getExams(),esubs=getExamSubs(),pendSubs=esubs.filter(s=>s.score===null||s.score===undefined);
   const editE=exEditId?exams.find(e=>e.id===exEditId):null;
   document.getElementById('gradesContent').innerHTML=`
-    <div class="card" style="padding:8px 12px;margin-bottom:14px">
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-        <button class="btn ${gradeTab==='naesin'?'btn-primary':'btn-outline'} btn-sm" onclick="gradeTab='naesin';rGrades()">🏫 내신 성적</button>
-        <button class="btn ${gradeTab==='daily'?'btn-primary':'btn-outline'} btn-sm" onclick="gradeTab='daily';rGrades()">📅 학원 데일리 테스트</button>
-        <button class="btn ${gradeTab==='mock'?'btn-primary':'btn-outline'} btn-sm" onclick="gradeTab='mock';rGrades()">📝 모의 시험</button>
-        <button class="btn ${gradeTab==='analysis'?'btn-primary':'btn-outline'} btn-sm" onclick="gradeTab='analysis';rGrades()">📋 시험지 분석서</button>
-      </div>
-    </div>
     ${gradeTab==='analysis'?examAnalysisTabHtml():''}
     ${gradeTab==='naesin'?`
     <div class="card" style="padding:10px 14px;margin-bottom:12px">

@@ -131,10 +131,5 @@ console.log('\n위쪽 바로가기');
 ok('메뉴마다 짧은 이름이 있다', () => {
   assert.ok(get('NAV').every(n => n.short && n.short.length <= 8));
 });
-ok('위쪽 바가 본문 맨 위에 있고 navigate 가 같이 표시한다', () => {
-  const html = fs.readFileSync(path.join(ROOT, 'teacher.html'), 'utf8');
-  assert.ok(html.indexOf('<div class="topnav" id="topNav"></div>') > html.indexOf('<main class="main-content">'));
-  assert.ok(html.indexOf(".nav-item,.tn-item") >= 0);
-});
 
 console.log('\n' + pass + ' passed');

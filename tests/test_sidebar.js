@@ -1,4 +1,5 @@
-// 🗂 사이드바 접기 — 아이패드 가로·작은 노트북에서 본문을 250px 넓게
+// 🔝 위쪽 메뉴 — 왼쪽 바 대신. 윗줄은 큰 메뉴(대단원), 아랫줄은 그 메뉴의 하위 탭(소단원).
+//   왼쪽 바를 접으면 아이콘만 남아 뭐가 뭔지 알기 어렵다고 해서 위로 올렸다 (2026-10-10).
 const fs = require('fs');
 const vm = require('vm');
 const assert = require('assert');
@@ -10,62 +11,7 @@ const ok = (name, fn) => { try { fn(); pass++; console.log('  ok  ' + name); } c
 
 const th = fs.readFileSync(path.join(ROOT, 'teacher.html'), 'utf8');
 
-console.log('접기 버튼');
-ok('사이드바 머리에 접기 버튼이 있다', () => {
-  assert.ok(th.includes('id="sbToggle" onclick="toggleFold()"'), '접기 버튼이 없음');
-  assert.ok(th.includes('function toggleFold()'), '접기 동작이 없음');
-});
-ok('접으면 « 가 » 로 바뀌고 안내도 바뀐다', () => {
-  assert.ok(th.includes("b.textContent = on?'»':'«'"), '방향 표시가 안 바뀜');
-  assert.ok(th.includes("b.title = on?'메뉴 펼치기':'메뉴 접기'"), '안내가 안 바뀜');
-});
-ok('한 번 접어두면 다음에 들어와도 그대로', () => {
-  assert.ok(th.includes("localStorage.setItem('bm_sbFold', on?'1':'0')"), '고른 걸 안 기억함');
-  assert.ok(th.includes("on=localStorage.getItem('bm_sbFold')==='1'"), '기억한 걸 안 씀');
-});
-
-console.log('\n접었을 때');
-ok('폭이 250px에서 64px로 준다', () => {
-  assert.ok(th.includes('body.sb-fold{--sidebar-w:64px}'), '폭이 안 줄어듦');
-  // 사이드바와 본문이 같은 값을 쓰니 본문도 같이 넓어진다
-  assert.ok(th.includes('.sidebar{width:var(--sidebar-w)'), '사이드바가 변수를 안 씀');
-  assert.ok(th.includes('.main-content{margin-left:var(--sidebar-w)'), '본문이 변수를 안 씀');
-});
-ok('글자는 숨고 아이콘만 남는다', () => {
-  assert.ok(th.includes('body.sb-fold .sb-label{display:none}'), '글자가 안 숨음');
-  assert.ok(th.includes('body.sb-fold .nav-item{justify-content:center'), '아이콘이 가운데로 안 감');
-});
-ok('메뉴·플래너·로그아웃 글자에 모두 표시가 붙어 있다', () => {
-  assert.ok(th.includes('<span class="sb-label">${n.label}</span>'), '메뉴 글자에 표시가 없음');
-  assert.ok(th.includes('📒<span class="sb-label"> 나의 플래너 →</span>'), '플래너 글자에 표시가 없음');
-  assert.ok(th.includes('🚪<span class="sb-label"> 로그아웃</span>'), '로그아웃 글자에 표시가 없음');
-  assert.ok(th.includes('<span class="sb-label">BEEN MATH</span>'), '로고 글자에 표시가 없음');
-});
-ok('아이콘만 남아도 무엇인지 알 수 있게 이름을 달아둔다', () => {
-  assert.ok(th.includes('data-sec="${n.id}" title="${n.label}"'), '메뉴에 이름이 없음');
-  assert.ok(th.includes('title="나의 플래너"'), '플래너에 이름이 없음');
-  assert.ok(th.includes('title="로그아웃"'), '로그아웃에 이름이 없음');
-});
-ok('스르륵 움직인다', () => {
-  assert.ok(/\.sidebar\{[^}]*transition:width \.18s/.test(th), '사이드바가 툭 바뀜');
-  assert.ok(/\.main-content\{[^}]*transition:margin-left \.18s/.test(th), '본문이 툭 바뀜');
-});
-
-console.log('\n좁은 화면은 건드리지 않는다');
-ok('접기는 901px부터만 먹는다', () => {
-  // 900px 아래는 이미 서랍으로 숨는다 — 거기서 64px로 줄면 서랍이 망가진다
-  assert.ok(/@media\(min-width:901px\)\{[\s\S]{0,900}body\.sb-fold\{--sidebar-w:64px\}/.test(th), '넓은 화면 전용이 아님');
-});
-ok('좁은 화면에서는 접기 버튼을 감춘다', () => {
-  assert.ok(/@media\(max-width:900px\)\{[\s\S]{0,400}\.sb-toggle\{display:none\}/.test(th), '좁은 화면에 버튼이 남음');
-});
-
-console.log('\n안전');
-ok('body가 아직 없어도 안 터진다', () => {
-  // 화면이 그려지기 전에 불려도 페이지 전체가 멈추면 안 된다
-  assert.ok(th.includes('if(bd && bd.classList) bd.classList.toggle'), 'body를 그냥 믿고 씀');
-});
-ok('teacher.html 스크립트가 끝까지 실행된다', () => {
+function load() {
   const out = []; let i = 0;
   for (;;) {
     const s = th.indexOf('<script', i); if (s < 0) break;
@@ -74,20 +20,107 @@ ok('teacher.html 스크립트가 끝까지 실행된다', () => {
     if (!head.includes('src=')) out.push(th.slice(gt + 1, e));
     i = e + 9;
   }
+  const src = out.join('\n;\n') + '\n;globalThis.__get=(n)=>eval(n);globalThis.__set=(n,v)=>eval(n+"=v");';
+  const els = {};
+  const el = (id) => { if (!els[id]) els[id] = { id, value: '', innerHTML: '', style: {}, classList: { add() {}, remove() {}, toggle() {} } }; return els[id]; };
   const sb = {
     console, setTimeout: () => {}, clearTimeout, setInterval, clearInterval,
-    document: { getElementById: () => null, addEventListener: () => {}, querySelectorAll: () => [], querySelector: () => null, createElement: () => ({}), body: {} },
+    document: { getElementById: (id) => el(id), addEventListener: () => {}, querySelectorAll: () => [], querySelector: () => null, createElement: () => ({}), body: {} },
     localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
     location: { href: '', search: '', replace: () => {} },
     navigator: { userAgent: 'node' }, alert: () => {}, confirm: () => true, prompt: () => '',
     addEventListener: () => {}, removeEventListener: () => {}, matchMedia: () => ({ matches: false, addListener: () => {} }),
+    scrollTo: () => {},
     firebase: { initializeApp: () => {}, firestore: Object.assign(() => ({}), { FieldValue: class {} }), auth: () => ({}), storage: () => ({}) }
   };
   sb.window = sb; sb.globalThis = sb; sb.self = sb;
   vm.createContext(sb);
   let err = null;
-  try { vm.runInContext(out.join('\n;\n'), sb, { filename: 'teacher.html' }); } catch (e) { err = e; }
-  assert.strictEqual(err, null, err && err.message);
+  try { vm.runInContext(src, sb, { filename: 'teacher.html' }); } catch (e) { err = e; }
+  sb.__els = els; sb.__err = err;
+  return sb;
+}
+const T = load();
+const get = n => T.__get(n);
+
+console.log('왼쪽 바는 없다');
+ok('왼쪽 바·모바일 서랍·접기가 남아 있지 않다', () => {
+  ['class="sidebar"', 'mobile-header', 'mob-overlay', 'sb-fold', 'toggleFold', 'toggleMob', 'closeMob('].forEach(k =>
+    assert.ok(!th.includes(k), k + ' 가 남아 있음'));
+});
+ok('본문이 왼쪽으로 밀려 있지 않다', () => {
+  assert.ok(!/\.main-content\{[^}]*margin-left/.test(th), '본문에 왼쪽 여백이 남음');
 });
 
-console.log('\n' + pass + '개 통과');
+console.log('\n윗줄 — 큰 메뉴');
+ok('위쪽 바가 본문 맨 위에 있고 스크롤해도 붙어 있다', () => {
+  assert.ok(th.indexOf('<div class="topbar" id="topBar">') > th.indexOf('<main class="main-content">'));
+  assert.ok(/\.topbar\{[^}]*position:sticky;top:0/.test(th), '위에 안 붙음');
+});
+ok('메뉴마다 아이콘과 이름이 같이 나온다', () => {
+  T.renderThemeDots = () => {};   // firebase-init.js 에 있는 함수
+  T.buildSidebar();
+  const h = T.__els.topNav.innerHTML;
+  get('NAV').forEach(n => {
+    assert.ok(h.includes(`onclick="navigate('${n.id}')"`), n.id + ' 버튼이 없음');
+    assert.ok(h.includes('</span>' + n.short + '</button>'), n.id + ' 이름이 안 보임');
+  });
+  assert.ok((h.match(/class="nav-icon"/g) || []).length === get('NAV').length, '아이콘 수가 다름');
+});
+ok('플래너·테마·로그아웃이 위쪽 바에 있다', () => {
+  const bar = th.slice(th.indexOf('<div class="topbar" id="topBar">'), th.indexOf('<div class="section active" id="sec-dashboard">'));
+  assert.ok(bar.includes('href="plan.html"') && bar.includes('onclick="logout()"'));
+  assert.ok(bar.includes('id="themeDots"') && bar.includes('toggleThemePop()'));
+  assert.strictEqual(th.split('id="themeDots"').length - 1, 1, '테마 칸이 둘 이상');
+});
+ok('좁은 화면에서는 글자를 줄여도 메뉴 이름은 남는다', () => {
+  assert.ok(th.includes('@media(max-width:1400px){ .tb-txt{display:none} }'));
+  assert.ok(/\.topnav\{[^}]*flex-wrap:wrap/.test(th), '좁으면 끝 메뉴가 옆으로 밀려 안 보임');
+  assert.ok(!/\.tn-item[^{]*\{[^}]*font-size:0/.test(th));
+});
+
+console.log('\n아랫줄 — 하위 탭');
+ok('하위 탭이 있는 메뉴는 넷 — 학생·반, 숙제, 성적, 내신', () => {
+  assert.strictEqual(Object.keys(get('SUBNAV')).join(','), 'manage,homework,grades,naesin');
+});
+ok('지금 보는 탭이 눌린 모양으로 뜬다', () => {
+  T.__set('naesinTab', 'jikbo');
+  const h = T.subNavHtml('naesin');
+  assert.ok(h.includes(`class="sn-item active" onclick="goSub('naesin','jikbo')"`), h);
+  assert.strictEqual((h.match(/sn-item active/g) || []).length, 1);
+  assert.strictEqual((h.match(/<button/g) || []).length, 5);
+});
+ok('하위 탭이 없는 메뉴는 아랫줄이 비고, 빈 줄은 숨는다', () => {
+  assert.strictEqual(T.subNavHtml('dashboard'), '');
+  assert.strictEqual(T.subNavHtml('curriculum'), '');
+  assert.ok(th.includes('.subnav:empty{display:none}'));
+});
+ok('하위 탭을 누르면 그 탭으로 바뀌고 그 화면을 그린다', () => {
+  const seen = [];
+  T.navigate = (s) => seen.push('nav:' + s);
+  T.renderSection = (s) => seen.push('render:' + s);
+  T.__set('curSec', 'dashboard');
+  T.goSub('grades', 'analysis');
+  assert.strictEqual(get('gradeTab'), 'analysis');
+  T.__set('curSec', 'grades');
+  T.goSub('grades', 'mock');
+  assert.strictEqual(get('gradeTab'), 'mock');
+  assert.strictEqual(seen.join(' '), 'nav:grades render:grades');
+});
+ok('화면 안에 있던 하위 탭 줄은 없앴다 (두 군데에 같은 줄이 있으면 헷갈린다)', () => {
+  ['id="mgTabs"', 'id="hwTabs"', 'id="naesinTabs"'].forEach(k => assert.ok(!th.includes(k), k));
+  assert.ok(!th.includes(`onclick="gradeTab='analysis';rGrades()">📋 시험지 분석서</button>`));
+});
+ok('화면 안에서 탭이 바뀌어도 위쪽 표시가 따라온다', () => {
+  ['function rManage(){', 'function rHomeworkHub(){', 'function rNaesin(){', 'function rGrades(){'].forEach(f => {
+    const i = th.indexOf(f);
+    assert.ok(i >= 0 && th.slice(i, i + 160).includes('renderSubNav();'), f);
+  });
+});
+
+console.log('\n안전');
+ok('teacher.html 스크립트가 끝까지 실행된다', () => {
+  assert.ifError(T.__err);
+});
+
+console.log('\n' + pass + ' passed');
