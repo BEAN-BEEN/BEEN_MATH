@@ -528,8 +528,10 @@ function classHistoryHtml(s){
 // 숙제 a의 인원 명단 = 출제일에 그 반 소속이던 재원생 (반이동해 나간 학생도 지난 숙제엔 그대로 뜸)
 function hwStudents(a){
   const d=(a&&(a.startDate||a.createdAt||a.dueDate))||'';
+  // 🙋 개별 숙제(studentIds)면 고른 학생만 — 반 전체가 아니라 그 몇 명이 명단이다.
+  const only=(a && Array.isArray(a.studentIds) && a.studentIds.length) ? new Set(a.studentIds) : null;
   return STUDENTS_CACHE.filter(s=> isActiveStudent(s)
-    && studentInClassAt(s, a&&a.classId, d)
+    && (only ? only.has(s.id) : studentInClassAt(s, a&&a.classId, d))
     // 등원 전에 낸 숙제는 그 학생 몫이 아님 — 학생 화면에도 안 보이므로 명단에서도 빼야 미제출로 잘못 뜨지 않음
     && !(s.enrollDate && d && d < s.enrollDate));
 }
@@ -791,8 +793,54 @@ async function doAddSeason(){
   const name=document.getElementById('season-name').value.trim();
   const start=document.getElementById('season-start').value, end=document.getElementById('season-end').value;
   if(!name||!start){ showToast('시즌 이름과 시작일을 입력해주세요','error'); return; }
-  try{ await addSeason({name,startDate:start,endDate:end||''}); showToast(`"${name}" 시즌 추가 📅`,'success'); rClassroom(); }
+  try{
+    await addSeason({name,startDate:start,endDate:end||''});
+    // 📘 진도표도 이 시즌 날짜에 맞춘다(체크했을 때만) — 시즌이 바뀌면 진도표 주차도 같이 가야 한다.
+    const fit=document.getElementById('season-fit');
+    if(fit && fit.checked) await seasonFitTerm({name,startDate:start,endDate:end||''}, true);
+    showToast(`"${name}" 시즌 추가 📅`,'success'); rClassroom();
+  }
   catch(e){ showToast('추가 실패: '+e.message,'error'); }
+}
+// 📘 시즌 구간 → 진도표 학기(시작 월요일 · 주 수). 종료일이 없으면 13주로 둔다.
+function seasonWeeks(s){
+  if(!s||!s.startDate||!s.endDate) return 13;
+  const a=new Date(mondayOf(s.startDate)+'T00:00:00'), b=new Date(mondayOf(s.endDate)+'T00:00:00');
+  const w=Math.round((b-a)/(7*86400000))+1;
+  return Math.max(1, Math.min(40, w));
+}
+async function seasonFitTerm(s, quiet){
+  CURR_TERM={startDate:mondayOf(s.startDate||''), weeks:seasonWeeks(s)};
+  await db.collection('settings').doc('curriculumTerm').set(CURR_TERM,{merge:true});
+  if(!quiet) showToast(`진도표를 "${s.name}" 시즌에 맞췄어요 📘 (${CURR_TERM.startDate}부터 ${CURR_TERM.weeks}주)`,'success');
+}
+async function doSeasonFitTerm(id){
+  const s=getSeasons().find(x=>x.id===id); if(!s) return;
+  if(!confirm(`진도표 학기를 "${s.name}" 시즌에 맞출까요?\n시작 ${mondayOf(s.startDate||'')} · ${seasonWeeks(s)}주\n(진도표에 적어 둔 진도 내용은 그대로 있어요)`)) return;
+  try{ await seasonFitTerm(s); }catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+// 🗑 시즌 사진 정리 — 그 시즌 숙제의 사진만 지워 저장 공간을 비운다.
+//   제출했다는 기록과 제출률은 그대로 남는다(자동 정리 pruneOldFirebase와 같은 기준, 3개월을 안 기다릴 뿐).
+async function doPruneSeason(id){
+  const s=getSeasons().find(x=>x.id===id); if(!s) return;
+  const ids=new Set(getAssignments().filter(a=>asnInSeason(a,s)).map(a=>a.id));
+  const subs=getSubmissions().filter(x=>ids.has(x.assignmentId) && !x.photosPruned && (((x.photos||[]).length)||((x.retryPhotos||[]).length)));
+  const shots=subs.reduce((n,x)=>n+((x.photos||[]).length)+((x.retryPhotos||[]).length),0);
+  if(!shots){ showToast('이 시즌엔 지울 사진이 없어요','warning'); return; }
+  if(!confirm(`"${s.name}" 시즌 사진 ${shots}장을 지울까요?\n\n· 제출했다는 기록과 제출률은 그대로 남아요\n· 사진만 지워서 저장 공간을 비웁니다\n· 사진은 되살릴 수 없어요`)) return;
+  showToast(`사진 ${shots}장 지우는 중…`);
+  let done=0, fail=0;
+  for(const x of subs){
+    try{
+      for(const u of [...(x.photos||[]), ...(x.retryPhotos||[])]){ try{ await firebase.storage().refFromURL(u).delete(); }catch(e){} }
+      const patch={photos:[], retryPhotos:[], corrections:{}, photosPruned:true};
+      await db.collection('submissions').doc(x.id).update(patch);
+      if(!cachePut('submissions', x.id, patch)) await loadSubmissions();
+      done++;
+    }catch(e){ fail++; }
+  }
+  showToast(`사진 정리 끝 — ${done}건${fail?` · ${fail}건 실패`:''} 🗑`, fail?'warning':'success');
+  rClassroom();
 }
 async function doDelSeason(id,name){ if(!confirm(`"${name}" 시즌을 삭제할까요?\n(집계 기간 구분만 사라지고 숙제·성적은 그대로예요)`)) return;
   try{ await deleteSeasonFS(id); if(gradeSeasonId===id) gradeSeasonId=null; showToast('시즌 삭제','warning'); rClassroom(); }catch(e){ showToast('삭제 실패: '+e.message,'error'); } }
@@ -4583,10 +4631,11 @@ function rClassroom(){
           <div class="form-group" style="margin:0"><label class="form-label">시즌 이름</label><input class="form-input" id="season-name" placeholder="예: 2026 여름학기" style="width:170px"></div>
           <div class="form-group" style="margin:0"><label class="form-label">시작일</label><input class="form-input" id="season-start" type="date" style="width:150px"></div>
           <div class="form-group" style="margin:0"><label class="form-label">종료일(선택)</label><input class="form-input" id="season-end" type="date" style="width:150px"></div>
+          <label style="display:inline-flex;align-items:center;gap:5px;font-size:13.5px;white-space:nowrap;padding-bottom:9px"><input type="checkbox" id="season-fit" checked> 진도표도 이 날짜에 맞추기</label>
           <button class="btn btn-primary" onclick="doAddSeason()">시즌 추가</button>
         </div>
-        ${getSeasons().length?`<div style="margin-top:8px;display:flex;flex-direction:column;gap:4px">${getSeasons().map(s=>`<div style="display:flex;align-items:center;gap:8px;font-size:14px"><strong>${(s.name||'-').replace(/</g,'&lt;')}</strong><span style="color:var(--text-muted)">${s.startDate||'?'} ~ ${s.endDate||'진행중'}</span><button class="btn btn-red btn-sm" style="padding:1px 7px" onclick="doDelSeason('${s.id}','${(s.name||'').replace(/'/g,'')}')">삭제</button></div>`).join('')}</div>`:''}
-        <div style="font-size:12.5px;color:var(--text-muted);margin-top:6px">시즌 구간(출제일 기준) 안 숙제만 제출률에 집계돼요. 지난 시즌을 골라 그때 얼마나 했는지 볼 수 있어요.</div>
+        ${getSeasons().length?`<div style="margin-top:8px;display:flex;flex-direction:column;gap:4px">${getSeasons().map(s=>`<div style="display:flex;align-items:center;gap:8px;font-size:14px"><strong>${(s.name||'-').replace(/</g,'&lt;')}</strong><span style="color:var(--text-muted)">${s.startDate||'?'} ~ ${s.endDate||'진행중'}</span><button class="btn btn-outline btn-sm" style="padding:1px 7px" title="진도표 학기를 이 시즌 날짜로 맞춰요" onclick="doSeasonFitTerm('${s.id}')">📘 진도표</button><button class="btn btn-outline btn-sm" style="padding:1px 7px" title="이 시즌 숙제 사진만 지워 저장 공간을 비워요(기록은 남아요)" onclick="doPruneSeason('${s.id}')">🗑 사진 정리</button><button class="btn btn-red btn-sm" style="padding:1px 7px" onclick="doDelSeason('${s.id}','${(s.name||'').replace(/'/g,'')}')">삭제</button></div>`).join('')}</div>`:''}
+        <div style="font-size:12.5px;color:var(--text-muted);margin-top:6px">시즌 구간(출제일 기준) 안 숙제만 제출률에 집계돼요. 지난 시즌을 골라 그때 얼마나 했는지 볼 수 있어요.<br><strong>학생 첫 화면도 지금 시즌 숙제만 보여요</strong> — 새 시즌에 들어가면 지난 시즌 밀린 숙제가 쌓여 보이지 않아요(지난 건 숙제 탭에서 시즌을 골라 봐요).<br>🗑 <strong>사진 정리</strong>는 그 시즌 숙제 사진만 지워 저장 공간을 비웁니다. 제출 기록·제출률은 그대로예요.</div>
       </div>`:''}
     </div>
     <div class="card">
@@ -4917,10 +4966,11 @@ function rHomework(){
     <div class="card" ${editA?'style="border-left:4px solid var(--orange)"':''}>
       <div class="card-title">${editA?'✏️ 과제 수정':'➕ 새 과제 만들기'}</div>
       <div class="form-row-3">
-        <div class="form-group"><label class="form-label">대상 반</label>${classSelect('hw-cls')}</div>
+        <div class="form-group"><label class="form-label">대상 반</label>${classSelect('hw-cls').replace('<select ','<select onchange="hwRenderIndiv()" ')}</div>
         <div class="form-group"><label class="form-label">출제일 (내준 날)</label><input class="form-input" id="hw-start" type="date" onchange="hwSyncDue()" value="${editA?(editA.startDate||''):bmToday()}"></div>
         <div class="form-group"><label class="form-label">마감일 <span style="font-size:12.5px;color:var(--text-muted)">(출제일 +1주 자동 · 바꿔도 돼요)</span></label><input class="form-input" id="hw-due" type="date" onchange="hwDueTouched()" ${editA?'':'data-auto="1"'} value="${editA?(editA.dueDate||''):hwAddWeek(bmToday())}"></div>
       </div>
+      <div class="form-group" style="margin-bottom:10px"><label style="display:inline-flex;align-items:center;gap:6px;font-size:14px;font-weight:600;cursor:pointer"><input type="checkbox" id="hw-indiv" onchange="hwRenderIndiv()" ${(editA&&Array.isArray(editA.studentIds)&&editA.studentIds.length)?'checked':''}> 🙋 개별 숙제 — 고른 학생에게만</label><div id="hw-indiv-box" style="display:none"></div></div>
       <div class="form-group"><label class="form-label">교재 <span style="font-size:12.5px;color:var(--text-muted)">(칩을 누르면 자동 입력 · ✕ 누르면 그 칩만 숨겨요)</span></label>
         <input class="form-input" id="hw-textbook" placeholder="예: 쎈 공통수학1" value="${editA?esc(editA.textbook):''}">
         ${tbChips.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center">${tbChips.map(t=>`
@@ -5056,7 +5106,9 @@ function rHomework(){
             </table></div></div>`):``}
         </div>`;})(a);});return _o;})()}`;
   // 수정 모드면 대상 반 셀렉트를 해당 반으로 맞춤
-  if(hwEditId){ const a=asgn.find(x=>x.id===hwEditId); const cs=document.getElementById('hw-cls'); if(a&&cs) cs.value=a.classId; }
+  if(hwEditId){ const a=asgn.find(x=>x.id===hwEditId); const cs=document.getElementById('hw-cls'); if(a&&cs) cs.value=a.classId;
+    if(a) hwIndivSel = Array.isArray(a.studentIds) ? a.studentIds.slice() : []; }
+  hwRenderIndiv();   // 🙋 개별 숙제 명단을 지금 고른 반 기준으로 그린다(수정 모드면 체크까지 되살린다)
 }
 // 교재 칩 선택 → 교재 입력 + 숙제 제목도 같은 이름으로 채움
 function pickTextbook(t){
@@ -5205,11 +5257,30 @@ function hwParityValue(){
   const v=el?el.value:'';
   return (v==='odd'||v==='even')?v:'';
 }
+// 🙋 개별 숙제 — 반 전체가 아니라 고른 학생에게만 내준다(assignments.studentIds).
+//   비우면 반 전체. 수정/복제로 폼을 열 때는 hwIndivSel에 미리 담아 둔다.
+let hwIndivSel=[];
+function hwRenderIndiv(){
+  const box=document.getElementById('hw-indiv-box'); if(!box) return;
+  const on=document.getElementById('hw-indiv');
+  if(!on || !on.checked){ box.innerHTML=''; box.style.display='none'; return; }
+  const cid=(document.getElementById('hw-cls')||{}).value||'';
+  const sts=getStudents().filter(s=>isActiveStudent(s) && (s.classIds||(s.classId?[s.classId]:[])).includes(cid));
+  box.style.display='block';
+  box.innerHTML = sts.length
+    ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${sts.map(s=>`<label style="display:inline-flex;align-items:center;gap:5px;border:1.5px solid var(--border);border-radius:9px;padding:6px 10px;font-size:13.5px;cursor:pointer"><input type="checkbox" class="hw-indiv-chk" value="${s.id}" ${hwIndivSel.includes(s.id)?'checked':''}> ${anEsc(s.name||'')}</label>`).join('')}</div><div style="font-size:12.5px;color:var(--text-muted);margin-top:6px">고른 학생에게만 나가요. 아무도 안 고르면 반 전체에 나갑니다. 반을 바꾸면 명단도 바뀌어요.</div>`
+    : '<div style="font-size:13px;color:var(--text-muted);margin-top:8px">이 반에 재원 중인 학생이 없어요.</div>';
+}
+function hwIndivIds(){
+  const on=document.getElementById('hw-indiv');
+  if(!on || !on.checked) return [];
+  return [...document.querySelectorAll('.hw-indiv-chk')].filter(c=>c.checked).map(c=>c.value);
+}
 async function doSaveAsgn(){
   const classId=document.getElementById('hw-cls').value,title=document.getElementById('hw-title').value.trim();
   if(!classId||!title){showToast('반과 제목을 입력해주세요','error');return;}
   const cls=CLASSES.find(c=>c.id===classId);
-  const data={classId,className:cls?.name||'',title,content:document.getElementById('hw-content').value.trim(),textbook:document.getElementById('hw-textbook').value.trim(),startDate:document.getElementById('hw-start').value,dueDate:document.getElementById('hw-due').value,maxPhotos:parseInt(document.getElementById('hw-photos').value)||30,probStart:parseInt(document.getElementById('hw-pstart').value)||null,probEnd:parseInt(document.getElementById('hw-pend').value)||null,probLabel:(document.getElementById('hw-plabel').value||'').trim()||null,probParity:hwParityValue()};
+  const data={classId,className:cls?.name||'',title,content:document.getElementById('hw-content').value.trim(),textbook:document.getElementById('hw-textbook').value.trim(),startDate:document.getElementById('hw-start').value,dueDate:document.getElementById('hw-due').value,maxPhotos:parseInt(document.getElementById('hw-photos').value)||30,probStart:parseInt(document.getElementById('hw-pstart').value)||null,probEnd:parseInt(document.getElementById('hw-pend').value)||null,probLabel:(document.getElementById('hw-plabel').value||'').trim()||null,probParity:hwParityValue(),studentIds:hwIndivIds()};
   try{
     if(hwEditId){
       await updateAssignment(hwEditId,data); hwEditId=null;
