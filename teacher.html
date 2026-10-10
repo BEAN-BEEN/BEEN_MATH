@@ -70,6 +70,11 @@
 
     /* MAIN */
     .main-content{margin-left:var(--sidebar-w);flex:1;min-height:100vh;padding-bottom:48px;transition:margin-left .18s}
+    /* 🔝 위쪽 바로가기 — 어느 화면에서든 한 번에 다른 메뉴로. 스크롤해도 위에 붙어 있다. */
+    .topnav{position:sticky;top:0;z-index:120;display:flex;gap:6px;overflow-x:auto;padding:8px 28px;background:var(--surface);border-bottom:1px solid var(--border)}
+    .tn-item{flex-shrink:0;border:1px solid var(--border);background:var(--bg);color:var(--text-sub);border-radius:999px;padding:7px 14px;font-size:14.5px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap}
+    .tn-item:hover{border-color:var(--primary);color:var(--primary)}
+    .tn-item.active{background:var(--primary);color:#fff;border-color:var(--primary)}
     /* 넓은 모니터에서 내용이 양 끝으로 벌어지지 않게 최대 너비 + 가운데 정렬 */
     .page-header{padding:24px 28px 0;margin:0 auto 20px;max-width:1560px}
     .page-title{font-size:22px;font-weight:700;letter-spacing:-.5px}
@@ -191,6 +196,7 @@
       .main-content{margin-left:0;padding-top:calc(56px + env(safe-area-inset-top))}
       .mobile-header{display:flex;height:auto;min-height:56px;padding-top:env(safe-area-inset-top)}
       .page-header{padding:16px 16px 0}
+      .topnav{top:calc(56px + env(safe-area-inset-top));padding:7px 12px}
       .content-area{padding:0 16px}
       .stats-grid{grid-template-columns:repeat(2,1fr)}
       .form-row-3,.form-row-4{grid-template-columns:1fr 1fr}
@@ -265,6 +271,7 @@
   </nav>
 
   <main class="main-content">
+    <div class="topnav" id="topNav"></div>
     <div class="section active" id="sec-dashboard">
       <div class="page-header"><div class="page-title">대시보드</div><div class="page-subtitle" id="todayDate"></div></div>
       <div class="content-area" id="dashboardContent"></div>
@@ -2133,15 +2140,15 @@ const ICONS={
   teacher:_svg('<path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1.5 3 3 6 3s6-1.5 6-3v-5"/>')
 };
 const NAV=[
-  {id:'dashboard',label:'대시보드'},
-  {id:'manage',label:'학생 · 반별 관리'},
-  {id:'homework',label:'숙제 관리'},
-  {id:'grades',label:'성적 관리'},
-  {id:'naesin',label:'내신 관리'},
-  {id:'curriculum',label:'진도표'},
-  {id:'videos',label:'수업 영상 관리'},{id:'materials',label:'자료실 관리'},
-  {id:'schedule',label:'시간표 관리'},
-  {id:'report',label:'리포트'}
+  {id:'dashboard',label:'대시보드',short:'🏠 오늘'},
+  {id:'manage',label:'학생 · 반별 관리',short:'👥 학생·반'},
+  {id:'homework',label:'숙제 관리',short:'📝 숙제'},
+  {id:'grades',label:'성적 관리',short:'💯 성적'},
+  {id:'naesin',label:'내신 관리',short:'🏫 내신'},
+  {id:'curriculum',label:'진도표',short:'📓 진도표'},
+  {id:'videos',label:'수업 영상 관리',short:'🎬 영상'},{id:'materials',label:'자료실 관리',short:'📁 자료실'},
+  {id:'schedule',label:'시간표 관리',short:'🗓 시간표'},
+  {id:'report',label:'리포트',short:'📊 리포트'}
 ];
 let curSec='dashboard';
 
@@ -2150,13 +2157,16 @@ function buildSidebar(){
     <div class="nav-item ${n.id===curSec?'active':''}" onclick="navigate('${n.id}')" data-sec="${n.id}" title="${n.label}">
       <span class="nav-icon">${ICONS[n.id]||''}</span><span class="sb-label">${n.label}</span>
     </div>`).join('');
+  // 위쪽 바로가기도 같은 메뉴로 — 왼쪽 메뉴를 접어 두고 이것만 써도 된다
+  const tn=document.getElementById('topNav');
+  if(tn) tn.innerHTML=NAV.map(n=>`<button type="button" class="tn-item ${n.id===curSec?'active':''}" data-sec="${n.id}" title="${n.label}" onclick="navigate('${n.id}')">${n.short||n.label}</button>`).join('');
   renderThemeDots();
 }
 function navigate(s){
   window.__curView=s;
   document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));
   document.getElementById('sec-'+s)?.classList.add('active');
-  document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.sec===s));
+  document.querySelectorAll('.nav-item,.tn-item').forEach(n=>n.classList.toggle('active',n.dataset.sec===s));
   curSec=s;renderSection(s);window.scrollTo(0,0);closeMob();
 }
 function renderSection(s){
@@ -4045,6 +4055,8 @@ function rDashboard(){
       ${(todayCls.length&&dashIsToday())?`<button class="btn btn-outline btn-sm" onclick="doRemindToday()">🔔 오늘 반 알림</button>`:''}
     </div>
     ${todayRosterHtml(todayCls, subs)}
+    ${dashJikboHtml()}
+    ${dashBogangHtml()}
     ${classCheckBoardHtml()}
     </div>
     <div style="display:flex;flex-direction:column;gap:14px" id="dashRight">
@@ -5764,6 +5776,185 @@ function dashIsToday(){ return dashDay()===bmToday(); }
 function dashShift(n){ const d=dashDateObj(); d.setDate(d.getDate()+n); dashDateStr=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; rDashboard(); }
 function dashGoToday(){ dashDateStr=null; rDashboard(); }
 function dashPickDate(v){ if(v) dashDateStr=v; rDashboard(); }
+// ================================================================
+// 👤 학생 정보 바로 보기 — 이름을 누르면 학교·교과서·시험 범위·보충 교재가 한 번에.
+//   내신 탭까지 찾아 들어가지 않고 수업 화면에서 바로 본다.
+// ================================================================
+function stuDays(a,b){ return Math.round((new Date(b+'T00:00:00')-new Date(a+'T00:00:00'))/86400000); }
+// 그 학생 학교의 다가오는 시험 (없으면 가장 최근에 끝난 시험)
+function stuExam(st){
+  const sc=normSchool((st&&st.school)||''); if(!sc) return null;
+  const today=bmToday();
+  const list=getSchoolExams().filter(e=>normSchool(e.school||'')===sc);
+  const endOf=e=>e.endDate||e.startDate||e.mathDate||'';
+  const up=list.filter(e=>endOf(e)>=today).sort((a,b)=>cmpStr(a.startDate||a.mathDate, b.startDate||b.mathDate))[0];
+  if(up) return up;
+  return list.slice().sort((a,b)=>cmpStr(endOf(b), endOf(a)))[0]||null;
+}
+// 다가오는 수학 시험까지 며칠 — 지났거나 없으면 null
+function stuMathDday(st){
+  const e=stuExam(st); if(!e) return null;
+  const today=bmToday();
+  const d=examMathDates(e).map(m=>m.date).filter(x=>x>=today).sort()[0];
+  return d ? { date:d, days:stuDays(today,d), title:e.title||'' } : null;
+}
+// 화면에 보여줄 값 모음. 보충 교재 = 부교재 + 학교 프린트.
+function stuInfo(st){
+  const sc=normSchool((st&&st.school)||'');
+  const b=getSchoolBook(sc), e=stuExam(st)||{};
+  const tight=v=>String(v||'').split(' ').join('');
+  const subs=bookSubjectsOf(b);
+  const examSubs=examMathDates(e).map(m=>tight(m.label)).filter(Boolean);
+  const now=subs.filter(k=>examSubs.includes(tight(k)));   // 이번 시험 과목의 교과서를 먼저
+  const bookLine=(now.length?now:subs).map(k=>(bookPubOf(b,k)+' '+bookSubjectLabel(k)).trim()).join(' · ')
+    || [b.publisher,b.textbook].filter(Boolean).join(' ');
+  const today=bmToday();
+  // 직보 — 그 학교 전체 직보(부담임 반만 다니면 안 부른다)이거나 이 학생 이름으로 잡은 보강
+  const jikbo=getMakeups().filter(m=>(m.date||'')>=today && (
+      (m.school && normSchool(m.school)===sc && makeupIsSchoolWide(m) && !isJikboSkip(st))
+      || String(m.className||'').trim()===st.name))
+    .map(m=>({ date:m.date, time:m.time||'' }));
+  return {
+    school:sc, exam:e.id?e:null,
+    textbook:[bookLine, e.textbook].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(' / '),
+    scope:e.scope||'',
+    subMaterial:e.subMaterial||b.subMaterial||'',     // 부교재
+    schoolPrint:e.teacherMaterial||'',                 // 학교 프린트
+    note:b.note||'', jikbo
+  };
+}
+function stuInfoHtml(st){
+  const x=stuInfo(st), e=x.exam, dd=stuMathDday(st);
+  const md=d=>d?(+d.slice(5,7)+'/'+(+d.slice(8,10))):'';
+  const none='<span style="color:var(--text-muted);font-weight:400">아직 안 적었어요</span>';
+  const row=(icon,label,val)=>`<div style="display:flex;gap:8px;padding:7px 0;border-top:1px solid var(--border);font-size:14.5px;line-height:1.6">
+      <span style="min-width:92px;flex-shrink:0;color:var(--text-muted);font-size:13.5px">${icon} ${label}</span>
+      <span style="flex:1;font-weight:600">${val||none}</span></div>`;
+  const math=e?examMathDates(e).map(m=>`${anEsc(m.label||'수학')} <b>${md(m.date)}</b>`).join(' · '):'';
+  const period=e&&e.startDate?`${md(e.startDate)}${e.endDate&&e.endDate!==e.startDate?'~'+md(e.endDate):''}`:'';
+  return `<div style="background:var(--surface);border-radius:16px;max-width:520px;width:100%;padding:20px 22px;box-shadow:0 20px 50px rgba(0,0,0,.3)">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <span style="font-size:20px;font-weight:800">${anEsc(st.name)}</span>
+      <span class="badge b-primary" style="font-size:13px">${anEsc(x.school)||'학교 미입력'}</span>
+      ${dd?`<span class="badge ${dd.days<=7?'b-red':'b-orange'}" style="font-size:13px">수학 ${dd.days===0?'D-day':'D-'+dd.days}</span>`:''}
+      <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="this.closest('[data-stuinfo]').remove()">닫기</button>
+    </div>
+    <div style="font-size:13.5px;color:var(--text-muted);margin-bottom:6px">${anEsc(classNamesOf(st).join(', '))||'반 없음'}</div>
+    ${row('🏫','시험', e?`${anEsc(e.title||'')}${period?` <span style="font-weight:400;color:var(--text-sub)">(${period})</span>`:''}${math?`<div style="font-weight:400">${math}</div>`:''}`:'')}
+    ${row('📖','교과서', anEsc(x.textbook))}
+    ${row('📐','시험 범위', anEsc(x.scope))}
+    <div style="margin-top:10px;background:var(--bg);border-radius:10px;padding:8px 12px">
+      <div style="font-size:14px;font-weight:800;margin-bottom:2px">📎 보충 교재</div>
+      ${row('📗','부교재', anEsc(x.subMaterial))}
+      ${row('🖨','학교 프린트', anEsc(x.schoolPrint))}
+    </div>
+    ${x.jikbo.length?row('🎯','직보', x.jikbo.map(j=>`<b>${md(j.date)}</b> ${anEsc(j.time)}`).join(' · ')):''}
+    ${x.note?row('🗒','학교 메모', anEsc(x.note)):''}
+    ${st.memo?row('📝','쌤 메모', anEsc(st.memo)):''}
+    <div style="font-size:12.5px;color:var(--text-muted);margin-top:10px">내신 관리 → 📅 시험 정보에 적어둔 값이에요. 부교재·교재/교사용(학교 프린트) 칸이 여기 보충 교재로 나와요.
+      ${e?`<button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:12.5px;margin-left:4px" onclick="this.closest('[data-stuinfo]').remove();seEditId='${e.id}';naesinTab='exam';navigate('naesin')">고치러 가기 →</button>`:''}</div>
+  </div>`;
+}
+function openStuInfo(id){
+  const st=getStudents().find(s=>s.id===id); if(!st) return;
+  const old=document.querySelector('[data-stuinfo]'); if(old) old.remove();
+  const ov=document.createElement('div'); ov.setAttribute('data-stuinfo','1');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:3000;display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:20px';
+  ov.innerHTML=stuInfoHtml(st);
+  ov.onclick=ev=>{ if(ev.target===ov) ov.remove(); };
+  document.body.appendChild(ov);
+}
+// 명단 이름 옆 — 학교, 그리고 수학 시험이 4주 안이면 D-day
+function stuTagHtml(st){
+  const dd=stuMathDday(st);
+  return `${st.school?`<span style="font-size:11.5px;color:var(--text-muted)">${anEsc(shortSchool(st.school))}</span>`:''}${(dd&&dd.days<=28)?`<span class="badge ${dd.days<=7?'b-red':'b-orange'}" style="font-size:11px">${dd.days===0?'수학 D-day':'D-'+dd.days}</span>`:''}`;
+}
+// 🎯 그날 직보 — 내신 대비 기간에 어느 학교 누가 오는지 수업 화면에서 바로.
+//   '온다고 함'(attendees)은 내신 탭에서 미리 적는 것이고, 여기서는 실제로 왔는지(came)를 누른다.
+async function doDashJikboCame(mid, sid){
+  const m=getMakeups().find(x=>x.id===mid); if(!m) return;
+  const cur=Array.isArray(m.came)?m.came.slice():[];
+  const i=cur.indexOf(sid); if(i>=0) cur.splice(i,1); else cur.push(sid);
+  try{ await updateMakeupFS(mid,{came:cur}); rDashboard(); }
+  catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+function dashJikboHtml(){
+  const slots=jbOnDate(dashDay());
+  if(!slots.length) return '';
+  return `<div class="card" style="margin:0;border-left:4px solid var(--orange)">
+    <div class="card-title" style="font-size:16px">🎯 ${dashIsToday()?'오늘':'이 날'} 직보 <span style="font-size:12.5px;color:var(--text-muted);font-weight:400">온 학생을 눌러 표시 · ⓘ 는 학교·범위 보기</span></div>
+    ${slots.map(t=>`<div style="padding:7px 0;border-top:1px solid var(--border)">
+      <div style="font-size:13.5px;font-weight:800;color:var(--orange);margin-bottom:3px">⏰ ${anEsc(t.time)}</div>
+      ${t.groups.map(g=>{ const m=getMakeups().find(x=>x.id===g.id)||{};
+        const came=Array.isArray(m.came)?m.came:[], said=Array.isArray(m.attendees)?m.attendees:[];
+        return `<div style="margin:4px 0">
+          <strong style="font-size:14.5px">${anEsc(g.name)}</strong>
+          <span style="font-size:12.5px;color:var(--text-muted)">${g.who.length}명 · 옴 ${g.who.filter(s=>came.includes(s.id)).length}</span>
+          <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:4px">${g.who.map(s=>{ const on=came.includes(s.id), will=said.includes(s.id);
+            return `<span style="display:inline-flex"><button class="btn btn-sm" title="${will?'온다고 했어요':''}" style="border-radius:8px 0 0 8px;${on?'background:var(--orange);color:#fff':(will?'background:var(--surface);color:var(--orange);border:1px solid var(--orange)':'background:var(--bg);color:var(--text-sub)')}" onclick="doDashJikboCame('${g.id}','${s.id}')">${on?'✓ ':''}${anEsc(s.name)}</button><button class="btn btn-sm" style="border-radius:0 8px 8px 0;padding-left:6px;padding-right:7px;background:var(--bg);color:var(--text-muted)" title="학교·교과서·시험 범위" onclick="openStuInfo('${s.id}')">ⓘ</button></span>`; }).join('')}</div>
+        </div>`; }).join('')}
+    </div>`).join('')}
+  </div>`;
+}
+// 🙋 보충 온 학생 — 그날 따로 와서 보충한 학생과 한 일을 수업 화면에서 바로 남긴다.
+//   내신 관리의 '보강 체크'와 같은 기록(bogang)이라 거기서도 그대로 보인다.
+async function doDashBogangAdd(bid, sid){
+  if(!sid) return;
+  try{
+    if(!bid){
+      const doc={ date:dashDay(), label:'보충', attendees:[sid], notes:{}, ts:Date.now() };
+      const ref=await db.collection('bogang').add(doc);
+      if(!cacheAdd('bogang', ref.id, doc)) await loadBogang();
+    } else {
+      const b=getBogang().find(x=>x.id===bid); if(!b) return;
+      const cur=Array.isArray(b.attendees)?b.attendees.slice():[];
+      if(!cur.includes(sid)) cur.push(sid);
+      b.attendees=cur;
+      await db.collection('bogang').doc(bid).update({attendees:cur});
+    }
+    rDashboard();
+  }catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+async function doDashBogangRemove(bid, sid){
+  const b=getBogang().find(x=>x.id===bid); if(!b) return;
+  const cur=(Array.isArray(b.attendees)?b.attendees:[]).filter(x=>x!==sid);
+  const notes=Object.assign({}, b.notes||{}); delete notes[sid];
+  b.attendees=cur; b.notes=notes;
+  try{ await db.collection('bogang').doc(bid).update({attendees:cur, notes}); rDashboard(); }
+  catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+async function doDashBogangNote(bid, sid, val){
+  const b=getBogang().find(x=>x.id===bid); if(!b) return;
+  const notes=Object.assign({}, b.notes||{}, {[sid]:String(val||'').trim()});
+  b.notes=notes;
+  try{ await db.collection('bogang').doc(bid).update({notes}); }
+  catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+function dashBogangHtml(){
+  const day=dashDay();
+  const sessions=getBogang().filter(b=>b.date===day);
+  const active=getActiveStudents().slice().sort((a,b)=>cmpStr(a.name,b.name));
+  const q=v=>anEsc(v).replace(/"/g,'&quot;');
+  const picker=b=>`<select class="form-input" style="width:210px;padding:5px 8px;font-size:13.5px;margin-top:6px" onchange="doDashBogangAdd('${b?b.id:''}',this.value)">
+      <option value="">＋ 보충 온 학생 추가</option>
+      ${active.filter(s=>!(b&&(b.attendees||[]).includes(s.id))).map(s=>`<option value="${s.id}">${anEsc(s.name)}${s.school?' · '+anEsc(shortSchool(s.school)):''}</option>`).join('')}
+    </select>`;
+  const total=sessions.reduce((n,b)=>n+(b.attendees||[]).length,0);
+  return `<div class="card" style="margin:0;border-left:4px solid #8B5CF6">
+    <div class="card-title" style="font-size:16px">🙋 보충 온 학생 <span class="badge ${total?'b-primary':'b-gray'}">${total}명</span>
+      <span style="font-size:12.5px;color:var(--text-muted);font-weight:400">${dashIsToday()?'오늘':day.slice(5)} 따로 와서 보충한 학생과 한 일</span></div>
+    ${sessions.length?sessions.map(b=>`<div style="padding:4px 0">
+      ${(sessions.length>1||b.label!=='보충')?`<div style="font-size:13.5px;font-weight:800;color:#6D28D9;margin-top:4px">${anEsc(b.label)}</div>`:''}
+      ${(b.attendees||[]).map(sid=>{ const s=active.find(x=>x.id===sid)||getStudents().find(x=>x.id===sid); if(!s) return '';
+        return `<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--border);flex-wrap:wrap">
+          <strong style="font-size:14px;min-width:58px;cursor:pointer" title="학교·교과서·시험 범위 보기" onclick="openStuInfo('${s.id}')">${anEsc(s.name)}</strong>${stuTagHtml(s)}
+          <input class="form-input" value="${q((b.notes||{})[sid])}" placeholder="한 일 (예: 프린트 3장 · 오답 정리)" style="flex:1;min-width:150px;padding:4px 8px;font-size:13px" onchange="doDashBogangNote('${b.id}','${sid}',this.value)">
+          <button class="btn btn-outline btn-sm" style="padding:2px 7px;font-size:12.5px" onclick="doDashBogangRemove('${b.id}','${sid}')">빼기</button>
+        </div>`; }).join('')}
+      ${picker(b)}
+    </div>`).join(''):picker(null)}
+  </div>`;
+}
 function todayRosterHtml(todayCls, subs){
   if(!todayCls.length) return `<div class="card" style="margin-top:16px;text-align:center;padding:24px;color:var(--text-muted)">${dashIsToday()?'오늘은 수업이 없어요 ☕':'이 날은 수업이 없어요 ☕'}</div>`;
   const todayStr=dashDay();
@@ -5795,7 +5986,7 @@ function todayRosterHtml(todayCls, subs){
         </div>`;
       }
       return `<div style="display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;${absent?'background:#FEF2F2':''}">
-        <strong style="font-size:14px;min-width:58px">${st.name}</strong>
+        <strong style="font-size:14px;min-width:58px;cursor:pointer" title="학교·교과서·시험 범위 보기" onclick="openStuInfo('${st.id}')">${st.name}</strong>${stuTagHtml(st)}
         ${absent?'<span class="badge b-red" style="font-size:11.5px">결석</span>'
           :(a&&graded?'<span class="badge b-green" style="font-size:11.5px">출석</span>':'')}
         ${hw}
@@ -5852,7 +6043,7 @@ function todayRosterHtml(todayCls, subs){
         <input class="form-input" value="${esc((progOf(c.id,todayStr)||{}).comment)}" placeholder="수업 중 특이사항 (강의 일지에 같이 남아요)" style="flex:1;padding:4px 8px;font-size:13px" onchange="doSaveClassComment('${c.id}',this.value)">
       </div>
       <details ${dashClsCollapsed[c.id]?'':'open'} ontoggle="dashClsCollapsed['${c.id}']=!this.open">
-        <summary style="cursor:pointer;font-size:12.5px;color:var(--text-muted);padding:3px 0">학생 명단 접기/펼치기 · 빠진 학생만 결석을 눌러주세요</summary>
+        <summary style="cursor:pointer;font-size:12.5px;color:var(--text-muted);padding:3px 0">학생 명단 접기/펼치기 · 빠진 학생만 결석 · 이름을 누르면 학교·범위·보충 교재</summary>
         ${sts.length?rows:'<div style="color:var(--text-muted);padding:8px">배정된 학생이 없어요</div>'}
       </details>
     </div>`;
