@@ -805,6 +805,50 @@ function omrNos(e){
     .sort((a,b)=>(parseFloat(a)-parseFloat(b))||(a>b?1:-1));
 }
 function omrChoices(e){ const n=parseInt(e&&e.choices,10); return (n>=2&&n<=9)?n:5; }
+// ✍️ 직접 채점 — 정답지를 보고 스스로 매긴 다음 틀린 번호만 누른다.
+//   답을 하나하나 옮겨 찍는 게 번거로워 아이들이 아예 안 넣었다. 고등학생이면 채점은 스스로 할 수 있다.
+//   선생님이 정답을 안 넣어둔 시험도 문항 번호만 알면 된다 (선생님 화면 examNos 와 같은 순서로 찾는다).
+let OMR_SELF={};    // {examId:true} — 직접 채점으로 넣는 중
+function selfNos(e){
+  const k=omrNos(e);
+  if(k.length) return k;
+  const a=((e&&Array.isArray(e.analysis))?e.analysis:[]).filter(p=>!(p&&p.outOfRange))
+    .map(p=>String((p&&p.no)==null?'':p.no).trim()).filter(Boolean);
+  if(a.length) return a;
+  const n=parseInt((e&&e.qCount)||0,10);
+  return n>0 ? Array.from({length:Math.min(n,200)},(_,i)=>String(i+1)) : [];
+}
+// 정답이 없는 시험은 직접 채점밖에 길이 없다
+function omrSelfOn(e){ return !!(e && (OMR_SELF[e.id] || !omrNos(e).length)); }
+// 두 방식은 칸에 든 값의 뜻이 달라서(답 ↔ 틀림 표시) 바꿀 때 넣던 것을 비운다
+function omrSelfMode(examId, on){
+  if(on) OMR_SELF[examId]=true; else delete OMR_SELF[examId];
+  OMR_DRAFT[examId]={}; OMR_GUESS[examId]={}; OMR_LATE[examId]={}; OMR_SKIP[examId]={};
+  renderGrades();
+}
+function selfPick(examId, no){
+  const d=OMR_DRAFT[examId]=OMR_DRAFT[examId]||{};
+  d[no] = (d[no]==='X' ? '' : 'X');
+  renderGrades();
+}
+function selfWrong(e){ const d=OMR_DRAFT[e.id]||{}; return selfNos(e).filter(n=>d[n]==='X'); }
+function selfPadHtml(e){
+  const nos=selfNos(e);
+  if(!nos.length) return '';
+  const d=OMR_DRAFT[e.id]||(OMR_DRAFT[e.id]={});
+  const wrong=selfWrong(e);
+  return `<div style="background:var(--bg);border-radius:12px;padding:12px;margin-top:10px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <span style="font-size:14px;font-weight:800">✍️ 직접 채점</span>
+      <span class="badge ${wrong.length?'b-red':'b-green'}">틀린 문제 ${wrong.length}개 / ${nos.length}문항</span>
+      <span style="font-size:12px;color:var(--text-muted);width:100%">정답지를 보고 채점한 다음 <strong>틀린 번호만</strong> 눌러주세요. 안 누른 번호는 맞은 걸로 들어가요.</span>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">${nos.map(n=>{ const on=d[n]==='X';
+      return `<button type="button" style="min-width:46px;height:42px;border-radius:9px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;${on?'border:1px solid var(--red);background:var(--red);color:#fff':'border:1px solid var(--border);background:var(--surface);color:var(--text-sub)'}" onclick="selfPick('${e.id}','${String(n).replace(/'/g,'')}')">${on?'✕ ':''}${sEsc(n)}</button>`;
+    }).join('')}</div>
+    ${omrNos(e).length?`<div style="margin-top:9px"><button type="button" class="btn btn-outline btn-sm" onclick="omrSelfMode('${e.id}',false)">🅰️ 답을 하나씩 찍어서 넣을래요</button></div>`:''}
+  </div>`;
+}
 function omrPick(examId, no, v){
   const d=OMR_DRAFT[examId]=OMR_DRAFT[examId]||{};
   d[no] = (d[no]===v ? '' : v);
@@ -852,7 +896,7 @@ function sEsc(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g
 // 📝 메인 화면에 '답안지 넣을 시험'을 띄운다.
 //   성적 탭까지 찾아 들어가야 해서 아이들이 아예 안 넣었다. 홈에서 바로 보이게 한다.
 function pendingExamsHome(){
-  return getExams().filter(e=>e.status==='pending_submission' && omrNos(e).length);
+  return getExams().filter(e=>e.status==='pending_submission' && selfNos(e).length);
 }
 function pendingExamCardHtml(){
   const list=pendingExamsHome();
@@ -864,8 +908,8 @@ function pendingExamCardHtml(){
     </div>
     ${list.slice(0,3).map(e=>{
       const d=OMR_DRAFT[e.id]||{};
-      const nos=omrNos(e);
-      const done=nos.filter(x=>String(d[x]||'').trim()).length;
+      const nos=selfNos(e);
+      const done=omrSelfOn(e)?0:nos.filter(x=>String(d[x]||'').trim()).length;
       return `<div style="border-top:1px solid var(--border);padding:9px 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <div style="min-width:0;flex:1">
           <div style="font-size:13.5px;font-weight:700">${sEsc(e.title||'')}</div>
@@ -931,6 +975,7 @@ function omrPadHtml(e){
       ${guessN?`<span class="badge b-yellow">찍음 ${guessN}</span>`:''}
       ${lateN?`<span class="badge b-yellow">시간 넘김 ${lateN}</span>`:''}
       ${skipN?`<span class="badge b-gray">범위 아님 ${skipN}</span>`:''}
+      <button type="button" class="btn btn-outline btn-sm" style="width:100%;justify-content:center" onclick="omrSelfMode('${e.id}',true)">✍️ 이미 채점했어요 — 틀린 번호만 누를래요</button>
       <span style="font-size:11px;color:var(--text-muted);width:100%">확실하지 않고 <strong>찍은</strong> 문제는 <strong>찍</strong>, 시험 <strong>시간이 지난 뒤에</strong> 푼 문제는 <strong>⏱</strong>을 눌러주세요.
         아직 <strong>안 배운</strong> 단원이면 <strong>범</strong>을 눌러요 — 그 문제는 점수에서 아예 빠져요.</span>
     </div>
@@ -970,15 +1015,24 @@ function gradeOmr(key, ans){
 }
 async function submitExamAnswer(examId){
   const e = S_EXAMS.find(x=>x.id===examId);
-  const answers = Object.assign({}, OMR_DRAFT[examId]||{});
+  let answers = Object.assign({}, OMR_DRAFT[examId]||{});
   Object.keys(answers).forEach(k=>{ if(!String(answers[k]||'').trim()) delete answers[k]; });
   const key=examKey(e);
   const hasKey=Object.keys(key).length>0;
-  const g=hasKey?gradeOmr(key, answers):null;
+  // ✍️ 직접 채점 — 누른 번호는 X, 나머지는 O. 주관식 O/X와 같은 모양이라 선생님 화면 채점과 그대로 맞는다.
+  const sNos=(e&&omrSelfOn(e))?selfNos(e):[];
+  const self=sNos.length>0;
+  let g;
+  if(self){
+    const d=OMR_DRAFT[examId]||{}, all={};
+    answers={};
+    sNos.forEach(n=>{ answers[n]=(d[n]==='X'?'X':'O'); all[n]='O'; });
+    g=gradeOmr(all, answers);
+  } else g=hasKey?gradeOmr(key, answers):null;
   const max=(e&&e.maxScore)||100;
   const base={
     examId, examTitle:e?e.title:'', classId:e?e.classId:'', className:e?e.className:'',
-    studentId:STUDENT.id, studentName:STUDENT.name, answers,
+    studentId:STUDENT.id, studentName:STUDENT.name, answers, selfGraded:self,
     submittedAt:new Date().toLocaleString('ko-KR'), comment:'', ts:Date.now(),
     score: sScore(e, g, OMR_SKIP[examId]||{}),
     wrongNos: g ? g.wrong.join(', ') : '',
@@ -2414,6 +2468,10 @@ async function doSubmitRetry(subId, id) {
 }
 async function doSubmitAnswer(examId){
   try{
+    // 하나도 안 누르고 제출하면 전부 맞은 걸로 들어간다 — 실수로 누른 건 아닌지 한 번 묻는다
+    const ex=S_EXAMS.find(x=>x.id===examId);
+    if(ex && omrSelfOn(ex) && selfNos(ex).length && !selfWrong(ex).length
+       && !confirm('틀린 번호를 하나도 안 눌렀어요. 정말 다 맞았나요?')) return;
     const g=await submitExamAnswer(examId);
     launchConfetti();
     showToast(g ? `제출 완료! ${g.total}문제 중 ${g.correct}개 맞았어요 (${g.rate}점)` : '답안지 제출 완료! 채점을 기다려주세요 📝','success');
@@ -2565,7 +2623,7 @@ function renderGrades() {
         <div class="hw-title" style="margin-bottom:4px">${e.title}</div>
         <div class="hw-body">범위: ${e.range} · 만점: ${e.maxScore}점</div>
         <div class="hw-due">📅 시험일: ${fmtDateFull(e.date)}</div>
-        ${omrPadHtml(e)}
+        ${omrSelfOn(e)?selfPadHtml(e):omrPadHtml(e)}
         <div class="upload-area" onclick="this.querySelector('input').click()" style="margin-top:10px">
           <div class="u-icon">📷</div><p>답안지 사진도 올릴 수 있어요 (선택)</p>
           <input type="file" accept="image/*" multiple>

@@ -2897,6 +2897,8 @@ function anExamReady(e){
 }
 function anPickStudent(id){ anRepStId=id; anOX=null; rGrades();
   setTimeout(()=>{ const el=document.getElementById('anrep'); if(el) el.scrollIntoView({behavior:'smooth',block:'start'}); }, 80); }
+// ✍️ 학생이 정답지를 보고 직접 채점해 틀린 번호만 넣은 답안
+function selfMark(sub){ return (sub&&sub.selfGraded)?' <span title="학생이 직접 채점해서 넣었어요" style="font-size:11.5px;font-weight:600;color:var(--text-muted)">✍️직접</span>':''; }
 // 한 학생의 결과 — 분석서(anReportHtml)와 같은 규칙으로 센다. 표와 분석서 숫자가 달라지면 안 된다.
 function examResultOf(exam, sub){
   const key=examKey(exam), ans=(sub&&sub.answers)||{};
@@ -2912,6 +2914,12 @@ function examResultOf(exam, sub){
   }
   const shaky=k=>guessed.has(k)||late.has(k);
   const oxReal={}; probs.forEach(p=>{ const k=String(p.no); oxReal[k]=!!ox[k] && !shaky(k); });
+  // 분석도 정답도 없이 문항 수만 있는 시험 — 학생이 직접 채점해 보낸 점수·틀린 번호를 그대로 쓴다.
+  //   문항 목록이 없어 다시 셀 수가 없고, 0점으로 보이면 안 된다.
+  if(!anProbs(exam).length && sub && sub.selfGraded){
+    const w=anParseNos(sub.wrongNos).map(String), n=Object.keys(ans).length, s=Number(sub.score)||0;
+    return { score:s, total:examMaxScore(exam), real:s, correct:Math.max(0,n-w.length), n, guess:0, late:0, skip:0, wrongNos:w };
+  }
   const sc=scoreFromOX(exam, ox, skip);
   const correct=probs.filter(p=>ox[String(p.no)]).length;
   const nGuess=probs.filter(p=>ox[String(p.no)] && guessed.has(String(p.no))).length;
@@ -2952,7 +2960,7 @@ function anRosterHtml(exam){
       </tr></thead>
       <tbody>${took.map(x=>{ const on=x.st.id===anRepStId; const r=x.r;
         return `<tr style="cursor:pointer;${on?'background:var(--primary-light)':''}" onclick="anPickStudent('${x.st.id}')">
-          <td style="font-weight:700">${anEsc(x.st.name)}</td>
+          <td style="font-weight:700">${anEsc(x.st.name)}${selfMark(x.sub)}</td>
           <td style="text-align:center;font-weight:800;color:${rowColor(r.score)}">${r.score}</td>
           <td style="text-align:center;color:${r.real<r.score?'#B45309':'var(--text-muted)'};font-weight:${r.real<r.score?'700':'400'}">${r.real<r.score?r.real:'-'}</td>
           <td style="text-align:center;font-size:13px">${r.correct}/${r.n}</td>
@@ -3044,7 +3052,7 @@ function anPaperRosterHtml(exam){
       <tbody>${rows.map(x=>{ const on=x.st.id===anRepStId && x.doc.id===anRepExamId; const r=x.r;
         return `<tr style="cursor:pointer;${on?'background:var(--primary-light)':''}" onclick="anPickStudentIn('${x.doc.id}','${x.st.id}')">
           <td style="text-align:center;font-weight:800;color:${x.rank<=3?'var(--primary)':'var(--text-muted)'}">${x.rank}</td>
-          <td style="font-weight:700">${anEsc(x.st.name)}</td>
+          <td style="font-weight:700">${anEsc(x.st.name)}${selfMark(x.sub)}</td>
           ${multi?`<td><span class="chip" style="font-size:12.5px">${anEsc(x.doc.className||'')}</span></td>`:''}
           <td style="text-align:center;font-weight:800;color:${color(r.score)}">${r.score}</td>
           <td style="text-align:center;color:${r.real<r.score?'#B45309':'var(--text-muted)'};font-weight:${r.real<r.score?'700':'400'}">${r.real<r.score?r.real:'-'}</td>
