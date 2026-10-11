@@ -51,6 +51,9 @@
     .tb-right{display:flex;align-items:center;gap:5px;flex-shrink:0;position:relative}
     .tb-btn{display:inline-flex;align-items:center;gap:4px;border:none;background:rgba(255,255,255,.1);color:rgba(255,255,255,.85);border-radius:8px;padding:7px 10px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit;text-decoration:none;white-space:nowrap}
     .tb-btn:hover{background:rgba(255,255,255,.2);color:#fff}
+    .tb-zoom{display:inline-flex;gap:2px}
+    .tb-zoom .tb-btn{padding:7px 9px}
+    .tb-zoom-val{min-width:52px;justify-content:center;font-variant-numeric:tabular-nums}
     .theme-pop{position:absolute;top:calc(100% + 8px);right:0;background:#1E293B;border:1px solid rgba(255,255,255,.15);border-radius:12px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.3);z-index:130;min-width:190px}
     .subnav{display:flex;gap:6px;overflow-x:auto;padding:8px 20px;background:var(--surface);border-bottom:1px solid var(--border)}
     .subnav:empty{display:none}
@@ -240,6 +243,11 @@
         <span class="tb-logo" onclick="navigate('dashboard')" title="대시보드로"><img src="icon.svg" alt=""><span class="tb-txt">BEEN MATH</span></span>
         <div class="topnav" id="topNav"></div>
         <div class="tb-right">
+          <span class="tb-zoom" title="화면 크기 — 줄이면 한 화면에 더 많이 보여요">
+            <button type="button" class="tb-btn" onclick="zoomStep(-1)" title="작게 (더 많이 보기)">－</button>
+            <button type="button" class="tb-btn tb-zoom-val" id="zoomVal" onclick="zoomSet(100)" title="원래 크기로">100%</button>
+            <button type="button" class="tb-btn" onclick="zoomStep(1)" title="크게">＋</button>
+          </span>
           <a class="tb-btn" href="plan.html" title="나의 플래너">📒<span class="tb-txt"> 플래너</span></a>
           <button type="button" class="tb-btn" title="테마 색상" onclick="toggleThemePop()">🎨</button>
           <button type="button" class="tb-btn" title="로그아웃" onclick="logout()">🚪<span class="tb-txt"> 로그아웃</span></button>
@@ -2143,12 +2151,28 @@ function subNavHtml(sec){
 }
 function renderSubNav(){ const el=document.getElementById('subNav'); if(el) el.innerHTML=subNavHtml(curSec); }
 function goSub(sec, k){ const d=SUBNAV[sec]; if(!d) return; d.set(k); if(curSec!==sec) navigate(sec); else renderSection(sec); }
+// 🔍 화면 크기 — 줄이면 글씨가 작아지는 대신 한 화면에 더 넓게 들어온다.
+//   휴대폰은 손가락으로 벌려 키울 수는 있어도 100% 아래로 줄일 수가 없어서 버튼을 둔다.
+//   PC의 Ctrl +/− 와 같은 효과이고, 고른 크기는 이 기기에 기억된다.
+const ZOOM_STEPS=[40,50,60,70,80,90,100,110,125,150];
+function zoomNow(){ let z=100; try{ z=parseInt(localStorage.getItem('bm_zoom'),10)||100; }catch(e){} return ZOOM_STEPS.includes(z)?z:100; }
+function zoomNext(z, dir){ const i=ZOOM_STEPS.indexOf(z); const j=Math.max(0, Math.min(ZOOM_STEPS.length-1, (i<0?ZOOM_STEPS.indexOf(100):i)+dir)); return ZOOM_STEPS[j]; }
+function zoomApply(z){
+  const root=document.documentElement;
+  if(root && root.style) root.style.zoom=(z===100?'':String(z/100));
+  const v=document.getElementById('zoomVal'); if(v) v.textContent=z+'%';
+  // 폭이 달라졌으니 대시보드 단 수를 다시 맞춘다
+  try{ if(typeof applyDashLayout==='function') applyDashLayout(); }catch(e){}
+}
+function zoomSet(z){ try{ localStorage.setItem('bm_zoom', String(z)); }catch(e){} zoomApply(z); }
+function zoomStep(dir){ zoomSet(zoomNext(zoomNow(), dir)); }
 function toggleThemePop(){ const p=document.getElementById('themePop'); if(p) p.style.display=(p.style.display==='none'?'block':'none'); }
 function buildSidebar(){
   // 대단원 — 아이콘과 이름을 같이 보여준다
   const tn=document.getElementById('topNav');
   if(tn) tn.innerHTML=NAV.map(n=>`<button type="button" class="tn-item ${n.id===curSec?'active':''}" data-sec="${n.id}" title="${n.label}" onclick="navigate('${n.id}')"><span class="nav-icon">${ICONS[n.id]||''}</span>${n.short||n.label}</button>`).join('');
   renderSubNav();
+  zoomApply(zoomNow());
   renderThemeDots();
 }
 function navigate(s){

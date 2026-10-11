@@ -118,6 +118,33 @@ ok('화면 안에서 탭이 바뀌어도 위쪽 표시가 따라온다', () => {
   });
 });
 
+console.log('\n화면 크기 버튼');
+ok('－ 100% ＋ 가 위쪽 바에 있다', () => {
+  assert.ok(th.includes('onclick="zoomStep(-1)"') && th.includes('onclick="zoomStep(1)"') && th.includes('id="zoomVal" onclick="zoomSet(100)"'));
+});
+ok('한 칸씩 움직이고 끝에서 멈춘다', () => {
+  assert.strictEqual(T.zoomNext(100, -1), 90);
+  assert.strictEqual(T.zoomNext(100, 1), 110);
+  assert.strictEqual(T.zoomNext(40, -1), 40);
+  assert.strictEqual(T.zoomNext(150, 1), 150);
+  assert.strictEqual(T.zoomNext(77, 1), 110);   // 모르는 값이면 100%에서 시작
+});
+ok('고른 크기를 화면에 적용하고 100%면 원래대로 비운다', () => {
+  T.document.documentElement = { style: {} };
+  T.zoomApply(60);
+  assert.strictEqual(T.document.documentElement.style.zoom, '0.6');
+  assert.strictEqual(T.__els.zoomVal.textContent, '60%');
+  T.zoomApply(100);
+  assert.strictEqual(T.document.documentElement.style.zoom, '');
+});
+ok('기억해 둔 값이 이상하면 100%로', () => {
+  T.localStorage.getItem = () => '9999';
+  assert.strictEqual(T.zoomNow(), 100);
+  T.localStorage.getItem = () => '70';
+  assert.strictEqual(T.zoomNow(), 70);
+  T.localStorage.getItem = () => null;
+});
+
 console.log('\n안전');
 ok('teacher.html 스크립트가 끝까지 실행된다', () => {
   assert.ifError(T.__err);
