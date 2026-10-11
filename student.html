@@ -3516,6 +3516,28 @@ function closeDrawer(){document.getElementById('drawerOverlay').classList.remove
 // INIT
 // ================================================================
 // 🔔 푸시 알림 켜기 — 권한 요청 + 토큰을 내 학생 문서에 저장
+// 🍎 아이폰 전용 안내 — 애플은 '홈 화면에 추가한 앱'에서만 웹 푸시를 허용한다(사파리 탭은 불가).
+//   토스트 한 줄로는 뭘 하라는지 몰라서 아무도 안 따라왔다. 단계를 그려서 보여준다.
+function iosPushGuide(){
+  const ov=document.createElement('div');
+  ov.id='iosPushGuide';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.62);z-index:4000;display:flex;align-items:center;justify-content:center;padding:22px';
+  ov.onclick=function(e){ if(e.target===ov) ov.remove(); };
+  ov.innerHTML=
+    '<div style="background:var(--surface);border-radius:16px;padding:22px;max-width:360px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.3)">'+
+      '<div style="font-size:17px;font-weight:800;margin-bottom:6px">🔔 아이폰은 한 번만 설정하면 돼요</div>'+
+      '<div style="font-size:13.5px;color:var(--text-muted);line-height:1.6;margin-bottom:14px">'+
+        '아이폰은 <b>홈 화면에 추가한 앱</b>에서만 알림을 받을 수 있어요 (애플 정책). 30초면 끝나요!</div>'+
+      '<ol style="margin:0 0 16px;padding-left:20px;font-size:14px;line-height:1.95">'+
+        '<li>사파리 <b>맨 아래 공유 버튼</b> 누르기</li>'+
+        '<li>목록을 내려 <b>“홈 화면에 추가”</b> 누르기</li>'+
+        '<li>홈 화면에 생긴 <b>BEEN MATH</b> 앱으로 들어오기</li>'+
+        '<li>거기서 <b>🔔 알림 켜기</b> 한 번 더 누르기</li>'+
+      '</ol>'+
+      '<button class="btn btn-primary" style="width:100%" onclick="document.getElementById(\'iosPushGuide\').remove()">알겠어요</button>'+
+    '</div>';
+  document.body.appendChild(ov);
+}
 // 🔔 알림 자동 복구 — 이미 권한을 허용한 기기는 토큰을 조용히 다시 등록한다.
 //   토큰은 앱 재설치·브라우저 정리·FCM 만료로 소리 없이 끊기고, 서버가 죽은 토큰을 지우면
 //   기기엔 bm_push_on='1'만 남아 '알림 켜기'가 안 떠서 되살릴 방법이 없었다. 팝업은 띄우지 않는다.
@@ -3541,7 +3563,7 @@ async function enablePush(){
     // 아이폰은 홈 화면에 추가한 앱에서만 웹 푸시가 된다 — 사파리에서 켜면 그냥 실패한다
     const isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent||'');
     const standalone=(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone===true;
-    if(isIOS && !standalone){ showToast('아이폰은 먼저 📲 홈 화면에 추가하고, 그 앱에서 알림을 켜주세요','warning'); return; }
+    if(isIOS && !standalone){ iosPushGuide(); return; }
     const perm = await Notification.requestPermission();
     if(perm!=='granted'){ showToast('알림이 거부되었어요. 브라우저 설정에서 허용해주세요','warning'); return; }
     const reg = await navigator.serviceWorker.register('firebase-messaging-sw.js');
