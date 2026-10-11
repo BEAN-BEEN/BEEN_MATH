@@ -612,6 +612,7 @@ let PENDING_PHOTOS={}, PENDING_WRONG={}, PENDING_FREE={};
 let S_ABSENCES=[];   // 내 결석 기록 (선생님이 표시) — 출석률 차감용
 let S_SEASONS=[], selSeasonId=null;   // 제출률 집계 시즌(학원 공통) + 내가 보고 있는 시즌
 let S_SCHOOL='', S_ENROLL='', S_SCHOOLEXAM=null, S_MATHEVENTS=[], S_SCHOOL_EXAMS=[], S_MAKEUPS=[], ALL_MAKEUPS=[], ALL_SCHOOL_EXAMS=[];
+let S_PUSHTOKENS=0;   // 🔔 내 계정에 등록된 알림 기기 수 (기기 로컬 플래그 말고 '서버에 실제로 연결됐는지')
 let calScope='mine'; // 'mine' = 내 일정만, 'all' = 전체 학교
 let S_MOCKSCHED=[];   // 쌤이 등록한 모의고사 일정 (없으면 아래 기본 일정을 쓴다)
 let S_MOCKEXAMS=[], S_MOCKSUBS=[], S_NAESIN=[], S_CLASSHISTORY=[], S_VIDEOVIEWS=[], S_CLASSCHECK=null;
@@ -685,6 +686,7 @@ async function loadStudentData(onFirstPaint){
     const meDoc = await pMe;
     S_SCHOOL = meDoc.exists ? normSchool(meDoc.data().school||'') : '';
     S_ENROLL = meDoc.exists ? (meDoc.data().enrollDate||'') : '';   // 등록일: 이전 숙제는 안 부과
+    S_PUSHTOKENS = meDoc.exists ? ((meDoc.data().fcmTokens||[]).length) : 0;   // 🔔 서버에 등록된 알림 기기 수
     // 학교 내신 시험: 전체를 한 번만 받아서 (캘린더 전체) + 내 학교 필터 (중복 쿼리 제거)
     try{
       const allSe = await pAllSe;
@@ -1798,7 +1800,10 @@ function renderHome() {
     ${classHomeCardsHtml(pending)}
     ${(function(){   // 🔔 알림 · 📲 홈 화면 — 작은 아이콘 버튼으로
       const btns=[];
-      if(localStorage.getItem('bm_push_on')!=='1') btns.push(`<button class="btn btn-outline btn-sm" onclick="enablePush()" style="gap:5px">🔔 알림 켜기</button>`);
+      // 기기 플래그가 아니라 '서버에 토큰이 실제로 있는지'로 판단한다.
+      //   죽은 토큰이 정리되면 기기엔 bm_push_on만 남아 버튼이 사라져, 다시 켤 방법이 없었다.
+      const pushLinked = (typeof Notification!=='undefined') && Notification.permission==='granted' && S_PUSHTOKENS>0;
+      if(!pushLinked) btns.push(`<button class="btn btn-primary btn-sm" onclick="enablePush()" style="gap:5px">🔔 알림 켜기</button>`);
       if(typeof bmCanInstallUI==='function' && bmCanInstallUI()) btns.push(`<button class="btn btn-outline btn-sm" onclick="bmInstallClick()" style="gap:5px">📲 홈 화면에 추가</button>`);
       return btns.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">${btns.join('')}</div>`:'';
     })()}
@@ -3511,9 +3516,32 @@ function closeDrawer(){document.getElementById('drawerOverlay').classList.remove
 // INIT
 // ================================================================
 // 🔔 푸시 알림 켜기 — 권한 요청 + 토큰을 내 학생 문서에 저장
+// 🔔 알림 자동 복구 — 이미 권한을 허용한 기기는 토큰을 조용히 다시 등록한다.
+//   토큰은 앱 재설치·브라우저 정리·FCM 만료로 소리 없이 끊기고, 서버가 죽은 토큰을 지우면
+//   기기엔 bm_push_on='1'만 남아 '알림 켜기'가 안 떠서 되살릴 방법이 없었다. 팝업은 띄우지 않는다.
+async function ensurePushLinked(){
+  try{
+    if(!('Notification' in window) || !('serviceWorker' in navigator)) return;
+    if(Notification.permission!=='granted' || !STUDENT.id) return;   // 거부·미결정은 건드리지 않음
+    const reg = await navigator.serviceWorker.register('firebase-messaging-sw.js');
+    const messaging = firebase.messaging();
+    const token = await messaging.getToken({ vapidKey: FCM_VAPID_KEY, serviceWorkerRegistration: reg });
+    if(!token) return;
+    await db.collection('students').doc(STUDENT.id).set(
+      { fcmTokens: firebase.firestore.FieldValue.arrayUnion(token) }, { merge:true }
+    );
+    messaging.onMessage(p=>{ showToast('🔔 '+((p.notification&&p.notification.title)||'새 알림')); });
+    localStorage.setItem('bm_push_on','1');
+    if(!S_PUSHTOKENS){ S_PUSHTOKENS=1; renderHome(); }   // 끊겼다 복구됐으면 안내 버튼을 치운다
+  }catch(e){ /* 조용히 넘어간다 — 복구 실패해도 '알림 켜기' 버튼은 그대로 보인다 */ }
+}
 async function enablePush(){
   try{
     if(!('Notification' in window) || !('serviceWorker' in navigator)){ showToast('이 기기는 알림을 지원하지 않아요','error'); return; }
+    // 아이폰은 홈 화면에 추가한 앱에서만 웹 푸시가 된다 — 사파리에서 켜면 그냥 실패한다
+    const isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent||'');
+    const standalone=(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone===true;
+    if(isIOS && !standalone){ showToast('아이폰은 먼저 📲 홈 화면에 추가하고, 그 앱에서 알림을 켜주세요','warning'); return; }
     const perm = await Notification.requestPermission();
     if(perm!=='granted'){ showToast('알림이 거부되었어요. 브라우저 설정에서 허용해주세요','warning'); return; }
     const reg = await navigator.serviceWorker.register('firebase-messaging-sw.js');
@@ -3526,6 +3554,7 @@ async function enablePush(){
       // 앱이 켜져있을 때 오는 알림 → 토스트로 표시
       messaging.onMessage(p=>{ showToast('🔔 '+((p.notification&&p.notification.title)||'새 알림')); });
       localStorage.setItem('bm_push_on','1');
+      S_PUSHTOKENS = (S_PUSHTOKENS||0) + 1;
       showToast('알림이 켜졌어요! 새 숙제가 오면 알려드릴게요 🔔','success');
       renderHome();
     } else {
@@ -3557,6 +3586,7 @@ async function init(){
   if(!painted) renderHome();
   ensureCurrForHome();              // 📚 반별 카드의 진도 (백그라운드 — 오면 홈을 다시 그림)
   loadSchoolHome().catch(()=>{});   // 🏫 오늘 급식·학교 일정 (백그라운드 — 늦어도 화면은 먼저 뜸)
+  ensurePushLinked();               // 🔔 허용해 둔 기기는 조용히 다시 연결 (끊긴 알림 자동 복구)
 }
 document.addEventListener('DOMContentLoaded', init);
 </script>
