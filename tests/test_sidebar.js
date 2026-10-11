@@ -145,6 +145,30 @@ ok('기억해 둔 값이 이상하면 100%로', () => {
   T.localStorage.getItem = () => null;
 });
 
+ok('Ctrl + 휠 — 위로 굴리면 크게, 아래로 굴리면 작게', () => {
+  let saved = '100';
+  T.localStorage.getItem = () => saved;
+  T.localStorage.setItem = (k, v) => { saved = v; };
+  let stopped = 0;
+  const ev = (dy, ctrl) => ({ ctrlKey: ctrl, deltaY: dy, preventDefault: () => { stopped++; } });
+  T.__set('zoomWheelAt', 0);
+  assert.strictEqual(T.zoomOnWheel(ev(100, true)), true);
+  assert.strictEqual(saved, '90');
+  T.__set('zoomWheelAt', 0);
+  T.zoomOnWheel(ev(-100, true)); T.__set('zoomWheelAt', 0); T.zoomOnWheel(ev(-100, true));
+  assert.strictEqual(saved, '110');
+  assert.strictEqual(stopped, 3, '브라우저 자체 확대를 안 막음');
+  // 연달아 쏟아지는 신호는 한 칸만
+  T.zoomOnWheel(ev(-100, true));
+  assert.strictEqual(saved, '110');
+  T.localStorage.getItem = () => null; T.localStorage.setItem = () => {};
+});
+ok('Ctrl 없이 굴리면 그냥 스크롤 — 건드리지 않는다', () => {
+  let stopped = 0;
+  assert.strictEqual(T.zoomOnWheel({ ctrlKey: false, deltaY: 100, preventDefault: () => { stopped++; } }), false);
+  assert.strictEqual(stopped, 0);
+});
+
 console.log('\n안전');
 ok('teacher.html 스크립트가 끝까지 실행된다', () => {
   assert.ifError(T.__err);
