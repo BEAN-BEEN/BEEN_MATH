@@ -58,10 +58,10 @@ function seed() {
 
 console.log('\n대시보드에서 캡처 열기');
 ok('반 카드의 오늘 출제 줄에 📸 캡처 버튼이 있다', () => {
-  assert.ok(html.indexOf("onclick=\"openHwShot('${c.id}')\">📸 캡처</button>") >= 0, '반 카드에 캡처 버튼이 없음');
+  assert.ok(html.indexOf("onclick=\"openHwShot('${c.id}')\">캡처</button>") >= 0, '반 카드에 캡처 버튼이 없음');
 });
 ok('대시보드 숙제 카드에 📸 숙제 캡처 버튼이 있다', () => {
-  assert.ok(html.indexOf("onclick=\"openHwShot('')\" title=\"학생에게 캡처해서 보낼 숙제 화면\">📸 숙제 캡처</button>") >= 0);
+  assert.ok(html.indexOf("onclick=\"openHwShot('')\" title=\"학생에게 캡처해서 보낼 숙제 화면\">숙제 캡처</button>") >= 0);
 });
 ok('반을 정해서 열면 그 반', () => {
   seed();
