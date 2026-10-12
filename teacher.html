@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="logo.png">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#114C56">
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&family=Black+Han+Sans&display=swap" rel="stylesheet">
   <style>
     :root {
       /* 흰 바탕 + 회색 글씨 + 파랑 하나. 색은 '상태'를 말할 때만 쓴다(초록=됨, 빨강=문제).
@@ -34,6 +34,46 @@
     [data-theme="summer"]{ --primary:#0EA5B7; --primary-dark:#0C8A99; --primary-light:#EBFDFF; --primary-2:#4FD1DE; }
     [data-theme="autumn"]{ --primary:#DD7A2E; --primary-dark:#C2641C; --primary-light:#FFF6EC; --primary-2:#F0A862; }
     [data-theme="winter"]{ --primary:#3F6FD1; --primary-dark:#3257AE; --primary-light:#EEF3FF; --primary-2:#7BA0E8; }
+    /* 📼 레트로 스킨 — 크림색 종이 위에 먹선. 카드·버튼에 굵은 테두리와 '딱 떨어지는' 그림자.
+       테마 → 디자인에서 고른다(이 기기에만 기억). 기본은 흰색·파랑의 깔끔한 쪽.
+       색은 보라 하나에 코랄을 곁들이고, 나머지는 먹색 선으로 구분한다. */
+    [data-skin="retro"]{
+      --ink:#1F1B16;
+      --primary:#6C5CE7; --primary-dark:#5546C9; --primary-light:#E9E5FF; --primary-2:#A79BF5;
+      --orange:#E07B1F; --orange-light:#FCE9CF;
+      --green:#22895B; --green-light:#DDF1E4;
+      --red:#E9523F; --red-light:#FDE3DD;
+      --yellow:#B98A10; --yellow-light:#FBEFC2;
+      --purple:#6C5CE7; --purple-light:#E9E5FF;
+      --bg:#FAF3E3; --surface:#FFFDF6;
+      --text:#1F1B16; --text-sub:#4A4238; --text-muted:#857A6B;
+      --border:#E3D7BF;
+      --radius:18px; --radius-sm:12px;
+      --shadow:3px 3px 0 var(--ink);
+      --shadow-md:5px 5px 0 var(--ink);
+    }
+    [data-skin="retro"] .card,[data-skin="retro"] .stat-card{border:1.5px solid var(--ink)}
+    [data-skin="retro"] .btn{border:1.5px solid var(--ink)!important;border-radius:999px;box-shadow:2px 2px 0 var(--ink);font-weight:700}
+    [data-skin="retro"] .btn:active{transform:translate(2px,2px);box-shadow:none}
+    [data-skin="retro"] .btn-sm{box-shadow:1.5px 1.5px 0 var(--ink)}
+    [data-skin="retro"] .btn-outline{background:var(--surface);color:var(--ink)}
+    [data-skin="retro"] .badge,[data-skin="retro"] .chip{border:1px solid var(--ink);border-radius:999px;font-weight:700}
+    [data-skin="retro"] .form-input,[data-skin="retro"] .form-select,[data-skin="retro"] .form-textarea{border:1.5px solid var(--ink);background:var(--surface)}
+    [data-skin="retro"] .topbar{background:var(--bg);border-bottom:1.5px solid var(--ink)}
+    [data-skin="retro"] .topbar-main{padding:8px 20px}
+    [data-skin="retro"] .tb-logo,[data-skin="retro"] .page-title{font-family:'Black Han Sans','Noto Sans KR',sans-serif;font-weight:400;letter-spacing:0}
+    [data-skin="retro"] .page-title{font-size:27px}
+    [data-skin="retro"] .tb-logo{font-size:20px;color:var(--primary)}
+    [data-skin="retro"] .tn-item{border:1.5px solid transparent;border-radius:999px;padding:7px 13px;color:var(--text-sub)}
+    [data-skin="retro"] .tn-item:hover{border-color:var(--ink)}
+    [data-skin="retro"] .tn-item.active{background:var(--primary);color:#fff;border-color:var(--ink);box-shadow:2px 2px 0 var(--ink)}
+    [data-skin="retro"] .tb-btn{border:1.5px solid var(--ink);border-radius:999px;background:var(--surface);color:var(--ink)}
+    [data-skin="retro"] .tb-btn:hover{background:var(--primary-light)}
+    [data-skin="retro"] .subrow{background:var(--bg);border-top:none;border-bottom:1.5px solid var(--ink)}
+    [data-skin="retro"] .sn-item{border:1.5px solid transparent;border-radius:999px;color:var(--text-sub)}
+    [data-skin="retro"] .sn-item:hover{background:transparent;border-color:var(--ink)}
+    [data-skin="retro"] .sn-item.active{background:#F2695C;color:#fff;border-color:var(--ink)}
+    [data-skin="retro"] .theme-pop{border:1.5px solid var(--ink);box-shadow:3px 3px 0 var(--ink)}
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:'Noto Sans KR',-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:15px;overflow-x:hidden;-webkit-text-size-adjust:100%}
     img{max-width:100%;height:auto}
@@ -257,6 +297,8 @@
           <div class="theme-pop" id="themePop" style="display:none">
             <div style="font-size:12.5px;color:var(--text-muted);font-weight:600;margin-bottom:8px">테마 색상</div>
             <div id="themeDots"></div>
+            <div style="font-size:12.5px;color:var(--text-muted);font-weight:600;margin:12px 0 6px">디자인</div>
+            <div id="skinPick" style="display:flex;gap:6px"></div>
           </div>
         </div>
       </div>
@@ -2187,6 +2229,18 @@ function zoomOnWheel(ev){
   return true;
 }
 try{ window.addEventListener('wheel', zoomOnWheel, {passive:false}); }catch(e){}
+// 🎛 디자인(스킨) — 깔끔 / 레트로. 색 테마와 따로 고르고, 이 기기에만 기억한다.
+//   글로 물어서는 못 정해서, 실제 화면에서 바로 바꿔 보고 고르게 했다.
+const SKINS=[['clean','깔끔'],['retro','레트로']];
+function skinNow(){ let k='clean'; try{ k=localStorage.getItem('bm_skin')||'clean'; }catch(e){} return SKINS.some(x=>x[0]===k)?k:'clean'; }
+function skinApply(k){
+  const root=document.documentElement;
+  if(root && root.setAttribute){ if(k==='clean') root.removeAttribute('data-skin'); else root.setAttribute('data-skin', k); }
+  const el=document.getElementById('skinPick');
+  if(el) el.innerHTML=SKINS.map(x=>`<button type="button" class="btn btn-sm ${x[0]===k?'btn-primary':'btn-outline'}" onclick="skinSet('${x[0]}')">${x[1]}</button>`).join('');
+}
+function skinSet(k){ try{ localStorage.setItem('bm_skin', k); }catch(e){} skinApply(k); }
+try{ skinApply(skinNow()); }catch(e){}
 function toggleThemePop(){ const p=document.getElementById('themePop'); if(p) p.style.display=(p.style.display==='none'?'block':'none'); }
 function buildSidebar(){
   // 대단원 — 아이콘과 이름을 같이 보여준다
@@ -2194,6 +2248,7 @@ function buildSidebar(){
   if(tn) tn.innerHTML=NAV.map(n=>`<button type="button" class="tn-item ${n.id===curSec?'active':''}" data-sec="${n.id}" title="${n.label}" onclick="navigate('${n.id}')"><span class="nav-icon">${ICONS[n.id]||''}</span>${n.short||n.label}</button>`).join('');
   renderSubNav();
   zoomApply(zoomNow());
+  skinApply(skinNow());
   renderThemeDots();
 }
 function navigate(s){
@@ -5846,6 +5901,79 @@ function stuInfo(st){
     note:b.note||'', jikbo
   };
 }
+// 📈 학생 한 명의 추이 — 이름을 누르면 바로 그래프로.
+//   성적: 학원 시험(답안이 있는 것)을 본 순서대로, 만점 대비 %. 모의고사는 따로 선을 긋는다.
+//   숙제: 최근 숙제의 완성도 막대. 마감 전이고 안 낸 건 뺀다.
+function stuScoreSeries(st){
+  const ex=getExamSubs().filter(x=>x.studentId===st.id).map(x=>{
+    const e=getExams().find(v=>v.id===x.examId); if(!e) return null;
+    const r=examResultOf(e, x), max=examMaxScore(e);
+    return { date:e.date||'', title:e.title||'', pct:max?Math.round(r.score/max*100):0 };
+  }).filter(Boolean);
+  const mk=getMockSubs().filter(x=>x.studentId===st.id && x.score!=null).map(x=>{
+    const m=getMockExams().find(v=>v.id===x.mockId)||{}; const max=Number(x.maxScore||m.maxScore)||100;
+    return { date:m.date||'', title:m.title||x.mockTitle||'모의고사', pct:Math.round(Number(x.score)/max*100), grade:x.grade||'' };
+  });
+  const by=(a,b)=>cmpStr(a.date,b.date);
+  return { exams:ex.sort(by).slice(-10), mocks:mk.sort(by).slice(-10) };
+}
+function stuHwSeries(st){
+  const today=bmToday(), key=a=>a.startDate||a.createdAt||a.dueDate||'';
+  const by={}; getSubmissions().forEach(x=>{ if(x.studentId===st.id) by[x.assignmentId]=x; });
+  return getAssignments().filter(a=>hwStudents(a).some(x=>x.id===st.id))
+    .filter(a=>by[a.id] || !(a.dueDate && a.dueDate>=today))
+    .sort((a,b)=>cmpStr(key(a),key(b))).slice(-12)
+    .map(a=>({ date:key(a), title:a.title||'', pct:by[a.id]?subCompletion(by[a.id]):0 }));
+}
+// 꺾은선 — 점마다 값을 적는다. 점이 하나뿐이면 선 없이 점만.
+function lineChartSvg(sets, w, h){
+  const P={l:26,r:14,t:16,b:22}, iw=w-P.l-P.r, ih=h-P.t-P.b;
+  const n=Math.max.apply(null, sets.map(x=>x.pts.length).concat([1]));
+  const X=(i,len)=>P.l+(len<=1?iw/2:iw*i/(len-1)), Y=v=>P.t+ih*(1-Math.max(0,Math.min(100,v))/100);
+  const md=d=>d?(+d.slice(5,7)+'/'+(+d.slice(8,10))):'';
+  const grid=[0,50,100].map(v=>`<line x1="${P.l}" x2="${w-P.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--border)" stroke-width="1"/><text x="${P.l-5}" y="${Y(v)+4}" font-size="10.5" text-anchor="end" fill="var(--text-muted)">${v}</text>`).join('');
+  const body=sets.map(set=>{ const L=set.pts.length;
+    const line=L>1?`<polyline fill="none" stroke="${set.color}" stroke-width="2.2" stroke-linejoin="round" points="${set.pts.map((p,i)=>X(i,L).toFixed(1)+','+Y(p.pct).toFixed(1)).join(' ')}"/>`:'';
+    const dots=set.pts.map((p,i)=>`<g><title>${anEsc(p.title)} ${p.pct}%</title><circle cx="${X(i,L).toFixed(1)}" cy="${Y(p.pct).toFixed(1)}" r="3.6" fill="var(--surface)" stroke="${set.color}" stroke-width="2.2"/><text x="${X(i,L).toFixed(1)}" y="${(Y(p.pct)-8).toFixed(1)}" font-size="11" font-weight="700" text-anchor="middle" fill="${set.color}">${p.pct}</text>${set.labels?`<text x="${X(i,L).toFixed(1)}" y="${h-6}" font-size="10.5" text-anchor="middle" fill="var(--text-muted)">${md(p.date)}</text>`:''}</g>`).join('');
+    return line+dots; }).join('');
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;display:block" role="img">${grid}${body}</svg>`;
+}
+function barChartSvg(pts, w, h){
+  const P={l:26,r:8,t:8,b:20}, iw=w-P.l-P.r, ih=h-P.t-P.b, n=pts.length||1, bw=Math.min(26, iw/n*0.62);
+  const md=d=>d?(+d.slice(5,7)+'/'+(+d.slice(8,10))):'';
+  const col=v=>v>=95?'var(--green)':(v>=40?'var(--primary)':(v>0?'var(--orange)':'var(--red)'));
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;display:block" role="img">
+    <line x1="${P.l}" x2="${w-P.r}" y1="${P.t+ih}" y2="${P.t+ih}" stroke="var(--border)"/><line x1="${P.l}" x2="${w-P.r}" y1="${P.t}" y2="${P.t}" stroke="var(--border)" stroke-dasharray="3 3"/>
+    <text x="${P.l-5}" y="${P.t+4}" font-size="10.5" text-anchor="end" fill="var(--text-muted)">100</text>
+    ${pts.map((p,i)=>{ const cx=P.l+iw*(i+0.5)/n, bh=Math.max(2, ih*p.pct/100);
+      return `<g><title>${anEsc(p.title)} ${p.pct}%</title><rect x="${(cx-bw/2).toFixed(1)}" y="${(P.t+ih-bh).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="3" fill="${col(p.pct)}"/><text x="${cx.toFixed(1)}" y="${h-6}" font-size="10" text-anchor="middle" fill="var(--text-muted)">${md(p.date)}</text></g>`; }).join('')}
+  </svg>`;
+}
+function stuTrendHtml(st){
+  const sc=stuScoreSeries(st), hw=stuHwSeries(st);
+  const sets=[]; if(sc.exams.length) sets.push({ color:'var(--primary)', pts:sc.exams, labels:true });
+  if(sc.mocks.length) sets.push({ color:'var(--orange)', pts:sc.mocks, labels:!sc.exams.length });
+  const avg=a=>a.length?Math.round(a.reduce((p,q)=>p+q.pct,0)/a.length):null;
+  const diff=a=>a.length>1?a[a.length-1].pct-a[a.length-2].pct:null;
+  const dE=diff(sc.exams);
+  const box='margin-top:10px;border:1px solid var(--border);border-radius:12px;padding:10px 12px';
+  const none=t=>`<div style="font-size:13px;color:var(--text-muted);padding:10px 0">${t}</div>`;
+  return `<div style="${box}">
+      <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:2px">
+        <span style="font-size:14px;font-weight:800">성적 추이</span>
+        ${sc.exams.length?`<span style="font-size:13px;color:var(--text-sub)">최근 <strong style="color:var(--primary)">${sc.exams[sc.exams.length-1].pct}점</strong>${dE!=null?` <strong style="color:${dE>0?'var(--green)':(dE<0?'var(--red)':'var(--text-muted)')}">${dE>0?'▲':(dE<0?'▼':'–')}${Math.abs(dE)||''}</strong>`:''} · 평균 ${avg(sc.exams)}</span>`:''}
+        ${sc.mocks.length?`<span style="font-size:12.5px;color:var(--orange);font-weight:700">— 모의고사</span>`:''}
+      </div>
+      ${sets.length?lineChartSvg(sets, 460, 150):none('아직 본 시험이 없어요.')}
+    </div>
+    <div style="${box}">
+      <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:2px">
+        <span style="font-size:14px;font-weight:800">숙제 완성도</span>
+        ${hw.length?`<span style="font-size:13px;color:var(--text-sub)">최근 ${hw.length}번 평균 <strong>${avg(hw)}%</strong></span>`:''}
+      </div>
+      ${hw.length?barChartSvg(hw, 460, 96):none('아직 낸 숙제가 없어요.')}
+    </div>`;
+}
 function stuInfoHtml(st){
   const x=stuInfo(st), e=x.exam, dd=stuMathDday(st);
   const md=d=>d?(+d.slice(5,7)+'/'+(+d.slice(8,10))):'';
@@ -5866,6 +5994,7 @@ function stuInfoHtml(st){
     ${row('','시험', e?`${anEsc(e.title||'')}${period?` <span style="font-weight:400;color:var(--text-sub)">(${period})</span>`:''}${math?`<div style="font-weight:400">${math}</div>`:''}`:'')}
     ${row('','교과서', anEsc(x.textbook))}
     ${row('','시험 범위', anEsc(x.scope))}
+    ${stuTrendHtml(st)}
     <div style="margin-top:10px;background:var(--bg);border-radius:10px;padding:8px 12px">
       <div style="font-size:14px;font-weight:800;margin-bottom:2px">보충 교재</div>
       ${row('','부교재', anEsc(x.subMaterial))}
