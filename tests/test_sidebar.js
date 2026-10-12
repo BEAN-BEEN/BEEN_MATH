@@ -90,10 +90,10 @@ ok('지금 보는 탭이 눌린 모양으로 뜬다', () => {
   assert.strictEqual((h.match(/sn-item active/g) || []).length, 1);
   assert.strictEqual((h.match(/<button/g) || []).length, 5);
 });
-ok('하위 탭이 없는 메뉴는 아랫줄이 비고, 빈 줄은 숨는다', () => {
+ok('하위 탭이 없는 메뉴는 탭 자리만 비고, 아랫줄에는 시즌이 늘 남는다', () => {
   assert.strictEqual(T.subNavHtml('dashboard'), '');
   assert.strictEqual(T.subNavHtml('curriculum'), '');
-  assert.ok(th.includes('.subnav:empty{display:none}'));
+  assert.ok(th.includes('<div class="season-pick" id="seasonPick"></div>'));
 });
 ok('하위 탭을 누르면 그 탭으로 바뀌고 그 화면을 그린다', () => {
   const seen = [];

@@ -55,8 +55,9 @@
     .tb-zoom .tb-btn{padding:7px 9px}
     .tb-zoom-val{min-width:52px;justify-content:center;font-variant-numeric:tabular-nums}
     .theme-pop{position:absolute;top:calc(100% + 8px);right:0;background:#1E293B;border:1px solid rgba(255,255,255,.15);border-radius:12px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.3);z-index:130;min-width:190px}
-    .subnav{display:flex;gap:6px;overflow-x:auto;padding:8px 20px;background:var(--surface);border-bottom:1px solid var(--border)}
-    .subnav:empty{display:none}
+    .subrow{display:flex;align-items:center;gap:10px;padding:7px 20px;background:var(--surface);border-bottom:1px solid var(--border)}
+    .subnav{display:flex;gap:6px;overflow-x:auto;flex:1;min-width:0}
+    .season-pick{display:flex;align-items:center;gap:6px;flex-shrink:0}
     .sn-item{flex-shrink:0;border:1px solid var(--border);background:var(--bg);color:var(--text-sub);border-radius:999px;padding:6px 14px;font-size:14.5px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap}
     .sn-item:hover{border-color:var(--primary);color:var(--primary)}
     .sn-item.active{background:var(--primary);color:#fff;border-color:var(--primary)}
@@ -181,7 +182,7 @@
 
     @media(max-width:900px){
       .topbar-main{padding:7px 10px;gap:6px}
-      .subnav{padding:7px 10px}
+      .subrow{padding:7px 10px;flex-wrap:wrap}
       .tn-item{padding:8px 10px;font-size:14.5px}
       .page-header{padding:16px 16px 0}
       .content-area{padding:0 16px}
@@ -257,7 +258,10 @@
           </div>
         </div>
       </div>
-      <div class="subnav" id="subNav"></div>
+      <div class="subrow">
+        <div class="subnav" id="subNav"></div>
+        <div class="season-pick" id="seasonPick"></div>
+      </div>
     </div>
     <div class="section active" id="sec-dashboard">
       <div class="page-header"><div class="page-title">대시보드</div><div class="page-subtitle" id="todayDate"></div></div>
@@ -273,6 +277,7 @@
       <div class="content-area" id="homeworkContent"></div>
       <div class="content-area" id="wrongContent" style="display:none"></div>
       <div class="content-area" id="reviewContent" style="display:none"></div>
+      <div class="content-area" id="seasonContent" style="display:none"></div>
       <div class="content-area" id="checkContent" style="display:none"></div>
     </div>
     <div class="section" id="sec-grades">
@@ -566,8 +571,8 @@ function getSubsByAssignment(aid){return SUBMISSIONS_CACHE.filter(s=>s.assignmen
 // 한 제출의 숙제 완성도(%) — 평가했으면 그 값(0~100), 제출만 했으면 100, 미제출/반려는 0
 //  → 숙제 제출률을 '얼마나 했는지'로 가중 계산할 때 사용 (직접확인 포함)
 function subCompletion(sub){
-  if(sub.notDone) return 0;                          // ❌ 안 해온 것 — 나중에 채우면 그때 올라갑니다
   if(!sub || sub.rejected) return 0;
+  if(sub.notDone) return 0;                          // ❌ 안 해온 것 — 나중에 채우면 그때 올라갑니다
   if(sub.evalPct===''||sub.evalPct==null) return 100;
   return parseInt(sub.evalPct,10)||0;
 }
@@ -779,7 +784,7 @@ function currentSeason(){ const t=bmToday(); const list=getSeasons();
 function asnInSeason(a, season){ if(!season) return true; const d=a.startDate||a.createdAt||a.dueDate||''; if(!d) return true; return (!season.startDate||d>=season.startDate)&&(!season.endDate||d<=season.endDate); }
 let gradeSeasonId=null;   // 반별 관리에서 보고 있는 시즌(null=현재)
 let gradeSeasonMgmt=false;
-function selectedSeason(){ const list=getSeasons(); if(!list.length) return null; return list.find(x=>x.id===gradeSeasonId) || currentSeason(); }
+function selectedSeason(){ const list=getSeasons(); if(!list.length) return null; if(gradeSeasonId==='__all') return null; return list.find(x=>x.id===gradeSeasonId) || currentSeason(); }
 async function doAddSeason(){
   const name=document.getElementById('season-name').value.trim();
   const start=document.getElementById('season-start').value, end=document.getElementById('season-end').value;
@@ -2140,7 +2145,7 @@ let curSec='dashboard';
 // 소단원 — 큰 메뉴마다 딸린 하위 탭. 예전엔 화면 안에 줄로 있던 것을 위쪽 아랫줄로 올렸다.
 const SUBNAV={
   manage:  {get:()=>mgTab,     set:v=>{mgTab=v;},     tabs:[['students','👥 학생 관리'],['classroom','🏫 반별 관리']]},
-  homework:{get:()=>hwTab,     set:v=>{hwTab=v;},     tabs:[['homework','📝 숙제'],['wrong','❌ 오답'],['review','🔁 복습']]},
+  homework:{get:()=>hwTab,     set:v=>{hwTab=v;},     tabs:[['homework','📝 숙제'],['season','📊 시즌 현황'],['wrong','❌ 오답'],['review','🔁 복습']]},
   grades:  {get:()=>gradeTab,  set:v=>{gradeTab=v;},  tabs:[['naesin','🏫 내신 성적'],['daily','📅 학원 데일리 테스트'],['mock','📝 모의 시험'],['analysis','📋 시험지 분석서']]},
   naesin:  {get:()=>naesinTab, set:v=>{naesinTab=v;}, tabs:[['school','🏫 학교 정보'],['neis','🗓 학사일정'],['jikbo','🔶 직보 일정'],['exam','📅 시험 정보'],['bogang','🙋 보강 체크']]}
 };
@@ -2149,7 +2154,7 @@ function subNavHtml(sec){
   const cur=d.get();
   return d.tabs.map(([k,l])=>`<button type="button" class="sn-item ${cur===k?'active':''}" onclick="goSub('${sec}','${k}')">${l}</button>`).join('');
 }
-function renderSubNav(){ const el=document.getElementById('subNav'); if(el) el.innerHTML=subNavHtml(curSec); }
+function renderSubNav(){ const el=document.getElementById('subNav'); if(el) el.innerHTML=subNavHtml(curSec); renderSeasonPick(); }
 function goSub(sec, k){ const d=SUBNAV[sec]; if(!d) return; d.set(k); if(curSec!==sec) navigate(sec); else renderSection(sec); }
 // 🔍 화면 크기 — 줄이면 글씨가 작아지는 대신 한 화면에 더 넓게 들어온다.
 //   휴대폰은 손가락으로 벌려 키울 수는 있어도 100% 아래로 줄일 수가 없어서 버튼을 둔다.
@@ -2220,9 +2225,9 @@ function rHomeworkHub(){
   const el=document.getElementById('hwTabs'); if(el) el.innerHTML=tabs.map(([k,l])=>`<button class="btn ${hwTab===k?'btn-primary':'btn-outline'} btn-sm" onclick="hwTab='${k}';rHomeworkHub()">${l}</button>`).join('');
   // 활성 하위탭에 맞춰 제목 변경 (오답/복습인데 '숙제 관리'로 남던 문제 해결)
   if(hwTab==='check') hwTab='homework';        // 예전에 검사 탭을 보던 상태면 숙제로
-  const th=document.querySelector('#sec-homework .page-title'); if(th) th.textContent={homework:'숙제 관리',wrong:'오답 관리',review:'복습 관리'}[hwTab]||'숙제 관리';
-  ['homework','wrong','review','check'].forEach(k=>{ const c=document.getElementById(k+'Content'); if(c) c.style.display=hwTab===k?'':'none'; });   // check 영역은 항상 숨김
-  ({homework:rHomework,wrong:rWrong,review:rReview})[hwTab]?.();
+  const th=document.querySelector('#sec-homework .page-title'); if(th) th.textContent={homework:'숙제 관리',season:'시즌 현황',wrong:'오답 관리',review:'복습 관리'}[hwTab]||'숙제 관리';
+  ['homework','season','wrong','review','check'].forEach(k=>{ const c=document.getElementById(k+'Content'); if(c) c.style.display=hwTab===k?'':'none'; });   // check 영역은 항상 숨김
+  ({homework:rHomework,season:rSeasonBoard,wrong:rWrong,review:rReview})[hwTab]?.();
 }
 // 대시보드 → 숙제 관리의 특정 하위탭으로 바로 이동
 const NL_T='\n';   // 복사용 줄바꿈
@@ -3981,7 +3986,9 @@ function myTodosHtml(){
 function rDashboard(){
   const sts=getStudents(),qs=getQuestions();
   // 삭제된 숙제의 옛 제출(고아 데이터)은 제외하고 집계
-  const asgnIds=new Set(getAssignments().map(a=>a.id));
+  // 🗓 위쪽에서 고른 시즌 안의 숙제만 센다 (지난 시즌 것이 숫자에 섞이지 않게)
+  const _dashSeason=selectedSeason();
+  const asgnIds=new Set(getAssignments().filter(a=>asnInSeason(a,_dashSeason)).map(a=>a.id));
   const subs=getSubmissions().filter(s=>asgnIds.has(s.assignmentId));
   const today=dashDateObj();   // 보고 있는 날짜(기본=오늘) — 어제/지난 수업도 볼 수 있어요
   document.getElementById('todayDate').textContent=today.toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
@@ -4025,9 +4032,10 @@ function rDashboard(){
     ${dashMissingHtml()}
     <div class="card" style="border:2px solid var(--primary);background:linear-gradient(180deg,var(--primary-light),var(--surface));margin:0;order:9">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px">
-        <div class="card-title" style="margin:0;font-size:18px">📚 숙제 · 오답 · 복습 <span style="font-size:13px;color:var(--text-muted);font-weight:400">— 빠짐없이 끝까지 챙겨요</span></div>
+        <div class="card-title" style="margin:0;font-size:18px">📚 숙제 · 오답 · 복습 <span style="font-size:13px;color:var(--text-muted);font-weight:400">— ${_dashSeason?anEsc(_dashSeason.name):'전체 기간'}</span></div>
         <span style="display:flex;gap:6px">
           <button class="btn btn-outline btn-sm" onclick="openHwShot('')" title="학생에게 캡처해서 보낼 숙제 화면">📸 숙제 캡처</button>
+          <button class="btn btn-outline btn-sm" onclick="goHw('season')">📊 시즌 현황</button>
           <button class="btn btn-primary btn-sm" onclick="goHw('homework')">숙제 관리로 →</button>
         </span>
       </div>
@@ -4654,7 +4662,7 @@ function rClassroom(){
     <div class="card" style="padding:12px 14px">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span style="font-size:14px;font-weight:700">📅 제출률 시즌</span>
-        ${getSeasons().length?`<select class="form-select" style="max-width:240px;padding:6px 8px" onchange="gradeSeasonId=this.value;rClassroom()">
+        ${getSeasons().length?`<select class="form-select" style="max-width:240px;padding:6px 8px" onchange="setSeason(this.value)">
           ${getSeasons().map(s=>`<option value="${s.id}" ${(_season&&_season.id===s.id)?'selected':''}>${(s.name||'').replace(/</g,'&lt;')} (${s.startDate||''}~${s.endDate||'진행중'})</option>`).join('')}
         </select>`:'<span style="font-size:13px;color:var(--text-muted)">시즌 없음 — 전체 기간 집계 중</span>'}
         <button class="btn btn-outline btn-sm" onclick="gradeSeasonMgmt=!gradeSeasonMgmt;rClassroom()">${gradeSeasonMgmt?'닫기':'시즌 관리'}</button>
@@ -5046,7 +5054,7 @@ function rHomework(){
     <div class="card" style="padding:12px 16px;margin-bottom:10px">
       ${getSeasons().length?`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
         <span style="font-size:14px;font-weight:700">📅 시즌</span>
-        <select class="form-select" style="max-width:260px;padding:6px 8px;font-size:14px" onchange="hwSeasonId=this.value;rHomework()">
+        <select class="form-select" style="max-width:260px;padding:6px 8px;font-size:14px" onchange="setSeason(this.value)">
           <option value="__all" ${hwSeasonId==='__all'?'selected':''}>전체 시즌 (모든 기간)</option>
           ${getSeasons().map(s=>`<option value="${s.id}" ${(hwSeasonId!=='__all'&&_hwSeason&&_hwSeason.id===s.id)?'selected':''}>${(s.name||'').replace(/</g,'&lt;')} (${s.startDate||''}~${s.endDate||'진행중'})</option>`).join('')}
         </select>
@@ -6115,6 +6123,151 @@ async function doCopyUnits(fromId){
     rDashboard();
   }catch(e){ showToast('복사 실패: '+e.message,'error'); }
 }
+// ================================================================
+// 🗓 시즌 — 위쪽 바에서 한 번 고르면 숙제·반별 관리·리포트·대시보드 숫자가 모두 그 기간으로 움직인다.
+//   전에는 숙제 관리와 반별 관리에 고르는 칸이 따로 있어서 한쪽만 바뀌었다.
+// ================================================================
+function setSeason(id){
+  gradeSeasonId=id; hwSeasonId=id;
+  renderSeasonPick();
+  renderSection(curSec);
+}
+function openSeasonMgmt(){ mgTab='classroom'; gradeSeasonMgmt=true; navigate('manage'); }
+function seasonPickHtml(){
+  const list=getSeasons();
+  if(!list.length) return `<button type="button" class="btn btn-outline btn-sm" onclick="openSeasonMgmt()" title="기간을 정해두면 그 안의 숙제·완성도만 모아 볼 수 있어요">🗓 시즌 만들기</button>`;
+  const cur=hwSelSeason(), all=(hwSeasonId==='__all');
+  const md=d=>d?(+d.slice(5,7)+'/'+(+d.slice(8,10))):'';
+  return `<span style="font-size:13px;font-weight:800;color:var(--text-sub);white-space:nowrap">🗓 시즌</span>
+    <select class="form-select" style="width:auto;max-width:230px;padding:5px 8px;font-size:13.5px;font-weight:700" title="고른 시즌 안의 숙제·완성도만 보여요" onchange="setSeason(this.value)">
+      ${list.map(s=>`<option value="${s.id}" ${(!all&&cur&&cur.id===s.id)?'selected':''}>${anEsc(s.name)} (${md(s.startDate)}~${s.endDate?md(s.endDate):'진행중'})</option>`).join('')}
+      <option value="__all" ${all?'selected':''}>전체 기간</option>
+    </select>
+    <button type="button" class="btn btn-outline btn-sm" style="padding:4px 9px" title="시즌 관리 — 기간을 직접 정하고 고쳐요" onclick="openSeasonMgmt()">⚙</button>`;
+}
+function renderSeasonPick(){ const el=document.getElementById('seasonPick'); if(el) el.innerHTML=seasonPickHtml(); }
+
+// 📊 시즌 현황 — 고른 시즌 안에서 낸 숙제를 한 표로. 누가 얼마나 해왔는지(완성도)가 줄·칸으로 보인다.
+let sbClassId='';
+function sbPickClass(id){ sbClassId=id; rSeasonBoard(); }
+// 칸 값: 숫자 = 완성도(%), 'wait' = 아직 마감 전이고 안 냄, null = 그 학생 숙제가 아님(반 이동·개별 숙제)
+function seasonBoardData(classId, season){
+  const today=bmToday();
+  const key=a=>a.startDate||a.createdAt||a.dueDate||'';
+  const asg=getAssignments().filter(a=>a.classId===classId && asnInSeason(a, season)).sort((x,y)=>cmpStr(key(x),key(y)));
+  const by={}; getSubmissions().forEach(s=>{ by[s.assignmentId+'|'+s.studentId]=s; });
+  const stMap={}, roster={};
+  getStudentsByClass(classId).forEach(s=>{ stMap[s.id]=s; });
+  asg.forEach(a=>{ roster[a.id]=new Set(hwStudents(a).map(s=>{ stMap[s.id]=s; return s.id; })); });
+  const sts=Object.keys(stMap).map(k=>stMap[k]).sort((a,b)=>cmpStr(a.name,b.name));
+  const cell=(a,st)=>{
+    if(!roster[a.id].has(st.id)) return null;
+    const sub=by[a.id+'|'+st.id];
+    if(sub) return subCompletion(sub);
+    return (a.dueDate && a.dueDate>=today) ? 'wait' : 0;       // 마감이 지났는데 없으면 안 한 것
+  };
+  const mean=arr=>{ const v=arr.filter(x=>typeof x==='number'); return v.length?Math.round(v.reduce((p,q)=>p+q,0)/v.length):null; };
+  const rows=sts.map(st=>{ const cells=asg.map(a=>cell(a,st)); return { st, cells, avg:mean(cells) }; });
+  const colAvg=asg.map((a,i)=>mean(rows.map(r=>r.cells[i])));
+  return { asg, rows, colAvg, avg:mean([].concat.apply([], rows.map(r=>r.cells))) };
+}
+function sbCellHtml(v){
+  if(v===null) return '<td style="background:var(--bg)"></td>';
+  if(v==='wait') return '<td style="text-align:center;color:var(--text-muted)" title="아직 마감 전">…</td>';
+  const c=v>=95?['#DCFCE7','#15803D']:(v>=75?['#ECFCCB','#4D7C0F']:(v>=40?['#FEF9C3','#A16207']:(v>0?['#FFEDD5','#C2410C']:['#FEE2E2','#B91C1C'])));
+  return `<td style="text-align:center;background:${c[0]};color:${c[1]};font-size:15px" title="${hwGradeLabel(v)}">${hwGradeLabel(v).split(' ')[0]}</td>`;
+}
+function sbPctHtml(v){
+  if(v==null) return '<span style="color:var(--text-muted)">-</span>';
+  return `<strong style="color:${v>=80?'var(--green)':(v>=50?'var(--orange)':'var(--red)')}">${v}%</strong>`;
+}
+function seasonBoardHtml(){
+  const season=hwSelSeason();
+  const live=CLASSES.filter(c=>isClassActive(c));
+  if(!live.length) return '<div class="card" style="text-align:center;padding:30px;color:var(--text-muted)">아직 반이 없어요.</div>';
+  if(!sbClassId || !live.find(c=>c.id===sbClassId)) sbClassId=live[0].id;
+  const today=bmToday();
+  const md=d=>d?(+d.slice(5,7)+'/'+(+d.slice(8,10))):'';
+  const d=seasonBoardData(sbClassId, season);
+  // 시즌이 얼마나 지났나
+  let bar='';
+  if(season && season.startDate && season.endDate){
+    const total=stuDays(season.startDate, season.endDate)+1, gone=Math.max(0, Math.min(total, stuDays(season.startDate, today)+1));
+    const left=stuDays(today, season.endDate);
+    bar=`<div style="margin-top:8px"><div style="height:8px;background:var(--bg);border-radius:99px;overflow:hidden"><div style="height:100%;width:${Math.round(gone/total*100)}%;background:var(--primary)"></div></div>
+      <div style="font-size:12.5px;color:var(--text-muted);margin-top:3px">${seasonWeeks(season)}주 중 ${Math.round(gone/total*100)}% 지남 · ${left>=0?`끝까지 ${left}일`:'끝난 시즌'}</div></div>`;
+  }
+  return `<div class="card" style="padding:14px 16px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:18px;font-weight:800">📊 ${season?anEsc(season.name):'전체 기간'}</span>
+        ${season?`<span style="font-size:14px;color:var(--text-sub)">${season.startDate||'?'} ~ ${season.endDate||'진행중'}</span>`:''}
+        <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="openSeasonMgmt()">⚙ 시즌 기간 정하기</button>
+      </div>
+      ${bar}
+      ${getSeasons().length?'':'<div style="font-size:13.5px;color:var(--text-muted);margin-top:6px">아직 시즌이 없어서 전체 기간을 보여주고 있어요. 시즌을 만들면 그 기간의 숙제만 모아 볼 수 있어요.</div>'}
+    </div>
+    <div class="card">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+        ${live.map(c=>{ const on=c.id===sbClassId; const a=on?d.avg:seasonBoardData(c.id, season).avg;
+          return `<button class="btn btn-sm" style="${on?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="sbPickClass('${c.id}')">${anEsc(c.name)}${a!=null?` <span style="font-size:12px;opacity:.85">${a}%</span>`:''}</button>`; }).join('')}
+      </div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:baseline;margin-bottom:8px">
+        <span style="font-size:15px">숙제 <strong>${d.asg.length}</strong>개</span>
+        <span style="font-size:15px">반 평균 완성도 ${sbPctHtml(d.avg)}</span>
+        <span style="font-size:12.5px;color:var(--text-muted)">💯 다 함 · 👍 거의 다 · 🙂 반만 · 🤏 조금 · ❌ 안 함 · … 마감 전 · 빈칸은 그 학생 숙제가 아님</span>
+      </div>
+      ${!d.asg.length?'<div style="text-align:center;padding:24px;color:var(--text-muted)">이 기간에 이 반에 낸 숙제가 없어요.</div>'
+      : !d.rows.length?'<div style="text-align:center;padding:24px;color:var(--text-muted)">이 반에 학생이 없어요.</div>'
+      : `<div class="table-wrap"><table style="font-size:14px;width:100%">
+        <thead><tr>
+          <th style="text-align:left;min-width:74px;position:sticky;left:0;background:var(--bg);z-index:1">학생</th>
+          <th style="min-width:58px">평균</th>
+          ${d.asg.map(a=>`<th style="min-width:64px;max-width:120px;font-weight:600;cursor:pointer" title="${anEsc(a.title||'').replace(/"/g,'&quot;')} · 누르면 숙제 탭에서 열려요" onclick="hwTab='homework';hwEditId=null;navigate('homework')">
+            <div style="font-size:12.5px;font-weight:800">${md(a.startDate||a.createdAt||a.dueDate)}</div>
+            <div style="font-size:11.5px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px">${anEsc(a.title||'')}</div></th>`).join('')}
+        </tr></thead>
+        <tbody>${d.rows.map(r=>`<tr>
+          <td style="position:sticky;left:0;background:var(--surface);z-index:1"><strong style="cursor:pointer" onclick="openStuInfo('${r.st.id}')">${anEsc(r.st.name)}</strong></td>
+          <td style="text-align:center">${sbPctHtml(r.avg)}</td>
+          ${r.cells.map(sbCellHtml).join('')}
+        </tr>`).join('')}
+        <tr style="border-top:2px solid var(--border)">
+          <td style="position:sticky;left:0;background:var(--bg);z-index:1;font-size:13px;color:var(--text-sub);font-weight:800">숙제별 평균</td>
+          <td style="text-align:center">${sbPctHtml(d.avg)}</td>
+          ${d.colAvg.map(v=>`<td style="text-align:center;font-size:13px">${sbPctHtml(v)}</td>`).join('')}
+        </tr></tbody>
+      </table></div>`}
+    </div>`;
+}
+function rSeasonBoard(){ const el=document.getElementById('seasonContent'); if(el) el.innerHTML=seasonBoardHtml(); }
+
+// ✅ 체크리스트 한눈에 — 반마다 어느 단원이 끝났는지 색으로.
+//   초록 = 반 전체가 끝냄, 노랑 = 일부만(몇 명), 회색 = 아직 아무도.
+function ckOverviewHtml(list){
+  const rows=list.map(c=>{
+    const sts=getStudentsByClass(c.id);
+    const all=ckColumns(c.id);
+    const cols=ckGroup?all.filter(x=>x.group===ckGroup):all;
+    const n=sts.length;
+    const pills=cols.map(u=>{
+      const k=sts.filter(s=>ckMarked(c.id,u,s.id)).length;
+      const st = (n&&k===n) ? 'background:var(--green);color:#fff;border-color:var(--green)'
+        : (k>0 ? 'background:#FEF9C3;color:#854D0E;border-color:#FDE68A' : 'background:var(--surface);color:var(--text-muted);border-color:var(--border)');
+      return `<span title="${anEsc(u.group)}" style="display:inline-block;border:1px solid;border-radius:8px;padding:3px 8px;font-size:13px;font-weight:700;white-space:nowrap;${st}">${(n&&k===n)?'✓ ':''}${anEsc(u.name)}${(k>0&&k<n)?` <span style="font-weight:500">${k}/${n}</span>`:''}</span>`;
+    }).join('');
+    const doneN=cols.filter(u=>n&&sts.every(s=>ckMarked(c.id,u,s.id))).length;
+    const on=c.id===ckBoardClassId;
+    return `<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-top:1px solid var(--border)">
+      <button class="btn btn-sm" style="flex-shrink:0;min-width:92px;justify-content:center;${on?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="setCkBoardClass('${c.id}')">${anEsc(c.name)}</button>
+      <span style="flex-shrink:0;min-width:46px;font-size:13px;font-weight:800;padding-top:4px;color:${cols.length&&doneN===cols.length?'var(--green)':'var(--text-sub)'}">${cols.length?doneN+'/'+cols.length:''}</span>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;flex:1">${pills||'<span style="font-size:13px;color:var(--text-muted);padding-top:4px">항목 없음</span>'}</div>
+    </div>`;
+  }).join('');
+  return `<div style="background:var(--bg);border-radius:12px;padding:10px 12px;margin:8px 0 12px">
+    <div style="font-size:13.5px;font-weight:800;margin-bottom:4px">👀 한눈에 보기 <span style="font-weight:500;color:var(--text-muted)">— <span style="color:var(--green);font-weight:800">초록</span>은 반 전체가 끝낸 것 · <span style="color:#A16207;font-weight:800">노랑</span>은 일부만 · 반 이름을 누르면 아래 표가 그 반으로 바뀌어요</span></div>
+    ${rows}
+  </div>`;
+}
 function classCheckBoardHtml(){
   const live=CLASSES.filter(c=>isClassActive(c));
   if(!live.length) return '';
@@ -6154,10 +6307,9 @@ function classCheckBoardHtml(){
         <button class="btn btn-primary btn-sm" onclick="doAddCkItem('${c.id}')">${addLabel}</button>
       </div>
     </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 10px">
-      ${list.map(x=>`<button class="btn btn-sm" style="${x.id===c.id?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="setCkBoardClass('${x.id}')">${el(x.name)}<span style="font-size:10.5px;opacity:.75"> ${clsDayLabel(x)}</span></button>`).join('')}
-    </div>
-    ${groupBar}
+    ${groupBar.replace('margin-bottom:10px','margin:10px 0 0')}
+    ${ckOverviewHtml(list)}
+    <div style="font-size:15px;font-weight:800;margin-bottom:6px">${el(c.name)} <span style="font-size:13px;font-weight:500;color:var(--text-muted)">학생별 체크 — 눌러서 표시</span></div>
     ${(ckCopyOpen&&cols.length&&list.length>1)?(function(){
       const srcCols=ckCopySrc(c.id);
       const label=ckGroup?el(ckGroup):'전체 항목';
