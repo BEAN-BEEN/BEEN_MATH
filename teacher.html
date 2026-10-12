@@ -14,18 +14,20 @@
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
-      --primary:#5B6CF5; --primary-dark:#4F46E5; --primary-light:#EEF2FF; --primary-2:#818CF8;
-      --orange:#F97316; --orange-light:#FFF7ED;
-      --green:#10B981; --green-light:#ECFDF5;
-      --red:#F43F5E; --red-light:#FFF1F2;
-      --yellow:#F59E0B; --yellow-light:#FFFBEB;
-      --purple:#8B5CF6; --purple-light:#F5F3FF;   /* 쓰이고 있었는데 선언이 없어 색이 안 나오던 것 */
-      --bg:#F4F6FB; --surface:#FFFFFF;
-      --text:#0F172A; --text-sub:#334155; --text-muted:#64748B;
-      --border:#E8EDF4; --sidebar-w:250px;
-      --radius:16px; --radius-sm:11px;
-      --shadow:0 1px 2px rgba(16,24,40,.04),0 4px 12px rgba(16,24,40,.05);
-      --shadow-md:0 6px 16px -4px rgba(16,24,40,.1),0 4px 8px -4px rgba(16,24,40,.06);
+      /* 🍑 파스텔 — 크림색 바탕, 둥근 카드, 연한 색 위에 같은 계열의 짙은 글씨.
+         색을 늘리지 않으려고 상태색(초록·빨강·주황·노랑·보라)도 한 톤씩 눌렀다. */
+      --primary:#E8694A; --primary-dark:#C9502F; --primary-light:#FFE6DB; --primary-2:#F6A58E;
+      --orange:#E58A2B; --orange-light:#FFF1DF;
+      --green:#2FA878; --green-light:#E1F5EC;
+      --red:#E2566B; --red-light:#FDECEE;
+      --yellow:#D99A12; --yellow-light:#FFF5D6;
+      --purple:#8A76DB; --purple-light:#F0EDFE;
+      --bg:#FFF8F1; --surface:#FFFFFF;
+      --text:#3B2F2F; --text-sub:#5E4E48; --text-muted:#8C7B75;
+      --border:#F1E5D9; --sidebar-w:250px;
+      --radius:22px; --radius-sm:14px;
+      --shadow:0 1px 0 rgba(120,90,70,.03),0 6px 18px rgba(150,115,90,.07);
+      --shadow-md:0 10px 26px -6px rgba(150,115,90,.16),0 4px 10px -4px rgba(150,115,90,.08);
     }
     /* 🌸 계절 테마 — 브랜드(primary) 색만 바뀌고 상태색은 유지 */
     [data-theme="spring"]{ --primary:#E96A9E; --primary-dark:#D5588C; --primary-light:#FDF1F7; --primary-2:#F6A6C6; }
@@ -39,28 +41,28 @@
 
     /* 🔝 위쪽 메뉴 — 왼쪽 바 대신. 윗줄은 큰 메뉴(대단원), 아랫줄은 그 메뉴의 하위 탭(소단원).
        아이콘만으로는 뭐가 뭔지 알기 어려워서 글자를 늘 보이게 둔다. 스크롤해도 위에 붙어 있다. */
-    .topbar{position:sticky;top:0;z-index:120;padding-top:env(safe-area-inset-top);background:#1E293B;box-shadow:0 2px 10px rgba(15,23,42,.12)}
+    .topbar{position:sticky;top:0;z-index:120;padding-top:env(safe-area-inset-top);background:var(--bg);border-bottom:1px solid var(--border)}
     .topbar-main{display:flex;align-items:center;gap:10px;padding:8px 20px}
-    .tb-logo{display:flex;align-items:center;gap:7px;color:#fff;font-size:17px;font-weight:800;letter-spacing:-.5px;white-space:nowrap;flex-shrink:0;cursor:pointer}
+    .tb-logo{display:flex;align-items:center;gap:7px;color:var(--text);font-size:17px;font-weight:800;letter-spacing:-.5px;white-space:nowrap;flex-shrink:0;cursor:pointer}
     .tb-logo img{height:26px;border-radius:6px}
     .topnav{display:flex;gap:4px;flex-wrap:wrap;flex:1;min-width:0}   /* 좁으면 두 줄로 — 옆으로 밀려 안 보이는 메뉴가 없게 */
-    .tn-item{flex-shrink:0;display:inline-flex;align-items:center;gap:6px;border:none;background:transparent;color:rgba(255,255,255,.72);border-radius:9px;padding:8px 13px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap}
-    .tn-item:hover{background:rgba(255,255,255,.1);color:#fff}
-    .tn-item.active{background:var(--primary);color:#fff;font-weight:800}
+    .tn-item{flex-shrink:0;display:inline-flex;align-items:center;gap:6px;border:none;background:transparent;color:var(--text-muted);border-radius:999px;padding:8px 14px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap}
+    .tn-item:hover{background:var(--surface);color:var(--text)}
+    .tn-item.active{background:var(--primary-light);color:var(--primary-dark);font-weight:800}
     .nav-icon{width:20px;display:inline-flex;align-items:center;justify-content:center;opacity:.9}
     .tb-right{display:flex;align-items:center;gap:5px;flex-shrink:0;position:relative}
-    .tb-btn{display:inline-flex;align-items:center;gap:4px;border:none;background:rgba(255,255,255,.1);color:rgba(255,255,255,.85);border-radius:8px;padding:7px 10px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit;text-decoration:none;white-space:nowrap}
-    .tb-btn:hover{background:rgba(255,255,255,.2);color:#fff}
+    .tb-btn{display:inline-flex;align-items:center;gap:4px;border:none;background:var(--surface);color:var(--text-sub);border-radius:999px;padding:7px 11px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit;text-decoration:none;white-space:nowrap}
+    .tb-btn:hover{background:var(--primary-light);color:var(--primary-dark)}
     .tb-zoom{display:inline-flex;gap:2px}
     .tb-zoom .tb-btn{padding:7px 9px}
     .tb-zoom-val{min-width:52px;justify-content:center;font-variant-numeric:tabular-nums}
-    .theme-pop{position:absolute;top:calc(100% + 8px);right:0;background:#1E293B;border:1px solid rgba(255,255,255,.15);border-radius:12px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.3);z-index:130;min-width:190px}
-    .subrow{display:flex;align-items:center;gap:10px;padding:7px 20px;background:var(--surface);border-bottom:1px solid var(--border)}
+    .theme-pop{position:absolute;top:calc(100% + 8px);right:0;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.3);z-index:130;min-width:190px}
+    .subrow{display:flex;align-items:center;gap:10px;padding:2px 20px 9px;background:var(--bg)}
     .subnav{display:flex;gap:6px;overflow-x:auto;flex:1;min-width:0}
     .season-pick{display:flex;align-items:center;gap:6px;flex-shrink:0}
-    .sn-item{flex-shrink:0;border:1px solid var(--border);background:var(--bg);color:var(--text-sub);border-radius:999px;padding:6px 14px;font-size:14.5px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap}
+    .sn-item{flex-shrink:0;border:1px solid transparent;background:var(--surface);color:var(--text-sub);border-radius:999px;padding:6px 14px;font-size:14.5px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap}
     .sn-item:hover{border-color:var(--primary);color:var(--primary)}
-    .sn-item.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+    .sn-item.active{background:var(--primary-light);color:var(--primary-dark);border-color:transparent}
     @media(max-width:1400px){ .tb-txt{display:none} }
     /* 휴대폰 — 여러 줄로 쌓이면 화면을 다 가린다. 메뉴만 한 줄로 두고 옆으로 민다. */
     @media(max-width:700px){
@@ -93,26 +95,26 @@
 
     /* BADGES */
     .badge{display:inline-block;padding:4px 9px;border-radius:20px;font-size:12.5px;font-weight:700}
-    .b-primary{background:var(--primary-light);color:var(--primary)}
+    .b-primary{background:var(--primary-light);color:var(--primary-dark)}
     .b-orange{background:var(--orange-light);color:var(--orange)}
     .b-green{background:var(--green-light);color:var(--green)}
     .b-red{background:var(--red-light);color:var(--red)}
-    .b-gray{background:#F1F5F9;color:var(--text-muted)}
+    .b-gray{background:#F4EDE6;color:var(--text-muted)}
     .b-yellow{background:var(--yellow-light);color:var(--yellow)}
-    .chip{display:inline-block;padding:4px 11px;background:var(--primary-light);color:var(--primary);border-radius:20px;font-size:13px;font-weight:600}
+    .chip{display:inline-block;padding:4px 11px;background:var(--primary-light);color:var(--primary-dark);border-radius:20px;font-size:13px;font-weight:600}
 
     /* BUTTONS */
-    .btn{display:inline-flex;align-items:center;gap:6px;padding:10px 18px;border-radius:var(--radius-sm);font-size:14px;font-weight:600;cursor:pointer;border:none;transition:all .15s;font-family:inherit}
+    .btn{display:inline-flex;align-items:center;gap:6px;padding:10px 18px;border-radius:999px;font-size:14px;font-weight:600;cursor:pointer;border:none;transition:all .15s;font-family:inherit}
     .btn-primary{background:var(--primary);color:#fff}
     .btn-primary:hover{background:var(--primary-dark)}
     .btn-outline{background:transparent;color:var(--text-sub);border:1.5px solid var(--border)}
     .btn-outline:hover{background:var(--bg)}
     .btn-green{background:var(--green);color:#fff}
-    .btn-green:hover{background:#059669}
+    .btn-green:hover{background:#278F66}
     .btn-orange{background:var(--orange);color:#fff}
-    .btn-orange:hover{background:#EA6C0A}
+    .btn-orange:hover{background:#CB7720}
     .btn-red{background:var(--red);color:#fff}
-    .btn-red:hover{background:#DC2626}
+    .btn-red:hover{background:#CC4259}
     .btn-sm{padding:7px 13px;font-size:13px}
     .btn-row{display:flex;gap:8px;flex-wrap:wrap}
 
@@ -253,7 +255,7 @@
           <button type="button" class="tb-btn" title="테마 색상" onclick="toggleThemePop()">🎨</button>
           <button type="button" class="tb-btn" title="로그아웃" onclick="logout()">🚪<span class="tb-txt"> 로그아웃</span></button>
           <div class="theme-pop" id="themePop" style="display:none">
-            <div style="font-size:12.5px;color:rgba(255,255,255,.6);font-weight:600;margin-bottom:8px">🎨 테마 색상</div>
+            <div style="font-size:12.5px;color:var(--text-muted);font-weight:600;margin-bottom:8px">테마 색상</div>
             <div id="themeDots"></div>
           </div>
         </div>
@@ -5976,6 +5978,21 @@ function dashBogangHtml(){
     </div>`).join(''):picker(null)}
   </div>`;
 }
+// 🍑 명단 한 줄의 모양 — 이름 앞 동그라미(성 빼고 첫 글자)와 완성도 알약.
+//   이모지가 줄마다 다섯 개씩 늘어서 정신없다고 해서 글자로 바꿨다. 눌린 것만 색이 든다.
+const AV_TONES=[['#EEEDFE','#3C3489'],['#FBEAF0','#72243E'],['#E1F5EE','#085041'],['#E6F1FB','#0C447C'],['#FAEEDA','#633806'],['#FAECE7','#712B13']];
+function avatarHtml(st){
+  const nm=String((st&&st.name)||'').trim();
+  const ch=nm.length>=2?nm.charAt(1):(nm.charAt(0)||'?');
+  let h=0; for(let i=0;i<nm.length;i++) h=(h*31+nm.charCodeAt(i))%997;
+  const t=AV_TONES[h%AV_TONES.length];
+  return `<span style="width:28px;height:28px;border-radius:50%;background:${t[0]};color:${t[1]};display:inline-flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:700;flex-shrink:0">${anEsc(ch)}</span>`;
+}
+const HW_PILL={ '0':['안 함','#FCEBEB','#791F1F'], '20':['조금','#FAECE7','#712B13'], '50':['반만','#FAEEDA','#633806'], '90':['거의','#EAF3DE','#27500A'], '100':['다 함','#C0DD97','#27500A'] };
+function hwPillsHtml(aid, sid, pct){
+  return HW_GRADES.map(g=>{ const p=HW_PILL[g[0]]||[g[1],'#F4EDE6','#5E4E48']; const on=(pct===g[0]);
+    return `<button class="btn btn-sm" title="${g[1]}" style="padding:3px 10px;font-size:12.5px;${on?`background:${p[1]};color:${p[2]};font-weight:800`:'background:#F7F1EA;color:var(--text-muted);font-weight:600'}" onclick="doQuickCheck('${aid}','${sid}','${g[0]}')">${p[0]}</button>`; }).join('');
+}
 function todayRosterHtml(todayCls, subs){
   if(!todayCls.length) return `<div class="card" style="margin-top:16px;text-align:center;padding:24px;color:var(--text-muted)">${dashIsToday()?'오늘은 수업이 없어요 ☕':'이 날은 수업이 없어요 ☕'}</div>`;
   const todayStr=dashDay();
@@ -6001,13 +6018,13 @@ function todayRosterHtml(todayCls, subs){
       if(a){
         const photo=(sub&&sub.photos&&sub.photos.length)?`<button class="btn btn-outline btn-sm" style="padding:1px 6px;font-size:12.5px" onclick="openSubPhotos('${sub.id}')">📷${sub.photos.length}</button>`:'';
         hw=`<div style="display:flex;align-items:center;gap:3px;flex-wrap:wrap">
-          ${HW_GRADES.map(g=>`<button class="btn btn-sm" title="${g[1]}" style="padding:2px 7px;font-size:12.5px;${pct===g[0]?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-muted)'}" onclick="doQuickCheck('${a.id}','${st.id}','${g[0]}')">${g[1].split(' ')[0]}</button>`).join('')}
-          ${graded?`<span style="font-size:12.5px;font-weight:700;color:var(--primary);margin-left:2px">${hwGradeLabel(pct)}</span>`:(sub?'<span style="font-size:12.5px;color:var(--text-muted);margin-left:2px">제출됨 · 판정 전</span>':'<span style="font-size:12.5px;color:var(--red);font-weight:700;margin-left:2px">미판정</span>')}
+          ${hwPillsHtml(a.id, st.id, pct)}
+          ${graded?'':(sub?'<span style="font-size:12.5px;color:var(--text-muted);margin-left:2px">제출됨 · 판정 전</span>':'<span style="font-size:12.5px;color:var(--red);font-weight:700;margin-left:2px">미판정</span>')}
           ${photo}
         </div>`;
       }
-      return `<div style="display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;${absent?'background:#FEF2F2':''}">
-        <strong style="font-size:14px;min-width:58px;cursor:pointer" title="학교·교과서·시험 범위 보기" onclick="openStuInfo('${st.id}')">${st.name}</strong>${stuTagHtml(st)}
+      return `<div style="display:flex;align-items:center;gap:7px;padding:7px 6px;border-bottom:1px solid var(--border);flex-wrap:wrap;${absent?'background:var(--red-light);border-radius:12px':''}">
+        ${avatarHtml(st)}<strong style="font-size:14.5px;min-width:50px;cursor:pointer" title="학교·교과서·시험 범위 보기" onclick="openStuInfo('${st.id}')">${st.name}</strong>${stuTagHtml(st)}
         ${absent?'<span class="badge b-red" style="font-size:11.5px">결석</span>'
           :(a&&graded?'<span class="badge b-green" style="font-size:11.5px">출석</span>':'')}
         ${hw}
