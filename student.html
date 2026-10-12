@@ -1605,6 +1605,19 @@ function reportTrendCharts(){
   return `<div class="card"><div class="card-title">📈 성적 추이</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,360px));gap:12px;justify-content:start">${mockChart?card('📝 모의고사','점수·등급',mockChart):''}${naesinChart?card('🏫 내신','과목별 중간→기말',naesinChart):''}</div></div>`;
 }
 // 🏆 대시보드 성적 카드 (내신 + 모의고사 · 꺾은선 추이) — 기본 접힘(보고 싶은 학생만 펼침)
+// 📈 내신을 본 순서대로 한 줄 — 1학기 중간 → 1학기 기말 → 2학기 중간 → 2학기 기말.
+//   내신 기록은 '과목 + 중간/기말'로 저장된다. 고1은 공통수학1이 1학기, 공통수학2가 2학기라 그렇게 읽고,
+//   나머지 과목은 과목 이름을 그대로 붙인다(대수 중간 …). 두 포털이 같은 순서를 쓴다.
+const NAESIN_ORDER=['공통수학1','공통수학2','대수','미적분Ⅰ','확률과통계','기하'];
+const NAESIN_SEM={'공통수학1':'1학기','공통수학2':'2학기'};
+function naesinTimeline(list){
+  const num=s=>{ const m=String(s==null?'':s).match(/-?[0-9]+([.][0-9]+)?/); return m?parseFloat(m[0]):null; };
+  const rank=sub=>{ const i=NAESIN_ORDER.indexOf(sub); return i<0?99:i; };
+  const tr=t=>t==='중간'?0:1;
+  return (list||[]).filter(n=>(n.term==='중간'||n.term==='기말') && num(n.score)!=null)
+    .sort((a,b)=>rank(a.subject)-rank(b.subject) || String(a.subject||'').localeCompare(String(b.subject||'')) || tr(a.term)-tr(b.term))
+    .map(n=>({ label:(NAESIN_SEM[n.subject]||n.subject||'')+' '+n.term, v:num(n.score), score:n.score, grade:n.grade||'' }));
+}
 function homeGradesHtml(){
   const mocks=(S_MOCKSUBS||[]).map(s=>{ const m=(S_MOCKEXAMS||[]).find(x=>x.id===s.mockId)||{}; return {title:m.title||'모의고사', date:m.date||'', score:s.score, max:s.maxScore||m.maxScore||100, grade:s.grade||''}; }).filter(x=>x.score!=null).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
   const naesin=(S_NAESIN||[]);
@@ -1612,7 +1625,7 @@ function homeGradesHtml(){
   const pc=(getComputedStyle(document.documentElement).getPropertyValue('--primary')||'#5B6CF5').trim();
   // 📈 모의 점수 추이 (꺾은선)
   const mockChart = mocks.length? gradeLineChartSvg(
-    mocks.map(m=>(m.title||'').replace('모의고사','').replace(/\s+/g,' ').trim()||m.date||'모의'),
+    mocks.map(m=>m.date?(+m.date.slice(5,7))+'월':((m.title||'').replace('모의고사','').trim()||'모의')),
     [{name:'모의', color:pc, vals:mocks.map(m=>Math.round((m.score/(m.max||100))*100))}], 100) : '';
   // 내신 성적 추이 (과목별 중간 → 기말 변화) — 선생님 화면과 동일 방식
   const numFromScore=s=>{ const m=String(s==null?'':s).match(/-?\d+(\.\d+)?/); return m?parseFloat(m[0]):null; };
@@ -1633,16 +1646,13 @@ function homeGradesHtml(){
       </div>`;
     }).join('')}</div>`:'';
   // 📈 내신 성적 추이 (꺾은선) — 과목별 중간→기말 원점수
-  const _subjs=Object.keys(bySub);
-  const _cols=['#5B6CF5','#10B981','#F59E0B','#F43F5E','#8B5CF6','#16A6A6','#EC4899'];
-  const naesinSeries=_subjs.map((sub,i)=>({ name:sub, color:_cols[i%_cols.length], vals:['중간','기말'].map(t=>numFromScore(bySub[sub][t]&&bySub[sub][t].score)) }));
-  const naesinChart = naesinSeries.some(s=>s.vals.some(v=>v!=null)) ? gradeLineChartSvg(['중간','기말'], naesinSeries, 100)
-    + (_subjs.length>1?`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:2px">${naesinSeries.map(s=>`<span style="font-size:11px;color:var(--text-muted)"><span style="display:inline-block;width:9px;height:9px;background:${s.color};border-radius:2px;margin-right:3px"></span>${(s.name||'').replace(/</g,'&lt;')}</span>`).join('')}</div>`:'') : '';
+  const _tl=naesinTimeline(naesin);
+  const naesinChart = _tl.length ? gradeLineChartSvg(_tl.map(p=>p.label), [{name:'내신', color:'#10B981', vals:_tl.map(p=>p.v)}], 100) : '';
   const mockList=mocks.length?`<div style="margin-top:10px"><div style="font-size:13px;font-weight:800;margin-bottom:4px">📝 모의고사</div>${mocks.slice().reverse().map(m=>`<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px solid var(--border)"><span>${(m.title||'').replace(/</g,'&lt;')} <span style="font-size:11px;color:var(--text-muted)">${m.date||''}</span></span><span><b>${m.score}</b>점${m.grade?` · <b style="color:var(--primary)">${m.grade}</b>`:''}</span></div>`).join('')}</div>`:'';
-  return `<details style="background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px 16px;margin:16px 0">
-    <summary style="cursor:pointer;font-weight:800;font-size:15px;list-style:revert">🏆 내 성적 <span style="font-size:12px;color:var(--text-muted);font-weight:400">· 내신 & 모의고사 (눌러서 펼치기)</span></summary>
-    ${mockChart?`<div style="font-size:13px;font-weight:800;margin-top:12px">📈 모의고사 점수 추이</div>${mockChart}`:''}
-    ${naesinChart?`<div style="font-size:13px;font-weight:800;margin-top:14px">📈 내신 성적 추이 <span style="font-size:11px;color:var(--text-muted);font-weight:400">(과목별 중간 → 기말)</span></div>${naesinChart}`:''}
+  return `<details open style="background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px 16px;margin:16px 0">
+    <summary style="cursor:pointer;font-weight:800;font-size:15px;list-style:revert">🏆 내 성적 <span style="font-size:12px;color:var(--text-muted);font-weight:400">· 내신 & 모의고사</span></summary>
+    ${mockChart?`<div style="font-size:13px;font-weight:800;margin-top:12px">📈 모의고사 성적 추이 <span style="font-size:11px;color:var(--text-muted);font-weight:400">(본 달 순서)</span></div>${mockChart}`:''}
+    ${naesinChart?`<div style="font-size:13px;font-weight:800;margin-top:14px">📈 내신 성적 추이 <span style="font-size:11px;color:var(--text-muted);font-weight:400">(1학기 중간 → 1학기 기말 → 2학기 중간 순서)</span></div>${naesinChart}`:''}
     ${mockList}
     ${naesinHtml}
   </details>`;
@@ -1661,7 +1671,33 @@ function _wkAdd(ds,k){ const p2=x=>String(x).padStart(2,'0'); const n=new Date(d
 function _wkMd(d){ const p=(d||'').split('-'); return p.length===3?`${+p[1]}/${+p[2]}`:(d||''); }
 // 🏫 반별 수업 카드 — 반마다 [지난 진도 · 나갈 진도 · 그 반의 제출할 숙제 + 제출 버튼]
 //   숙제명만 보면 어느 반 숙제인지 구분이 안 돼서(예: 같은 교재를 여러 반이 씀) 반 단위로 묶어 보여줍니다.
+// 🗓 내 수업을 요일로 나눠 본다. 처음엔 오늘(없으면 다가오는) 수업 요일이 열린다.
+//   숙제는 '마감일의 요일' = 그 숙제를 검사하는 수업일로 나눈다.
+let HOME_DAY='';
+const HOME_WD=['mon','tue','wed','thu','fri','sat','sun'];
+function homeWdOf(ds){ return ds?['sun','mon','tue','wed','thu','fri','sat'][new Date(ds+'T00:00:00').getDay()]:''; }
+function homeDays(){ return HOME_WD.filter(d=>(S_CLASSES||[]).some(c=>clsHasDay(c,d))); }
+function homeDayNow(){
+  const days=homeDays();
+  if(days.length<2) return 'all';
+  if(HOME_DAY==='all' || days.includes(HOME_DAY)) return HOME_DAY;
+  const t=HOME_WD.indexOf(homeWdOf(bmToday()));
+  for(let k=0;k<7;k++){ const d=HOME_WD[(t+k)%7]; if(days.includes(d)) return d; }
+  return days[0];
+}
+function homeDayPick(d){ HOME_DAY=d; renderHome(); }
+function homeDayTabsHtml(){
+  const days=homeDays(); if(days.length<2) return '';
+  const cur=homeDayNow(), today=homeWdOf(bmToday());
+  const tab=(k,l)=>`<button type="button" onclick="homeDayPick('${k}')" style="flex:1;min-width:52px;border:none;border-radius:10px;padding:9px 6px;font-size:14.5px;font-weight:800;font-family:inherit;cursor:pointer;${cur===k?'background:var(--primary);color:#fff':'background:var(--surface);color:var(--text-sub)'}">${l}${k===today?'<span style="display:block;font-size:10px;font-weight:700;opacity:.85">오늘</span>':''}</button>`;
+  return `<div style="display:flex;gap:6px;background:var(--bg);border-radius:12px;padding:5px;margin-bottom:12px">${days.map(d=>tab(d, WD_LABEL[d]+'요일')).join('')}${tab('all','전체')}</div>`;
+}
 function classHomeCardsHtml(pending){
+  const day=homeDayNow();
+  let allAsgn=[]; try{ allAsgn=getAssignments().filter(a=>asnInSeasonS(a, studentSelSeason())); }catch(e){ allAsgn=pending||[]; }
+  // 그 요일 탭에 넣을 숙제인가 — 그 반이 그날만 수업하면 전부, 여러 날이면 마감 요일이 그날인 것
+  const onDay=(c,a)=>{ if(day==='all') return true; const ds=clsDays(c); if(ds.length<2) return true;
+    const w=homeWdOf(a.dueDate); return !w || w===day || !ds.includes(w); };
   const esc=s=>String(s==null?'':s).replace(/</g,'&lt;');
   const thisMon=_wkMon(''), lastMon=_wkAdd(thisMon,-7), nextMon=_wkAdd(thisMon,7);
   const planOf=(cid,ws)=>{ const x=(S_CURRICULUM||[]).find(y=>y.classId===cid && y.weekStart===ws); return (x&&x.content)?String(x.content).trim():''; };
@@ -1677,7 +1713,9 @@ function classHomeCardsHtml(pending){
     if(S_CURRICULUM===null) return `<div style="font-size:12px;color:var(--text-muted);padding:6px 0">진도 불러오는 중…</div>`;
     const now=planOf(cid,thisMon), prev=planOf(cid,lastMon);
     // 계획보다 '실제로 나간 진도'가 정확하다. 적힌 게 있으면 그걸 보여준다.
-    const nowLog=sProgOfWeek(cid,thisMon), prevLog=sProgOfWeek(cid,lastMon);
+    const _c=(S_CLASSES||[]).find(x=>x.id===cid), _multi=_c && clsDays(_c).length>1 && day!=='all';
+    const dayOnly=ls=>_multi?ls.filter(l=>homeWdOf(l.date)===day):ls;      // 요일 탭이면 그 요일에 나간 것만
+    const nowLog=dayOnly(sProgOfWeek(cid,thisMon)), prevLog=dayOnly(sProgOfWeek(cid,lastMon));
     const logTxt=ls=>ls.map(l=>`${_wkMd(l.date)} ${l.content}`).join(' · ');
     if(!now && !prev && !nowLog.length && !prevLog.length) return '';
     const box=(head,ws,txt,hi)=>`<div style="background:${hi?'var(--primary-light)':'var(--bg)'};border-radius:10px;padding:9px 11px">
@@ -1689,18 +1727,25 @@ function classHomeCardsHtml(pending){
       ${box(prevLog.length?'📓 지난 주 나간 진도':'↩️ 지난 주 진도',lastMon,prevLog.length?logTxt(prevLog):prev,false)}
     </div>`;
   };
-  const cards=(S_CLASSES||[]).map(c=>{
-    const hw=pending.filter(a=>a.classId===c.id);
+  const cards=(S_CLASSES||[]).filter(c=>day==='all'||clsHasDay(c,day)).map(c=>{
+    const hw=pending.filter(a=>a.classId===c.id && onDay(c,a));
+    // 📘 이 수업에서 쓰는 교재 — 이번 시즌 숙제에 적힌 교재를 모은다(최근 것부터)
+    const books=[]; allAsgn.filter(a=>a.classId===c.id && onDay(c,a) && String(a.textbook||'').trim())
+      .sort((x,y)=>String(y.startDate||y.createdAt||'').localeCompare(String(x.startDate||x.createdAt||'')))
+      .forEach(a=>{ const b=String(a.textbook).trim(); if(!books.includes(b)) books.push(b); });
+    const doneN=allAsgn.filter(a=>a.classId===c.id && onDay(c,a) && a.status==='submitted').length;
     const when=[clsDayLabel(c), c.slot||'', (c.startTime&&c.endTime)?`${c.startTime}~${c.endTime}`:''].filter(Boolean).join(' ');
     return `<div class="card" style="border-left:4px solid var(--primary);margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:9px">
         <span style="font-size:15px;font-weight:800">🏫 ${esc(clsLabel(c.name))}${c.subject?` <span style="font-size:11px;color:var(--text-muted);font-weight:500">${esc(c.subject)}</span>`:''}</span>
         ${when?`<span style="font-size:11px;color:var(--primary);font-weight:700">${esc(when)}</span>`:''}
       </div>
+      ${books.length?`<div style="font-size:13px;margin-bottom:8px"><span style="color:var(--text-muted);font-weight:700">📘 교재</span> <strong>${books.slice(0,4).map(esc).join(' · ')}</strong></div>`:''}
       ${currBlock(c.id)}
       ${hw.length
         ? `<div style="font-size:13px;font-weight:800;margin-top:10px">📝 제출할 숙제 <span style="color:var(--primary)">${hw.length}개</span></div>${hw.map(hwRow).join('')}`
         : `<div style="font-size:13px;font-weight:700;color:var(--green);margin-top:10px">✅ 제출할 숙제가 없어요</div>`}
+      ${doneN?`<div style="font-size:12px;color:var(--text-muted);margin-top:6px;cursor:pointer" onclick="navigate('homework')">이번 시즌에 낸 숙제 ${doneN}개 — 숙제 탭에서 보기 →</div>`:''}
     </div>`;
   });
   // 지금은 소속이 아니지만 아직 안 낸 숙제(반 이동 등) — 빠뜨리지 않게 따로 모아줍니다
@@ -1713,7 +1758,7 @@ function classHomeCardsHtml(pending){
       ${Object.entries(byName).map(([nm,list])=>`<div style="font-size:12px;color:var(--text-muted);margin-top:8px;font-weight:700">${esc(clsLabel(nm))}</div>${list.map(hwRow).join('')}`).join('')}
     </div>`);
   }
-  return cards.join('');
+  return homeDayTabsHtml()+cards.join('');
 }
 function renderHome() {
   // 🏁 첫 화면은 지금 시즌 것만 — 지난 시즌 밀린 숙제까지 쌓여 보이면 새 시즌에 의지가 꺾인다.
@@ -1789,10 +1834,6 @@ function renderHome() {
         <div style="font-size:11px;color:var(--text-muted);margin-top:8px">토·일·공휴일은 낮 12시, 금요일은 오후 3시, 그 밖의 평일은 그날 학교 시험이 있으면 오후 2시·없으면 오후 5시예요. 늦지 않게 와주세요!</div>
       </div>`;
     })()}
-    ${(!pending.length && (S_CLASSES||[]).length)?`<div class="card" style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-        <span style="font-size:22px">🎉</span>
-        <span style="font-size:14px;font-weight:700;color:var(--green)">${STUDENT.name} 학생, 제출할 숙제가 없어요!</span>
-      </div>`:''}
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 2px 10px">
       <span style="font-size:15px;font-weight:800">🏫 내 수업</span>
       <button class="btn btn-outline btn-sm" onclick="navigate('homework')">숙제 전체 보기 →</button>
@@ -1812,7 +1853,14 @@ function renderHome() {
         <div class="a-icon">🔔</div>
         <div><h4>보강 수업이 예정되어 있어요</h4><p>${m.date} ${m.time} · ${m.className} · ${m.reason}</p></div>
       </div>`).join('')}
-    <div style="font-size:15px;font-weight:800;margin:4px 2px 10px">오늘 할 일</div>
+    ${oapTodo?`<div class="card" onclick="navigate('wrong')" style="cursor:pointer;display:flex;align-items:center;gap:10px;margin-bottom:14px;border-left:4px solid var(--orange)">
+        <span style="font-size:14.5px;font-weight:800">고칠 오답 <span style="color:var(--orange)">${oapTodo}개</span></span>
+        <span style="margin-left:auto;font-size:13px;font-weight:700;color:var(--orange)">오답 고치러 가기 →</span>
+      </div>`:''}
+    ${homeGradesHtml()}
+    <details style="margin:16px 0">
+    <summary style="cursor:pointer;font-size:14px;font-weight:800;color:var(--text-sub);padding:10px 2px">더 보기 — 오답 · 학습 요약 · 리포트</summary>
+    <div style="font-size:15px;font-weight:800;margin:10px 2px 10px">오늘 할 일</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
       ${[
         {sec:'homework', accent:'var(--primary)', icon:'📝', name:'숙제', n:pending.length,
@@ -1828,8 +1876,7 @@ function renderHome() {
           <div style="color:${x.accent};font-weight:700;font-size:13px;margin-top:10px">${x.cta} →</div>
         </div>`).join('')}
     </div>
-    ${homeGradesHtml()}
-    <div class="card">
+    <div class="card" style="margin-top:14px">
       ${S_SEASONS.length?`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
         <span style="font-size:12px;color:var(--text-muted)">📅 기간</span>
         <select class="form-select" style="max-width:230px;padding:6px 8px;font-size:13px" onchange="selSeasonId=this.value;renderHome()">
@@ -1873,7 +1920,8 @@ function renderHome() {
         <div style="font-size:12px;color:var(--text-muted);margin-top:2px">4주 학습 흐름을 한눈에</div>
         <div style="color:var(--green);font-weight:700;font-size:13px;margin-top:10px">전체 리포트 보기 →</div>
       </div>
-    </div>`;
+    </div>
+    </details>`;
 }
 
 // ================================================================

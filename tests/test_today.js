@@ -162,7 +162,7 @@ ok('창에 그래프 두 개가 그려진다', () => {
 });
 ok('기록이 없으면 그래프 대신 안내', () => {
   const h = T.stuInfoHtml(S3);
-  assert.ok(h.includes('아직 본 시험이 없어요') && bal(h, 'div'));
+  assert.ok(h.includes('아직 넣은 내신 성적이 없어요') && h.includes('아직 본 모의고사가 없어요') && bal(h, 'div'));
 });
 
 console.log('\n디자인 고르기');
