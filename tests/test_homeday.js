@@ -164,3 +164,35 @@ ok('색은 사람마다 — 고르면 이 기기에만, 학원 기본값이 덮�
   assert.ok(/loadThemeCloud\(\)\{[\s\S]{0,200}bm_theme_mine/.test(fi), '직접 고른 색을 학원 기본값이 덮음');
 });
 console.log('\n' + pass + ' passed (화면 꾸미기 포함)');
+
+console.log('\n지금 할 것 — 첫 화면에서 바로');
+ok('안 넣은 모의고사 점수·안 본 영상·새 자료가 한 카드에', () => {
+  Object.assign(S.__get('STUDENT'), { id: 's1', name: '학생' });
+  set('S_MOCKEXAMS', [
+    { id: 'mk1', title: '10월 학평', date: plus(-2), maxScore: 100 },
+    { id: 'mk2', title: '9월 학평', date: plus(-40), maxScore: 100, mode: 'auto', questions: [] },
+    { id: 'mk3', title: '11월 학평', date: plus(10) },
+    { id: 'mk4', title: '6월 학평', date: plus(-120) }
+  ]);
+  set('S_MOCKSUBS', []);
+  set('VIDEOS', [
+    { id: 'v1', title: '원의 방정식', className: '고1T A1', date: plus(-1), viewedBy: [] },
+    { id: 'v2', title: '본 영상', date: plus(-1), viewedBy: ['s1'] },
+    { id: 'v3', title: '오래된 영상', date: plus(-60), viewedBy: [] }
+  ]);
+  set('MATERIALS', [{ id: 'f1', title: '내신 프린트', uploadDate: plus(-1), fileUrl: 'https://x/y.pdf' }, { id: 'f2', title: '옛 자료', uploadDate: plus(-30) }]);
+  const t = S.homeTodoItems();
+  assert.strictEqual(t.mocks.map(m => m.id).join(','), 'mk1,mk2', '지난 45일 안에 본 모의고사만');
+  assert.strictEqual(t.vids.map(v => v.id).join(','), 'v1');
+  assert.strictEqual(t.mats.map(m => m.id).join(','), 'f1');
+  const h = S.homeTodoCardHtml();
+  assert.ok(h.includes('class="form-input mockscore-mk1"') && h.includes("doSaveMockScore('mk1')"), '점수 칸이 바로 없음');
+  assert.ok(h.includes("mockcard-mk2"), '답 입력형은 성적 탭으로 바로 가야 함');
+  assert.ok(h.includes("watchVideo('v1')") && h.includes('href="https://x/y.pdf"'));
+  assert.ok(bal(h, 'div') && bal(h, 'button') && bal(h, 'span'));
+});
+ok('할 게 없으면 카드가 없다', () => {
+  set('S_MOCKSUBS', [{ mockId: 'mk1' }, { mockId: 'mk2' }]); set('VIDEOS', []); set('MATERIALS', []);
+  assert.strictEqual(S.homeTodoCardHtml(), '');
+});
+console.log('\n' + pass + ' passed (지금 할 것 포함)');

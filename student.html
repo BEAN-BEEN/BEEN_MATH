@@ -1806,6 +1806,44 @@ function classHomeCardsHtml(pending){
   }
   return homeDayTabsHtml()+cards.join('');
 }
+// ✅ 지금 할 것 — 탭을 찾아 들어가야 하는 일을 첫 화면에서 바로 끝내게 한다.
+//   아이들은 메뉴를 눌러 들어가는 품이 드는 일은 안 한다(쌤 관찰). 그래서
+//   · 모의고사 점수는 첫 화면에서 숫자만 넣고 등록
+//   · 안 본 수업 영상은 누르면 바로 재생
+//   · 새로 올라온 자료는 누르면 바로 열림
+function homeTodoItems(){
+  const today=bmToday();
+  const ago=n=>{ const d=new Date(today+'T00:00:00'); d.setDate(d.getDate()-n); const p=v=>String(v).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); };
+  const isoD=v=>{ const t=String(v||''); return /^[0-9]{4}-[0-9]{2}-[0-9]{2}/.test(t)?t.slice(0,10):''; };
+  const mocks=(S_MOCKEXAMS||[]).filter(m=>!(S_MOCKSUBS||[]).some(x=>x.mockId===m.id))
+    .filter(m=>{ const d=isoD(m.date); return !d || (d<=today && d>=ago(45)); });
+  const vids=(VIDEOS||[]).filter(v=>!(v.viewedBy||[]).includes(STUDENT.id) && (isoD(v.date)||'')>=ago(21)).slice(0,3);
+  const mats=(MATERIALS||[]).filter(m=>(isoD(m.uploadDate)||'')>=ago(7)).slice(0,3);
+  return { mocks, vids, mats };
+}
+function homeTodoCardHtml(){
+  const t=homeTodoItems(), n=t.mocks.length+t.vids.length+t.mats.length;
+  if(!n) return '';
+  const md=d=>{ const x=String(d||''); return /^[0-9]{4}-/.test(x)?(+x.slice(5,7))+'/'+(+x.slice(8,10)):''; };
+  const row='display:flex;align-items:center;gap:8px;padding:10px 0;border-top:1px solid var(--border);flex-wrap:wrap';
+  const mockRow=m=> m.mode==='auto'
+    ? `<div style="${row}"><div style="flex:1;min-width:150px"><div style="font-size:14px;font-weight:800">${sEsc(m.title)} 답 넣기</div><div style="font-size:12px;color:var(--text-muted)">번호별로 넣으면 바로 채점돼요</div></div>
+        <button class="btn btn-primary btn-sm" onclick="navigate('grades');setTimeout(()=>{var el=document.getElementById('mockcard-${m.id}');if(el)el.scrollIntoView({behavior:'smooth',block:'start'});},120)">답 넣기 →</button></div>`
+    : `<div style="${row}"><div style="flex:1;min-width:120px"><div style="font-size:14px;font-weight:800">${sEsc(m.title)} 점수</div><div style="font-size:12px;color:var(--text-muted)">만점 ${m.maxScore||100} · 숫자만 넣으면 끝</div></div>
+        <input class="form-input mockscore-${m.id}" type="number" inputmode="numeric" placeholder="점수" style="width:86px;padding:7px 9px">
+        <button class="btn btn-primary btn-sm" onclick="doSaveMockScore('${m.id}')">등록</button></div>`;
+  const vidRow=v=>`<div style="${row};cursor:pointer" onclick="watchVideo('${v.id}')"><span style="width:34px;height:34px;border-radius:9px;background:var(--primary-light);color:var(--primary);display:inline-flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">▶</span>
+      <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${sEsc(v.title)}</div><div style="font-size:12px;color:var(--text-muted)">${sEsc(v.className||'')} · ${md(v.date)} 수업 영상</div></div>
+      <span style="font-size:13px;font-weight:700;color:var(--primary)">보기</span></div>`;
+  const matRow=m=>`<div style="${row}"><span style="width:34px;height:34px;border-radius:9px;background:var(--bg);display:inline-flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0">${m.icon||'📄'}</span>
+      <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${sEsc(m.title)}</div><div style="font-size:12px;color:var(--text-muted)">새 자료 · ${md(m.uploadDate)}</div></div>
+      ${m.fileUrl?`<a class="btn btn-outline btn-sm" href="${m.fileUrl}" target="_blank" rel="noopener">열기</a>`:`<button class="btn btn-outline btn-sm" onclick="navigate('materials')">열기</button>`}</div>`;
+  return `<div class="card" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px"><span style="font-size:15.5px;font-weight:800">지금 할 것</span><span class="badge b-primary">${n}</span>
+      <span style="font-size:12px;color:var(--text-muted)">여기서 바로 끝내요</span></div>
+    ${t.mocks.map(mockRow).join('')}${t.vids.map(vidRow).join('')}${t.mats.map(matRow).join('')}
+  </div>`;
+}
 function renderHome() {
   // 🏁 첫 화면은 지금 시즌 것만 — 지난 시즌 밀린 숙제까지 쌓여 보이면 새 시즌에 의지가 꺾인다.
   //    지난 시즌 숙제는 숙제 탭에서 시즌을 골라야 보인다.
@@ -1862,6 +1900,7 @@ function renderHome() {
         : empty('📝 모의고사','예정된 일정이 없어요');
       return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:16px">${left}${right}</div>`;
     })()}
+    ${homeTodoCardHtml()}
     ${(S_NOTICES&&S_NOTICES.length)?`
       <div style="background:#FEF9C3;border:1px solid #FDE047;border-radius:var(--radius);padding:14px 16px;margin-bottom:16px">
         <div style="font-size:13px;font-weight:800;color:#854D0E;margin-bottom:6px">📢 공지사항</div>
@@ -2826,7 +2865,7 @@ async function doSaveMockScore(mockId){
   if(!el){ showToast('입력칸을 찾지 못했어요. 새로고침(Ctrl+Shift+R) 후 다시 해주세요','warning'); return; }
   const v=el.value;
   if(v===''){ showToast('점수를 입력해주세요','warning'); return; }
-  try{ await saveMockSub(mockId,{score:parseInt(v),maxScore:m.maxScore||100,mode:'score'}); launchConfetti(); showToast('모의고사 점수 등록 완료! 🎉','success'); renderGrades(); }
+  try{ await saveMockSub(mockId,{score:parseInt(v),maxScore:m.maxScore||100,mode:'score'}); launchConfetti(); showToast('모의고사 점수 등록 완료! 🎉','success'); renderGrades(); if(currentSection==='home') renderHome(); }
   catch(e){ showToast('등록 실패: '+e.message,'error'); }
 }
 async function doSaveMockAnswers(mockId){
