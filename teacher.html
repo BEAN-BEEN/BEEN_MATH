@@ -7576,6 +7576,53 @@ async function doAns(qid){
 // ================================================================
 // VIDEOS
 // ================================================================
+// 🔖 영상 북마크 — '3:12 3번 풀이' 처럼 한 줄에 하나. 시간은 분:초 또는 시:분:초.
+//   유튜브 설명란 '챕터'와 같은 모양이라, 거기 적어둔 걸 그대로 붙여넣어도 된다.
+function parseMarks(txt){
+  const out=[];
+  String(txt==null?'':txt).split(String.fromCharCode(10)).forEach(raw=>{
+    const line=raw.trim(); if(!line) return;
+    const m=line.match(/^(?:([0-9]{1,2}):)?([0-9]{1,3}):([0-9]{2})[ ]*[-–—·.)|:]?[ ]*(.*)$/);
+    if(!m) return;
+    const t=(m[1]?parseInt(m[1],10)*3600:0)+parseInt(m[2],10)*60+parseInt(m[3],10);
+    const label=(m[4]||'').trim();
+    if(label) out.push({ t, label });
+  });
+  return out.sort((a,b)=>a.t-b.t);
+}
+function fmtMarkT(t){
+  t=Math.max(0, Math.floor(t||0));
+  const h=Math.floor(t/3600), m=Math.floor(t%3600/60), s=t%60, p=v=>String(v).padStart(2,'0');
+  return h?(h+':'+p(m)+':'+p(s)):(m+':'+p(s));
+}
+// 영상마다 북마크를 적어 두면 학생이 그 시점으로 바로 간다
+function toggleVidMarks(id){ const el=document.getElementById('vidmark-'+id); if(el) el.style.display=el.style.display==='none'?'block':'none'; }
+async function doSaveMarks(id){
+  const ta=document.getElementById('vidmark-ta-'+id); if(!ta) return;
+  const marks=parseMarks(ta.value);
+  const lines=ta.value.split(String.fromCharCode(10)).filter(x=>x.trim()).length;
+  try{
+    await db.collection('videos').doc(id).update({ marks });
+    if(!cachePut('videos', id, { marks })) await loadVideos();
+    showToast(lines>marks.length ? `북마크 ${marks.length}개 저장 — 시간을 못 읽은 줄 ${lines-marks.length}개는 뺐어요` : `북마크 ${marks.length}개 저장`, lines>marks.length?'warning':'success');
+    rVideos();
+  }catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+// GPT·Claude 에 넣을 지시서 — 유튜브 '스크립트 표시'로 복사한 대본과 같이 넣는다
+function vidMarksPrompt(){
+  return ['아래는 수학 수업 영상의 자막(시간 포함)이에요.',
+    '학생이 원하는 곳으로 바로 갈 수 있게 북마크를 만들어 주세요.',
+    '- 문제 풀이가 시작되는 곳: "3:12 쎈 17번" 처럼 교재·문제 번호',
+    '- 개념 설명이 시작되는 곳: "12:05 개념 — 원의 방정식" 처럼',
+    '- 한 줄에 하나, 시간은 분:초(1시간 넘으면 시:분:초), 시간 순서대로',
+    '- 다른 설명 없이 북마크 줄만 출력',
+    '', '[자막]', ''].join(String.fromCharCode(10));
+}
+function copyVidMarksPrompt(){
+  const txt=vidMarksPrompt();
+  const ok=()=>showToast('지시서를 복사했어요 — 대본과 같이 붙여넣으세요','success');
+  try{ if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(ok,()=>prompt('아래를 복사하세요',txt)); else prompt('아래를 복사하세요',txt); }catch(e){ prompt('아래를 복사하세요',txt); }
+}
 function rVideos(){
   const vids=getVideos();
   document.getElementById('videosContent').innerHTML=`
@@ -7613,9 +7660,19 @@ function rVideos(){
           <span class="badge b-gray">👀 연 학생 ${opened.length}</span>
           ${justClick.length?`<span class="badge b-red">😑 재생만 ${justClick.length}</span>`:''}
           ${v.url?`<a class="btn btn-outline btn-sm" href="${v.url}" target="_blank" rel="noopener">열기</a>`:''}
+          <button class="btn ${(v.marks||[]).length?'btn-green':'btn-outline'} btn-sm" onclick="toggleVidMarks('${v.id}')">북마크${(v.marks||[]).length?' '+(v.marks||[]).length:''}</button>
           <button class="btn btn-outline btn-sm" onclick="toggleVidSeen('${v.id}')">시청 현황</button>
           <button class="btn ${(v.sharedWith||[]).length?'btn-green':'btn-outline'} btn-sm" onclick="toggleVidShare('${v.id}')">🔓 추가 공개${(v.sharedWith||[]).length?' '+(v.sharedWith||[]).length:''}</button>
           <button class="btn btn-red btn-sm" onclick="doDelVid('${v.id}')">삭제</button>
+        </div>
+        <div id="vidmark-${v.id}" style="display:none;margin-top:10px;border-top:1px dashed var(--border);padding-top:8px">
+          <div style="font-size:13px;color:var(--text-muted);margin-bottom:6px">한 줄에 하나 — <b>3:12 쎈 17번</b>, <b>12:05 개념 — 원의 방정식</b>. 학생이 누르면 그 시점부터 재생돼요.</div>
+          <textarea class="form-textarea" id="vidmark-ta-${v.id}" style="min-height:120px;font-size:13.5px" placeholder="0:00 시작&#10;3:12 쎈 17번&#10;12:05 개념 — 원의 방정식">${anEsc((v.marks||[]).map(m=>fmtMarkT(m.t)+' '+m.label).join(String.fromCharCode(10)))}</textarea>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+            <button class="btn btn-primary btn-sm" onclick="doSaveMarks('${v.id}')">북마크 저장</button>
+            <button class="btn btn-outline btn-sm" onclick="copyVidMarksPrompt()">AI에 넣을 지시서 복사</button>
+          </div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:6px">자동으로 만들려면: 유튜브에서 영상 아래 <b>… → 스크립트 표시</b>로 대본을 복사해 지시서와 함께 GPT에 넣고, 나온 줄을 여기 붙여넣으세요. 유튜브 설명란에 같은 줄을 적으면 유튜브에서도 챕터로 보여요.</div>
         </div>
         <div id="vidshare-${v.id}" style="display:none;margin-top:10px;border-top:1px dashed var(--border);padding-top:8px">
           <div style="font-size:13px;color:var(--text-muted);margin-bottom:6px">이 반이 아닌 학생에게도 이 영상을 보여줄 수 있어요 (결석 보충·대체 영상). 이름을 눌러 켜고 끄세요.</div>
