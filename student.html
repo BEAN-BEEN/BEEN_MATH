@@ -11,26 +11,48 @@
   <link rel="apple-touch-icon" href="logo.png">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#114C56">
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&family=Black+Han+Sans&display=swap" rel="stylesheet">
   <style>
     :root {
-      --primary:#5B6CF5; --primary-dark:#4F46E5; --primary-light:#EEF2FF; --primary-2:#818CF8;
-      --orange:#F97316; --orange-light:#FFF7ED;
-      --green:#10B981; --green-light:#ECFDF5;
-      --red:#F43F5E; --red-light:#FFF1F2;
-      --yellow:#F59E0B; --yellow-light:#FFFBEB;
-      --bg:#F4F6FB; --surface:#FFFFFF;
-      --text:#0F172A; --text-sub:#334155; --text-muted:#64748B;
-      --border:#E8EDF4; --sidebar-w:240px;
-      --radius:16px; --radius-sm:11px;
-      --shadow:0 1px 2px rgba(16,24,40,.04),0 4px 12px rgba(16,24,40,.05);
-      --shadow-md:0 6px 16px -4px rgba(16,24,40,.1),0 4px 8px -4px rgba(16,24,40,.06);
+      /* 깔끔 — 흰 바탕, 회색 글씨, 파랑 하나 (선생님 화면 '깔끔'과 같은 값). 학부모가 보는 학원 얼굴이라 이게 기본. */
+      --primary:#2F6BFF; --primary-dark:#1F54D6; --primary-light:#EAF1FF; --primary-2:#7FA5FF;
+      --orange:#D9730D; --orange-light:#FFF3E2;
+      --green:#12A150; --green-light:#E8F6EE;
+      --red:#E5484D; --red-light:#FDECEC;
+      --yellow:#B7791F; --yellow-light:#FFF7DB;
+      --purple:#6E56CF; --purple-light:#F1EEFE;
+      --bg:#F6F7F9; --surface:#FFFFFF;
+      --text:#1B1F27; --text-sub:#4B5563; --text-muted:#8A93A0;
+      --border:#E7EAEE; --sidebar-w:240px;
+      --radius:14px; --radius-sm:9px;
+      --shadow:0 0 0 1px rgba(17,24,39,.05);
+      --shadow-md:0 0 0 1px rgba(17,24,39,.08),0 8px 20px -8px rgba(17,24,39,.12);
     }
     /* 🌸 계절 테마 — 브랜드(primary) 색만 바뀌고 상태색은 유지 */
     [data-theme="spring"]{ --primary:#E96A9E; --primary-dark:#D5588C; --primary-light:#FDF1F7; --primary-2:#F6A6C6; }
     [data-theme="summer"]{ --primary:#0EA5B7; --primary-dark:#0C8A99; --primary-light:#EBFDFF; --primary-2:#4FD1DE; }
     [data-theme="autumn"]{ --primary:#DD7A2E; --primary-dark:#C2641C; --primary-light:#FFF6EC; --primary-2:#F0A862; }
     [data-theme="winter"]{ --primary:#3F6FD1; --primary-dark:#3257AE; --primary-light:#EEF3FF; --primary-2:#7BA0E8; }
+    /* 📼 레트로 — 학생이 직접 고르면(이 기기만). 크림 바탕 + 먹선 + 딱 떨어지는 그림자. */
+    [data-skin="retro"]{
+      --ink:#1F1B16;
+      --primary:#6C5CE7; --primary-dark:#5546C9; --primary-light:#E9E5FF; --primary-2:#A79BF5;
+      --orange:#E07B1F; --orange-light:#FCE9CF; --green:#22895B; --green-light:#DDF1E4;
+      --red:#E9523F; --red-light:#FDE3DD; --yellow:#B98A10; --yellow-light:#FBEFC2;
+      --bg:#FAF3E3; --surface:#FFFDF6; --text:#1F1B16; --text-sub:#4A4238; --text-muted:#857A6B; --border:#E3D7BF;
+      --radius:18px; --radius-sm:12px; --shadow:3px 3px 0 var(--ink); --shadow-md:5px 5px 0 var(--ink);
+    }
+    [data-skin="retro"] .card,[data-skin="retro"] .stat-card,[data-skin="retro"] .hw-card{border:1.5px solid var(--ink)}
+    [data-skin="retro"] .btn{border:1.5px solid var(--ink)!important;border-radius:999px;box-shadow:2px 2px 0 var(--ink);font-weight:700}
+    [data-skin="retro"] .btn:active{transform:translate(2px,2px);box-shadow:none}
+    [data-skin="retro"] .badge,[data-skin="retro"] .chip{border:1px solid var(--ink);border-radius:999px}
+    [data-skin="retro"] .form-input,[data-skin="retro"] .form-select,[data-skin="retro"] .form-textarea{border:1.5px solid var(--ink);background:var(--surface)}
+    [data-skin="retro"] .sidebar{background:var(--bg);border-right:1.5px solid var(--ink)}
+    [data-skin="retro"] .nav-item.active{background:var(--primary);color:#fff;border:1.5px solid var(--ink);box-shadow:2px 2px 0 var(--ink)}
+    [data-skin="retro"] .page-title,[data-skin="retro"] .sidebar-logo h1{font-family:'Black Han Sans','Noto Sans KR',sans-serif;font-weight:400;letter-spacing:0}
+    [data-skin="retro"] .page-title{font-size:26px}
+    /* 🎨 화면 꾸미기 창 */
+    .look-pop{position:fixed;top:calc(62px + env(safe-area-inset-top));right:12px;z-index:3200;background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:0 12px 32px rgba(15,23,42,.18);padding:14px 16px;width:236px}
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:'Noto Sans KR',-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;overflow-x:hidden;-webkit-text-size-adjust:100%}
     img{max-width:100%;height:auto}
@@ -360,7 +382,16 @@
 <header class="mobile-header">
   <h1><img src="icon.svg" alt="" style="height:24px;vertical-align:-6px;border-radius:6px;margin-right:5px">BEEN MATH</h1>
   <span id="mPageTitle">홈</span>
+  <button type="button" onclick="toggleLook()" aria-label="화면 꾸미기" style="border:none;background:transparent;font-size:19px;cursor:pointer;padding:4px 6px">🎨</button>
 </header>
+<div class="look-pop" id="lookPop" style="display:none">
+  <div style="display:flex;align-items:center;margin-bottom:8px"><strong style="font-size:14px">화면 꾸미기</strong><button type="button" onclick="toggleLook()" style="margin-left:auto;border:none;background:transparent;font-size:16px;cursor:pointer;color:var(--text-muted)">✕</button></div>
+  <div style="font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:6px">색</div>
+  <div id="themeDots" style="margin-bottom:12px"></div>
+  <div style="font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:6px">디자인</div>
+  <div id="skinPick" style="display:flex;gap:6px"></div>
+  <div style="font-size:11px;color:var(--text-muted);margin-top:10px">이 기기에서만 바뀌어요.</div>
+</div>
 
 <!-- App Layout -->
 <div class="app-layout">
@@ -373,6 +404,7 @@
     </div>
     <div class="sidebar-nav" id="sidebarNav"></div>
     <div style="padding:14px 20px;border-top:1px solid var(--border)">
+      <button type="button" onclick="toggleLook()" style="width:100%;padding:9px;margin-bottom:8px;background:var(--bg);color:var(--text-sub);border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">🎨 화면 꾸미기</button>
       <button onclick="logout()" style="width:100%;padding:9px;background:var(--bg);color:var(--text-muted);border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">🚪 로그아웃</button>
     </div>
   </nav>
@@ -1392,6 +1424,20 @@ const PAGE_TITLES = {
 };
 let currentSection = 'home';
 
+// 🎨 화면 꾸미기 — 색(계절 테마)과 디자인(깔끔/레트로)을 학생이 각자 고른다. 이 기기에만 기억.
+//   기본은 깔끔 — 학생·학부모가 처음 보는 학원 얼굴이라서. (선생님 화면은 레트로가 기본)
+const SKINS=[['clean','깔끔'],['retro','레트로']];
+const SKIN_DEFAULT='clean';
+function skinNow(){ let k=SKIN_DEFAULT; try{ k=localStorage.getItem('bm_skin')||SKIN_DEFAULT; }catch(e){} return SKINS.some(x=>x[0]===k)?k:SKIN_DEFAULT; }
+function skinApply(k){
+  const root=document.documentElement;
+  if(root && root.setAttribute){ if(k==='clean') root.removeAttribute('data-skin'); else root.setAttribute('data-skin', k); }
+  const el=document.getElementById('skinPick');
+  if(el) el.innerHTML=SKINS.map(x=>`<button type="button" class="btn btn-sm ${x[0]===k?'btn-primary':'btn-outline'}" style="flex:1;justify-content:center" onclick="skinSet('${x[0]}')">${x[1]}</button>`).join('');
+}
+function skinSet(k){ try{ localStorage.setItem('bm_skin', k); }catch(e){} skinApply(k); }
+function toggleLook(){ const p=document.getElementById('lookPop'); if(!p) return; p.style.display=(p.style.display==='none'?'block':'none'); if(p.style.display==='block'){ try{ renderThemeDots(); }catch(e){} skinApply(skinNow()); } }
+try{ skinApply(skinNow()); }catch(e){}
 function buildSidebar() {
   document.getElementById('sidebarNav').innerHTML = NAV_ITEMS.map(n => n.sec
     ? `<div class="nav-sec">${n.sec}</div>`

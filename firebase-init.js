@@ -126,13 +126,16 @@ function applyThemeOnly(t){
   try { if (typeof renderThemeDots === 'function') renderThemeDots(); } catch(e){}
   try { if (typeof navigate === 'function' && window.__curView) navigate(window.__curView); } catch(e){}
 }
-// 선생님이 테마 선택 → 화면 반영 + 학원 전체(Firebase)에 저장
+// 테마 선택 → 이 기기에만 저장. 선생님·학생이 각자 좋아하는 색을 쓴다 (2026-10-14).
+//   예전엔 선생님이 고르면 학원 전체(Firebase)에 저장돼 모든 학생 색이 같이 바뀌었다.
 function setTheme(t){
   applyThemeOnly(t);
-  try { db.collection('config').doc('theme').set({ theme: t || 'default', ts: Date.now() }); } catch(e){}
+  try { localStorage.setItem('bm_theme_mine', '1'); } catch(e){}
 }
 // 로그인/시작 시 학원 공통 테마를 Firebase에서 불러와 적용 (모든 학생 동일 색)
 async function loadThemeCloud(){
+  // 직접 고른 색이 있으면 학원 기본값으로 덮지 않는다
+  try { if (localStorage.getItem('bm_theme_mine') === '1') return; } catch(e){}
   try {
     var d = await db.collection('config').doc('theme').get();
     if (d.exists && d.data().theme) applyThemeOnly(d.data().theme);

@@ -166,14 +166,14 @@ ok('기록이 없으면 그래프 대신 안내', () => {
 });
 
 console.log('\n디자인 고르기');
-ok('깔끔 / 레트로를 바꿔 볼 수 있다', () => {
+ok('깔끔 / 레트로를 바꿔 볼 수 있다 (쌤 기본은 레트로)', () => {
   T.document.documentElement = { style: {}, a: {}, setAttribute(k, v) { this.a[k] = v; }, removeAttribute(k) { delete this.a[k]; } };
   T.skinApply('retro');
   assert.strictEqual(T.document.documentElement.a['data-skin'], 'retro');
   assert.ok(T.__els.skinPick.innerHTML.includes("skinSet('clean')"));
   T.skinApply('clean');
   assert.strictEqual(T.document.documentElement.a['data-skin'], undefined);
-  assert.strictEqual(T.skinNow(), 'clean');
+  assert.strictEqual(T.skinNow(), 'retro', '쌤 화면 기본은 레트로');
 });
 
 console.log('\n위쪽 바로가기');

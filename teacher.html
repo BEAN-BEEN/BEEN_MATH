@@ -2231,8 +2231,10 @@ function zoomOnWheel(ev){
 try{ window.addEventListener('wheel', zoomOnWheel, {passive:false}); }catch(e){}
 // 🎛 디자인(스킨) — 깔끔 / 레트로. 색 테마와 따로 고르고, 이 기기에만 기억한다.
 //   글로 물어서는 못 정해서, 실제 화면에서 바로 바꿔 보고 고르게 했다.
+//   쌤 화면은 레트로가 기본(쌤이 고름). 학생 화면은 깔끔이 기본 — 학부모가 보는 학원 얼굴이라서.
 const SKINS=[['clean','깔끔'],['retro','레트로']];
-function skinNow(){ let k='clean'; try{ k=localStorage.getItem('bm_skin')||'clean'; }catch(e){} return SKINS.some(x=>x[0]===k)?k:'clean'; }
+const SKIN_DEFAULT='retro';
+function skinNow(){ let k=SKIN_DEFAULT; try{ k=localStorage.getItem('bm_skin')||SKIN_DEFAULT; }catch(e){} return SKINS.some(x=>x[0]===k)?k:SKIN_DEFAULT; }
 function skinApply(k){
   const root=document.documentElement;
   if(root && root.setAttribute){ if(k==='clean') root.removeAttribute('data-skin'); else root.setAttribute('data-skin', k); }

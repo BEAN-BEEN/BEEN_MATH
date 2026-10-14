@@ -139,3 +139,28 @@ ok('학생 성적 카드가 펼쳐져 있고 모의고사는 달로 적힌다', 
 });
 
 console.log('\n' + pass + ' passed');
+
+console.log('\n화면 꾸미기 — 학생이 각자');
+ok('학생 화면 기본은 깔끔, 레트로로 바꿀 수 있다', () => {
+  assert.strictEqual(S.skinNow(), 'clean');
+  S.document.documentElement = { a: {}, setAttribute(k, v) { this.a[k] = v; }, removeAttribute(k) { delete this.a[k]; } };
+  S.skinApply('retro');
+  assert.strictEqual(S.document.documentElement.a['data-skin'], 'retro');
+  assert.ok(S.__els.skinPick.innerHTML.includes("skinSet('clean')"));
+  S.skinApply('clean');
+  assert.strictEqual(S.document.documentElement.a['data-skin'], undefined);
+});
+ok('색·디자인 고르는 창이 휴대폰 머리와 왼쪽 메뉴 양쪽에서 열린다', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'student.html'), 'utf8');
+  assert.ok(html.includes('id="lookPop"') && html.includes('id="themeDots"') && html.includes('id="skinPick"'));
+  assert.ok(html.split('onclick="toggleLook()"').length - 1 >= 3);
+  assert.ok(html.includes('[data-skin="retro"]{'));
+});
+ok('색은 사람마다 — 고르면 이 기기에만, 학원 기본값이 덮지 않는다', () => {
+  const fi = fs.readFileSync(path.join(ROOT, 'firebase-init.js'), 'utf8');
+  const setT = fi.slice(fi.indexOf('function setTheme('), fi.indexOf('async function loadThemeCloud'));
+  assert.ok(!setT.includes("collection('config')"), '아직 학원 전체에 저장함');
+  assert.ok(setT.includes("bm_theme_mine"));
+  assert.ok(/loadThemeCloud\(\)\{[\s\S]{0,200}bm_theme_mine/.test(fi), '직접 고른 색을 학원 기본값이 덮음');
+});
+console.log('\n' + pass + ' passed (화면 꾸미기 포함)');
