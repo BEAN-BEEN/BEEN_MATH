@@ -4955,11 +4955,17 @@ async function doCheckAllOffline(aid){
 // 📮 미제출 목록 — 마감이 지난 것과 이번 주 것을 함께 본다.
 //   '이번 주'만 보면 지난주에 마감된 미제출이 조용히 사라진다. 그게 제일 급한 건데.
 //   마감 지난 것 먼저, 그다음 마감이 가까운 순.
+// 📷 이 숙제는 학생이 사진을 올려야 하나 — 예전 숙제(칸 없음)는 그대로 '받기'
+function hwNeedsPhoto(a){ return !(a && a.photo==='none'); }
+function hwIsOap(a){ return !!(a && ((a.probStart&&a.probEnd)||a.probLabel)); }
+// 사진도 번호도 안 받는 숙제 = 수업 때 공책 검사로 끝(대시보드 명단에서 완성도를 누르면 그게 제출)
+function hwClassOnly(a){ return !hwNeedsPhoto(a) && !hwIsOap(a); }
 function hwMissingList(){
   const today=bmToday();
   const from=weekMonday(-1);        // 지난 주 월요일 — 여기까지가 아직 챙길 수 있는 범위
   return getAssignments()
     .filter(a=>{
+      if(hwClassOnly(a)) return false;                  // 공책 검사 숙제는 '올릴 것'이 없으니 미제출 독촉 대상이 아니다
       const st=a.startDate||a.createdAt||'', due=a.dueDate||'';
       if(st && st>today) return false;                  // 아직 내주지도 않은 숙제는 미제출이 아니다
       const d=hwDateOf(a);
@@ -5070,6 +5076,8 @@ function rHomework(){
         <div class="form-group"><label class="form-label">출제일 (내준 날)</label><input class="form-input" id="hw-start" type="date" onchange="hwSyncDue()" value="${editA?(editA.startDate||''):bmToday()}"></div>
         <div class="form-group"><label class="form-label">마감일 <span style="font-size:12.5px;color:var(--text-muted)">(출제일 +1주 자동 · 바꿔도 돼요)</span></label><input class="form-input" id="hw-due" type="date" onchange="hwDueTouched()" ${editA?'':'data-auto="1"'} value="${editA?(editA.dueDate||''):hwAddWeek(bmToday())}"></div>
       </div>
+      <div class="form-group" style="margin-bottom:6px"><label style="display:inline-flex;align-items:center;gap:6px;font-size:14px;font-weight:600;cursor:pointer"><input type="checkbox" id="hw-photo" ${(editA?hwNeedsPhoto(editA):false)?'checked':''}> 📷 학생이 사진 올리기</label>
+        <div style="font-size:12.5px;color:var(--text-muted);margin-top:2px">끄면 '공책 검사' 숙제 — 학생은 올릴 것 없이 공책만 들고 오고, 수업 때 명단에서 완성도를 누르면 끝이에요. 문제 번호를 적은 숙제는 사진을 꺼도 틀린 번호는 받아요.</div></div>
       <div class="form-group" style="margin-bottom:10px"><label style="display:inline-flex;align-items:center;gap:6px;font-size:14px;font-weight:600;cursor:pointer"><input type="checkbox" id="hw-indiv" onchange="hwRenderIndiv()" ${(editA&&Array.isArray(editA.studentIds)&&editA.studentIds.length)?'checked':''}> 🙋 개별 숙제 — 고른 학생에게만</label><div id="hw-indiv-box" style="display:none"></div></div>
       <div class="form-group"><label class="form-label">교재 <span style="font-size:12.5px;color:var(--text-muted)">(칩을 누르면 자동 입력 · ✕ 누르면 그 칩만 숨겨요)</span></label>
         <input class="form-input" id="hw-textbook" placeholder="예: 쎈 공통수학1" value="${editA?esc(editA.textbook):''}">
@@ -5153,12 +5161,13 @@ function rHomework(){
       return `
         <div class="card" style="border-left:4px solid ${overdue&&missing>0?'var(--red)':'var(--primary)'};margin-bottom:12px">
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-            <div><span class="chip">${a.className}</span><strong style="margin-left:8px">${a.title}</strong> ${headBadges}${a.textbook?`<span style="margin-left:8px;font-size:13px;color:var(--text-muted)">📘 ${a.textbook}</span>`:''}</div>
+            <div><span class="chip">${a.className}</span><strong style="margin-left:8px">${a.title}</strong> ${headBadges}${hwClassOnly(a)?'<span class="badge b-gray" style="margin-left:6px" title="학생은 올릴 것 없이 공책만 들고 와요">공책 검사</span>':''}${a.textbook?`<span style="margin-left:8px;font-size:13px;color:var(--text-muted)">📘 ${a.textbook}</span>`:''}</div>
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
               <span style="font-size:13px;color:var(--text-muted)">제출 ${subs.length}/${sts.length} · 기간 ${a.startDate||'?'}~${a.dueDate||'-'}</span>
               ${missing>0?`<button class="btn btn-orange btn-sm" onclick="doRemind('${a.classId}','${(a.title||'').replace(/'/g,'')}')">🔔 독촉 알림</button>`:''}
               <button class="btn btn-outline btn-sm" onclick="hwOpenId=hwOpenId==='${a.id}'?null:'${a.id}';rHomework()">${isOpen?'접기':'현황 보기'}</button>
               <button class="btn ${a.notifiedAt?'btn-outline':'btn-green'} btn-sm" onclick="doNotifyNewHw('${a.id}')" title="${a.notifiedAt?('보낸 시각: '+a.notifiedAt):'학생들에게 새 숙제 알림 보내기'}">${a.notifiedAt?'✓ 알림 보냄':'📨 알림'}</button>
+              <button class="btn btn-outline btn-sm" onclick="openHwGallery('${a.id}')" title="이 숙제의 반 전체 사진을 한 화면에 — 넘기며 완성도까지">사진 한눈에</button>
               <button class="btn btn-outline btn-sm" onclick="openHwShot('${a.classId}')" title="이 반 숙제를 캡처용으로 보기">📸</button>
               <button class="btn btn-outline btn-sm" onclick="doDupAsgn('${a.id}')" title="같은 내용으로 새 과제 만들기">📄 복제</button>
               <button class="btn btn-outline btn-sm" onclick="hwEditId='${a.id}';rHomework();window.scrollTo({top:0,behavior:'smooth'})">✏️ 수정</button>
@@ -5380,7 +5389,8 @@ async function doSaveAsgn(){
   const classId=document.getElementById('hw-cls').value,title=document.getElementById('hw-title').value.trim();
   if(!classId||!title){showToast('반과 제목을 입력해주세요','error');return;}
   const cls=CLASSES.find(c=>c.id===classId);
-  const data={classId,className:cls?.name||'',title,content:document.getElementById('hw-content').value.trim(),textbook:document.getElementById('hw-textbook').value.trim(),startDate:document.getElementById('hw-start').value,dueDate:document.getElementById('hw-due').value,maxPhotos:parseInt(document.getElementById('hw-photos').value)||30,probStart:parseInt(document.getElementById('hw-pstart').value)||null,probEnd:parseInt(document.getElementById('hw-pend').value)||null,probLabel:(document.getElementById('hw-plabel').value||'').trim()||null,probParity:hwParityValue(),studentIds:hwIndivIds()};
+  const _ph=document.getElementById('hw-photo');
+  const data={photo:(_ph&&_ph.checked)?'need':'none',classId,className:cls?.name||'',title,content:document.getElementById('hw-content').value.trim(),textbook:document.getElementById('hw-textbook').value.trim(),startDate:document.getElementById('hw-start').value,dueDate:document.getElementById('hw-due').value,maxPhotos:parseInt(document.getElementById('hw-photos').value)||30,probStart:parseInt(document.getElementById('hw-pstart').value)||null,probEnd:parseInt(document.getElementById('hw-pend').value)||null,probLabel:(document.getElementById('hw-plabel').value||'').trim()||null,probParity:hwParityValue(),studentIds:hwIndivIds()};
   try{
     if(hwEditId){
       await updateAssignment(hwEditId,data); hwEditId=null;
@@ -5784,12 +5794,13 @@ function openQuickHw(){
       <button type="button" class="btn btn-outline btn-sm" onclick="qhwDue(7)">+1주</button>
       <input class="form-input" id="qhw-due" type="date" style="flex:1;min-width:150px">
     </div>
+    <label style="display:flex;align-items:center;gap:7px;margin-top:12px;font-size:14.5px;font-weight:600;cursor:pointer"><input type="checkbox" id="qhw-photo"> 📷 학생이 사진 올리기 <span style="font-size:12.5px;font-weight:400;color:var(--text-muted)">(끄면 공책 검사로 끝)</span></label>
     <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
       <button class="btn btn-outline" style="flex:1;min-width:120px;justify-content:center;padding:13px;font-size:15px" onclick="doQuickSaveHw(false)">💾 저장만</button>
       <button class="btn btn-outline" style="flex:1;min-width:120px;justify-content:center;padding:13px;font-size:15px;border-color:var(--primary);color:var(--primary)" onclick="doQuickSaveHw(false,true)">📸 저장 + 캡처</button>
       <button class="btn btn-primary" style="flex:1;min-width:120px;justify-content:center;padding:13px;font-size:15px" onclick="doQuickSaveHw(true)">📨 저장 + 알림</button>
     </div>
-    <div style="font-size:13px;color:var(--text-muted);margin-top:8px;text-align:center">출제일은 오늘 · 사진 최대 30장<br>미리 입력해두고, 나중에 숙제 목록에서 <strong>📨 알림</strong>을 눌러 보낼 수 있어요</div>`;
+    <div style="font-size:13px;color:var(--text-muted);margin-top:8px;text-align:center">출제일은 오늘<br>미리 입력해두고, 나중에 숙제 목록에서 <strong>📨 알림</strong>을 눌러 보낼 수 있어요</div>`;
   qhwClassId=null;
   document.getElementById('quickHwModal').style.display='flex';
 }
@@ -5807,7 +5818,8 @@ async function doQuickSaveHw(notify, shot){
   const today=bmToday();
   const par=document.querySelector('input[name="qhw-parity"]:checked');
   const parity=(par&&(par.value==='odd'||par.value==='even'))?par.value:'';
-  const data={ classId:qhwClassId, className:cls?cls.name:'', title,
+  const _qph=document.getElementById('qhw-photo');
+  const data={ photo:(_qph&&_qph.checked)?'need':'none', classId:qhwClassId, className:cls?cls.name:'', title,
     content:v('qhw-content').trim(), textbook:v('qhw-textbook').trim(),
     startDate:today, dueDate:v('qhw-due'), maxPhotos:30,
     probStart:parseInt(v('qhw-pstart'),10)||null,
@@ -6202,6 +6214,7 @@ function todayRosterHtml(todayCls, subs){
         ${line('','오늘 진도', el(pl&&pl.content), true)}
         ${line('','지난 진도', el(plPrev&&plPrev.content))}
         ${line('','검사 숙제', asgnDetail(a), true)}
+        ${(a && subs.some(s=>s.assignmentId===a.id && Array.isArray(s.photos) && s.photos.length))?`<div style="padding:2px 0 4px 68px"><button class="btn btn-outline btn-sm" style="padding:2px 9px;font-size:12.5px" onclick="openHwGallery('${a.id}')">사진 한눈에 · ${subs.filter(s=>s.assignmentId===a.id && Array.isArray(s.photos) && s.photos.length).length}명</button></div>`:''}
         ${line('','지난 숙제', prevAsgn?`${asgnDetail(prevAsgn)}<span style="font-size:11.5px;color:var(--text-muted)">마감 ${(prevAsgn.dueDate||'').slice(5)}</span>`:'')}
         <div style="display:flex;gap:6px;font-size:13px;padding:3px 0;border-top:1px dashed var(--border);margin-top:3px;align-items:center">
           <span style="min-width:62px;color:var(--text-muted);font-size:12.5px;flex-shrink:0">오늘 출제</span>
@@ -6809,6 +6822,70 @@ async function doUncheckOffline(subId){
 }
 async function doRetry(sid,v){ await updateSub(sid, v?{needsRetry:true,retryResolved:false}:{needsRetry:false,retryDone:false,retryResolved:true,checked:true}); showToast(v?'오답으로 표시했어요. 학생 숙제 카드에 보여요 ✏️':'오답 완료로 확인 처리했어요 👍',v?'warning':'success'); rHomework(); }
 // 제출 사진 보기 (간단 뷰어)
+let HG_AID='';
+function openHwGallery(aid){
+  HG_AID=aid;
+  let ov=document.getElementById('__hwGal');
+  if(!ov){ ov=document.createElement('div'); ov.id='__hwGal';
+    ov.style.cssText='position:fixed;inset:0;z-index:2900;background:var(--bg);overflow:auto';
+    document.body.appendChild(ov); }
+  ov.innerHTML=hwGalleryHtml(aid);
+}
+function closeHwGallery(){ const ov=document.getElementById('__hwGal'); if(ov) ov.remove(); HG_AID=''; }
+function hwGalleryHtml(aid){
+  const a=getAssignments().find(x=>x.id===aid);
+  if(!a) return '<div style="padding:30px">숙제를 찾지 못했어요. <button class="btn btn-outline btn-sm" onclick="closeHwGallery()">닫기</button></div>';
+  const sts=hwStudents(a).slice().sort((x,y)=>cmpStr(x.name,y.name));
+  const subs=getSubsByAssignment(aid);
+  const withPhotos=subs.filter(s=>Array.isArray(s.photos)&&s.photos.length);
+  const nPhotos=withPhotos.reduce((n,s)=>n+s.photos.length,0);
+  const cell=st=>{ const sub=subs.find(s=>s.studentId===st.id); const ph=(sub&&Array.isArray(sub.photos))?sub.photos:[];
+    const pct=sub?(sub.evalPct||''):'';
+    return `<div class="card" style="margin:0;padding:12px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap"><strong style="font-size:15px">${anEsc(st.name)}</strong>
+        <span style="font-size:12.5px;color:var(--text-muted)">${ph.length?'사진 '+ph.length+'장':(sub&&sub.offline?'공책으로 검사':'사진 없음')}</span>
+        ${pct!==''?`<span class="badge b-primary" style="margin-left:auto">${hwShort(pct)}</span>`:''}</div>
+      ${ph.length?`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;cursor:zoom-in" onclick="hgOpenPhotos('${sub.id}')">${ph.slice(0,6).map(u=>`<img src="${u}" loading="lazy" alt="" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:6px;background:var(--bg)">`).join('')}</div>`
+        :'<div style="height:60px;border:1px dashed var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:13px">—</div>'}
+      <div style="margin-top:8px">${hwPillsHtml(aid, st.id, pct).split('doQuickCheck(').join('hgGrade(')}</div>
+    </div>`; };
+  return `<div style="position:sticky;top:0;z-index:1;background:var(--surface);border-bottom:1px solid var(--border);padding:12px 18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <strong style="font-size:17px">${anEsc(a.title||'')}</strong>
+      <span style="font-size:13.5px;color:var(--text-muted)">${anEsc(a.className||'')} · 사진 낸 학생 ${withPhotos.length}/${sts.length} · ${nPhotos}장</span>
+      <span style="margin-left:auto;display:flex;gap:6px">
+        ${nPhotos?`<button class="btn btn-primary btn-sm" onclick="hgDownloadAll('${aid}')">한 번에 받기 (ZIP)</button>`:''}
+        <button class="btn btn-outline btn-sm" onclick="closeHwGallery()">닫기</button>
+      </span>
+    </div>
+    <div style="padding:16px 18px;display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px">${sts.map(cell).join('')||'<div style="color:var(--text-muted)">이 숙제를 받은 학생이 없어요.</div>'}</div>`;
+}
+function hgOpenPhotos(subId){ const sub=getSubmissions().find(s=>s.id===subId); showPhotoModal(sub&&sub.photos); }
+async function hgGrade(aid, sid, pct){ await doQuickCheck(aid, sid, pct); if(HG_AID===aid) openHwGallery(aid); }
+// 사진은 Firebase Storage 주소라 브라우저에서 바로 받아 묶을 수 있다(교차 출처 허용). 압축은 JSZip(필요할 때만 불러옴).
+let __jszipP=null;
+function loadJsZip(){ if(window.JSZip) return Promise.resolve(window.JSZip);
+  if(!__jszipP) __jszipP=new Promise((ok,no)=>{ const sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'; sc.onload=()=>ok(window.JSZip); sc.onerror=()=>{ __jszipP=null; no(new Error('압축 도구를 못 불러왔어요')); }; document.head.appendChild(sc); });
+  return __jszipP; }
+function hgSafe(v){ return String(v==null?'':v).replace(/[^0-9A-Za-z가-힣 ._()~-]/g,'').trim()||'사진'; }
+async function hgDownloadAll(aid){
+  const a=getAssignments().find(x=>x.id===aid); if(!a) return;
+  const nameOf=id=>{ const st=getStudents().find(s=>s.id===id); return st?st.name:'학생'; };
+  const items=[]; getSubsByAssignment(aid).forEach(s=>{ (s.photos||[]).forEach((u,i)=>items.push({ u, name:hgSafe(nameOf(s.studentId))+'_'+String(i+1).padStart(2,'0')+'.jpg' })); });
+  if(!items.length){ showToast('받을 사진이 없어요'); return; }
+  showToast(`사진 ${items.length}장 모으는 중…`);
+  try{
+    const JSZip=await loadJsZip(); const zip=new JSZip();
+    let fail=0, i=0;
+    const work=async()=>{ while(i<items.length){ const it=items[i++]; try{ const r=await fetch(it.u); if(!r.ok) throw new Error(r.status); zip.file(it.name, await r.blob()); }catch(e){ fail++; } } };
+    await Promise.all([work(),work(),work(),work()]);
+    const blob=await zip.generateAsync({type:'blob'});
+    const link=document.createElement('a'); link.href=URL.createObjectURL(blob);
+    link.download=hgSafe((a.className||'')+' '+(a.title||'숙제'))+'.zip';
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(()=>URL.revokeObjectURL(link.href), 4000);
+    showToast(fail?`받았어요 — ${fail}장은 못 받았어요(지워진 사진일 수 있어요)`:`사진 ${items.length}장을 받았어요`, fail?'warning':'success');
+  }catch(e){ showToast('받기 실패: '+e.message,'error'); }
+}
 function showPhotoModal(urls){
   const list=(urls||[]).filter(Boolean);
   if(!list.length){ showToast('등록된 사진이 없어요'); return; }

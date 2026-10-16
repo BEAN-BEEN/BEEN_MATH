@@ -1130,16 +1130,23 @@ function getAssignments(){
     // 📷 완료 사진(또는 직접검사) 제출 여부 — 오답 숙제도 '사진 + 번호' 둘 다 받음
     const hasPhoto = !!(sub && ((Array.isArray(sub.photos)&&sub.photos.length) || sub.offline));
     const notDone = !!(sub && sub.notDone);   // 선생님이 '안 해왔다'고 기록한 것 (나중에 채우면 풀려요)
+    // 📒 사진을 안 받는 숙제(쌤이 '사진 받기'를 끔). 예전 숙제는 칸이 없어 그대로 '받기'.
+    const needPhoto = a.photo!=='none';
     let status;
-    if(notDone) status=(a.dueDate && a.dueDate < today) ? 'late' : 'pending';
+    if(!isOap && !needPhoto){
+      // 공책만 들고 오면 끝 — 수업 때 쌤이 완성도를 누르면 그게 제출
+      if(notDone) status=(a.dueDate && a.dueDate < today) ? 'late' : 'class';
+      else status = sub ? (sub.rejected?'rejected':'submitted') : 'class';
+    }
+    else if(notDone) status=(a.dueDate && a.dueDate < today) ? 'late' : 'pending';
     else if(isOap){
       if(sub && sub.rejected) status='rejected';
-      else if(oapEntered && hasPhoto) status='submitted';   // 사진 + 틀린번호 둘 다 해야 제출 완료
+      else if(oapEntered && (hasPhoto || !needPhoto)) status='submitted';   // 사진 + 틀린번호 (사진 안 받는 숙제는 번호만)
       else status=(a.dueDate && a.dueDate < today) ? 'late' : 'pending';
     } else if(sub && sub.rejected) status='rejected';
     else if(sub) status='submitted';
     else status=(a.dueDate && a.dueDate < today) ? 'late' : 'pending';
-    return { ...a, status, isOap, wrongNos, corrections, oapOk, oapRedo, oapOffline, oapEntered, oapDone, oapPhotoDone, oapConfirmed, oapNeedsStudent, oapAwaitTeacher, hasPhoto, photos:(sub&&sub.photos)||[], submittedAt:sub?sub.submittedAt:null, teacherChecked:sub?!!sub.checked:false, needsRetry:sub?!!sub.needsRetry:false, offline:sub?!!sub.offline:false, late:sub?!!sub.late:false, retryDone:sub?!!sub.retryDone:false, rejected:sub?!!sub.rejected:false, rejectReason:sub?(sub.rejectReason||''):'', evalPct:sub?(sub.evalPct||''):'', evalTag:sub?(sub.evalTag||''):'', subId:sub?sub.id:null, byTeacher:sub?!!sub.byTeacher:false, subTs:sub?(sub.ts||null):null, notDone, notDoneReason:sub?(sub.notDoneReason||''):'' };
+    return { ...a, status, needPhoto, isOap, wrongNos, corrections, oapOk, oapRedo, oapOffline, oapEntered, oapDone, oapPhotoDone, oapConfirmed, oapNeedsStudent, oapAwaitTeacher, hasPhoto, photos:(sub&&sub.photos)||[], submittedAt:sub?sub.submittedAt:null, teacherChecked:sub?!!sub.checked:false, needsRetry:sub?!!sub.needsRetry:false, offline:sub?!!sub.offline:false, late:sub?!!sub.late:false, retryDone:sub?!!sub.retryDone:false, rejected:sub?!!sub.rejected:false, rejectReason:sub?(sub.rejectReason||''):'', evalPct:sub?(sub.evalPct||''):'', evalTag:sub?(sub.evalTag||''):'', subId:sub?sub.id:null, byTeacher:sub?!!sub.byTeacher:false, subTs:sub?(sub.ts||null):null, notDone, notDoneReason:sub?(sub.notDoneReason||''):'' };
   });
 }
 // 출석률 = 결석 기준. 수업일(=숙제 마감일) 중 선생님이 '결석' 표시한 날만 빠짐. 안 빠지면 100%.
@@ -1738,6 +1745,14 @@ function homeDayTabsHtml(){
   const tab=(k,l)=>`<button type="button" onclick="homeDayPick('${k}')" style="flex:1;min-width:52px;border:none;border-radius:10px;padding:9px 6px;font-size:14.5px;font-weight:800;font-family:inherit;cursor:pointer;${cur===k?'background:var(--primary);color:#fff':'background:var(--surface);color:var(--text-sub)'}">${l}${k===today?'<span style="display:block;font-size:10px;font-weight:700;opacity:.85">오늘</span>':''}</button>`;
   return `<div style="display:flex;gap:6px;background:var(--bg);border-radius:12px;padding:5px;margin-bottom:12px">${days.map(d=>tab(d, WD_LABEL[d]+'요일')).join('')}${tab('all','전체')}</div>`;
 }
+// 📷 첫 화면에서 고르면 바로 올라간다 — 제출 버튼을 따로 누르지 않는다
+async function homeQuickShot(id, input){
+  if(!input || !input.files || !input.files.length) return;
+  addPendingFiles(input.files, id);
+  input.value='';
+  await doSubmit(id);
+  if(currentSection==='home') renderHome();
+}
 function classHomeCardsHtml(pending){
   const day=homeDayNow();
   let allAsgn=[]; try{ allAsgn=getAssignments().filter(a=>asnInSeasonS(a, studentSelSeason())); }catch(e){ allAsgn=pending||[]; }
@@ -1752,7 +1767,12 @@ function classHomeCardsHtml(pending){
         <div style="font-size:13px;font-weight:700">${esc(a.title)}</div>
         <div style="font-size:11px;color:var(--text-muted)">${a.textbook?'📘 '+esc(a.textbook)+' · ':''}${a.dueDate?`~${+a.dueDate.slice(5,7)}/${+a.dueDate.slice(8,10)}까지`:'마감일 없음'}${a.status==='late'?' · <span style="color:var(--red);font-weight:700">늦었어요</span>':''}${a.status==='rejected'?' · <span style="color:var(--red);font-weight:700">🔁 반려됨</span>':''}</div>
       </div>
-      <button class="btn btn-primary btn-sm" onclick="navigate('homework');setTimeout(()=>{var el=document.getElementById('hwcard-${a.id}');if(el)el.scrollIntoView({behavior:'smooth',block:'center'});},120)">📷 제출하기</button>
+      ${a.isOap
+        ? `<button class="btn btn-primary btn-sm" onclick="navigate('homework');setTimeout(()=>{var el=document.getElementById('hwcard-${a.id}');if(el)el.scrollIntoView({behavior:'smooth',block:'center'});},120)">번호${a.needPhoto?'·사진':''} 넣기</button>`
+        : `<span style="display:inline-flex;gap:6px">
+            <label class="btn btn-primary btn-sm" style="cursor:pointer">📷 찍어서 내기<input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="homeQuickShot('${a.id}',this)"></label>
+            <label class="btn btn-outline btn-sm" style="cursor:pointer">앨범<input type="file" accept="image/*" multiple style="display:none" onchange="homeQuickShot('${a.id}',this)"></label>
+          </span>`}
     </div>`;
   // 진도 두 칸 — 오늘(이번 주) 진도가 먼저, 지난 주 진도가 뒤
   const currBlock=cid=>{
@@ -1780,6 +1800,7 @@ function classHomeCardsHtml(pending){
       .sort((x,y)=>String(y.startDate||y.createdAt||'').localeCompare(String(x.startDate||x.createdAt||'')))
       .forEach(a=>{ const b=String(a.textbook).trim(); if(!books.includes(b)) books.push(b); });
     const doneN=allAsgn.filter(a=>a.classId===c.id && onDay(c,a) && a.status==='submitted').length;
+    const nb=allAsgn.filter(a=>a.classId===c.id && onDay(c,a) && a.status==='class');
     const when=[clsDayLabel(c), c.slot||'', (c.startTime&&c.endTime)?`${c.startTime}~${c.endTime}`:''].filter(Boolean).join(' ');
     return `<div class="card" style="border-left:4px solid var(--primary);margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:9px">
@@ -1791,6 +1812,7 @@ function classHomeCardsHtml(pending){
       ${hw.length
         ? `<div style="font-size:13px;font-weight:800;margin-top:10px">📝 제출할 숙제 <span style="color:var(--primary)">${hw.length}개</span></div>${hw.map(hwRow).join('')}`
         : `<div style="font-size:13px;font-weight:700;color:var(--green);margin-top:10px">✅ 제출할 숙제가 없어요</div>`}
+      ${nb.length?`<div style="font-size:13px;font-weight:800;margin-top:10px">📒 공책 검사 <span style="font-weight:500;color:var(--text-muted)">— 올릴 것 없이 공책만 들고 와요</span></div>${nb.map(a=>`<div style="padding:7px 0;border-top:1px solid var(--border)"><div style="font-size:13px;font-weight:700">${esc(a.title)}</div><div style="font-size:11px;color:var(--text-muted)">${a.textbook?'📘 '+esc(a.textbook)+' · ':''}${a.dueDate?(+a.dueDate.slice(5,7))+'/'+(+a.dueDate.slice(8,10))+' 수업 때 검사':'수업 때 검사'}</div></div>`).join('')}`:''}
       ${doneN?`<div style="font-size:12px;color:var(--text-muted);margin-top:6px;cursor:pointer" onclick="navigate('homework')">이번 시즌에 낸 숙제 ${doneN}개 — 숙제 탭에서 보기 →</div>`:''}
     </div>`;
   });
@@ -2460,6 +2482,13 @@ function renderHomework() {
   const rejected = asgn.filter(a => a.status==='rejected');
   let html = '';
   if (rejected.length) html += `<div class="sec-label" style="color:var(--red)">🔁 반려됨 — 다시 제출 (${rejected.length})</div>` + rejected.map(card).join('');
+  const classOnly = asgn.filter(a => a.status==='class');
+  if (classOnly.length) html += `<div class="sec-label">📒 공책 검사 숙제 — 올릴 것 없이 공책만 들고 와요 (${classOnly.length})</div>` + classOnly.map(a=>`<div class="hw-card" style="border-left-color:var(--border)">
+      <div class="hw-head"><div><span class="chip">${clsLabel(a.className)}</span></div></div>
+      <div class="hw-title" style="margin-bottom:4px">${a.title}</div>
+      ${a.textbook?`<div class="hw-body">📘 ${a.textbook}</div>`:''}${a.content?`<div class="hw-body">${a.content}</div>`:''}
+      <div class="hw-due" style="margin-bottom:0">${a.dueDate?'📅 '+fmtDateFull(a.dueDate)+' 수업 때 검사':'수업 때 검사'}</div>
+    </div>`).join('');
   if (pending.length) html += `<div class="sec-label">📌 제출할 숙제 (${pending.length})</div>` + pending.map(card).join('');
   if (late.length)    html += `<div class="sec-label" style="color:var(--red)">⚠️ 미제출 / 지각 (${late.length})</div>` + late.map(card).join('');
   const subWaiting = submitted.filter(a=>!a.teacherChecked), subDone = submitted.filter(a=>a.teacherChecked);
@@ -2563,6 +2592,7 @@ async function doSubmit(id) {
     clearUploadProgress();
     delete PENDING_PHOTOS[id];   // 성공분은 저장됐으니 임시 사진 비움
     renderHomework();        // 카드 먼저 '제출 완료'로 갱신
+    if(currentSection==='home') renderHome();
     if(failN>0){
       showToast(`사진 ${failN}장은 업로드가 안 됐어요 😢 방금 올라간 건 저장됐으니, 안 올라간 사진만 다시 골라 추가 제출해주세요`,'error');
     }else{
