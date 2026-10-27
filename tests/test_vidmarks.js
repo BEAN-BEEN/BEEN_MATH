@@ -83,3 +83,55 @@ ok('학생 재생 창에 북마크 목록 — 누르면 그 시점으로', () =>
 });
 
 console.log('\n' + pass + ' passed');
+
+console.log('\n영상 여러 개 한 번에 — 링크만 붙여넣으면 반·날짜·제목');
+const TITLES = {
+  mrEaPFBZZHM: '261017 고1S A4 함수의 뜻과 그래프. 여러 가지 함수',
+  wGvvD_1Rk60: '261017 고1T A1 명제 개념 설명',
+  '1dbWobD8k_s': '261016 고1A A5 명제 개념 설명',
+  '0RRtKj8JYak': '261018 고1T A2 명제 개념 설명',
+  L1YUlerf7Bc: '261018 고1대수Y3 삼각함수의 활용 개념 설명',
+  ASf5sogCK5o: '261024 고1T A1 절대부등식 개념 설명 / 명제 오답 풀이',
+  lH5f5R5qB5o: '261024 고1S B4 함수 오답 풀이(마스터 9번까지) / 역함수와 합성함수 개념 설명',
+  xI5eYHYV2W0: '261023 고1A A5 절대부등식 개념 설명 / 명제 오답 풀이 (마스터 9번 까지)'
+};
+const CL = [{ id: 'a4', name: '고1S A4' }, { id: 'a1', name: '고1T A1' }, { id: 'a5', name: '고1A A5' }, { id: 'a2', name: '고1T A2' }, { id: 'y3', name: '고1대수 Y3' }, { id: 'b4', name: '고1S B4' }, { id: 'a', name: '고1T' }];
+ok('제목에서 날짜·반·내용을 읽는다 (반 이름 띄어쓰기는 상관없다, 긴 이름 먼저)', () => {
+  T.__set('CLASSES', CL);
+  const r = id => { const p = T.vbParseTitle(TITLES[id]); return p.date + '|' + p.classId + '|' + p.title; };
+  assert.strictEqual(r('wGvvD_1Rk60'), '2026-10-17|a1|명제 개념 설명');
+  assert.strictEqual(r('L1YUlerf7Bc'), '2026-10-18|y3|삼각함수의 활용 개념 설명');
+  assert.strictEqual(r('lH5f5R5qB5o'), '2026-10-24|b4|함수 오답 풀이(마스터 9번까지) / 역함수와 합성함수 개념 설명');
+  assert.strictEqual(r('mrEaPFBZZHM'), '2026-10-17|a4|함수의 뜻과 그래프. 여러 가지 함수');
+});
+ok('모르는 반이면 비워 두고 제목은 그대로', () => {
+  const p = T.vbParseTitle('261030 중2 B1 일차함수');
+  assert.strictEqual(p.classId, '');
+  assert.strictEqual(p.date, '2026-10-30');
+  assert.strictEqual(p.title, '중2 B1 일차함수');
+});
+ok('링크 모양이 달라도 영상 번호를 찾는다', () => {
+  assert.strictEqual(T.vbIdOf('https://youtu.be/0lPBen-lOLw'), '0lPBen-lOLw');
+  assert.strictEqual(T.vbIdOf('https://www.youtube.com/watch?v=0lPBen-lOLw&t=30'), '0lPBen-lOLw');
+  assert.strictEqual(T.vbIdOf('https://youtube.com/shorts/0lPBen-lOLw'), '0lPBen-lOLw');
+  assert.strictEqual(T.vbIdOf('그냥 글자'), '');
+});
+ok('붙여넣으면 8개를 다 읽고, 이미 등록된 영상은 빼 둔다', async () => {
+  T.__set('CLASSES', CL);
+  T.__set('VIDEOS_CACHE', [{ id: 'old', url: 'https://youtu.be/wGvvD_1Rk60', classId: 'a1', date: '2026-10-17' }]);
+  T.fetch = async (u) => { const id = decodeURIComponent(u).match(/youtu\.be\/([A-Za-z0-9_-]{11})/)[1]; return { ok: true, json: async () => ({ title: TITLES[id] }) }; };
+  T.rVideos = () => {}; T.showToast = () => {};
+  T.__els['vi-bulk'] = { value: Object.keys(TITLES).map(id => 'https://youtu.be/' + id).join('\n') + '\nhttps://youtu.be/mrEaPFBZZHM' };
+  await T.doVidBulkRead();
+  const rows = T.__get('VB_ROWS');
+  assert.strictEqual(rows.length, 8, '같은 링크 두 번은 하나로');
+  assert.strictEqual(rows.filter(r => r.dup).map(r => r.id).join(','), 'wGvvD_1Rk60');
+  assert.strictEqual(rows.filter(r => r.on).length, 7);
+  const saved = [];
+  T.saveVideo = async (d) => saved.push(d);
+  await T.doVidBulkSave();
+  assert.strictEqual(saved.length, 7);
+  const y3 = saved.find(d => d.url.endsWith('L1YUlerf7Bc'));
+  assert.ok(y3 && y3.classId === 'y3' && y3.className === '고1대수 Y3' && y3.date === '2026-10-18' && y3.title === '삼각함수의 활용 개념 설명');
+});
+console.log('\n' + pass + ' passed (여러 개 한 번에 포함)');

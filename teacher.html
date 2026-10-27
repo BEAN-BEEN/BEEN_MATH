@@ -7746,6 +7746,13 @@ function rVideos(){
       </div>
       <div class="form-group"><label class="form-label">영상 링크 *</label><input class="form-input" id="vi-url" placeholder="https://youtu.be/... 붙여넣기"></div>
       <button class="btn btn-primary" onclick="doAddVid()">영상 등록</button>
+      <details style="margin-top:12px" ${VB_ROWS.length?'open':''}>
+        <summary style="cursor:pointer;font-size:14.5px;font-weight:700;padding:4px 0">여러 개 한 번에 — 링크만 붙여넣으면 반·날짜·제목 자동</summary>
+        <div style="font-size:12.5px;color:var(--text-muted);margin:4px 0 6px">유튜브 제목이 <b>261017 고1T A1 명제 개념 설명</b>처럼 날짜·반으로 시작하면 그대로 읽어요. 카톡에 보낸 링크 묶음을 통째로 붙여넣어도 돼요.</div>
+        <textarea class="form-textarea" id="vi-bulk" style="min-height:90px;font-size:13.5px" placeholder="https://youtu.be/...&#10;https://youtu.be/..."></textarea>
+        <button class="btn btn-outline btn-sm" style="margin-top:6px" onclick="doVidBulkRead()">링크 읽기</button>
+        <div id="vi-bulk-rows">${vbRowsHtml()}</div>
+      </details>
       <div style="font-size:12.5px;color:var(--text-muted);margin-top:6px">💡 링크는 용량 안 잡아먹어요. 매일 반별로 붙여넣으면 학생이 바로 보고, 누가 봤는지 아래에서 확인돼요.</div>
     </div>
     <div class="sec-label">📋 등록된 영상 (${vids.length})</div>
@@ -7827,6 +7834,77 @@ async function doToggleVidShare(vid, sid){
     showToast(`${st?st.name:'학생'} ${on?'에게 이 영상을 공개했어요 🔓':'공개를 해제했어요'}`, on?'success':'warning');
     rVideos(); const el=document.getElementById('vidshare-'+vid); if(el) el.style.display='block';
   }catch(e){ showToast('저장 실패: '+e.message,'error'); }
+}
+// 🎬 영상 여러 개 한 번에 — 링크 묶음을 붙여넣으면 유튜브 제목을 읽어 반·날짜·제목을 채운다.
+//   제목 규칙: '261017 고1T A1 명제 개념 설명' = 날짜(YYMMDD) + 반 이름 + 내용. 반은 등록된 반 이름과 맞춰 본다.
+let VB_ROWS=[];
+function vbIdOf(u){ const m=String(u||'').match(/(?:youtu[.]be[/]|youtube[.]com[/](?:watch[?]v=|embed[/]|shorts[/]|live[/]))([A-Za-z0-9_-]{11})/); return m?m[1]:''; }
+function vbNorm(v){ return String(v||'').split(' ').join('').toLowerCase(); }
+// 제목 → {date, classId, title}. 반을 못 찾으면 classId ''
+function vbParseTitle(full){
+  let rest=String(full||'').trim(), date='';
+  const m=rest.match(/^([0-9]{2})([0-9]{2})([0-9]{2})[ ]*/);
+  if(m){ date='20'+m[1]+'-'+m[2]+'-'+m[3]; rest=rest.slice(m[0].length); }
+  const nr=vbNorm(rest);
+  const cls=CLASSES.slice().sort((a,b)=>vbNorm(b.name).length-vbNorm(a.name).length).find(c=>vbNorm(c.name) && nr.startsWith(vbNorm(c.name)));
+  let title=rest;
+  if(cls){ // 반 이름 글자 수만큼 앞에서 걷어낸다(띄어쓰기는 세지 않음)
+    let need=vbNorm(cls.name).length, i=0;
+    while(need>0 && i<rest.length){ if(rest[i]!==' ') need--; i++; }
+    title=rest.slice(i).trim();
+  }
+  return { date, classId:cls?cls.id:'', title:title||String(full||'').trim() };
+}
+async function vbFetchTitle(id){
+  try{ const r=await fetch('https://www.youtube.com/oembed?format=json&url='+encodeURIComponent('https://youtu.be/'+id)); if(!r.ok) return ''; const j=await r.json(); return String(j.title||''); }catch(e){ return ''; }
+}
+async function doVidBulkRead(){
+  const ta=document.getElementById('vi-bulk'); const txt=ta?ta.value:'';
+  const ids=[]; String(txt).split(/[ ,]+|[\r\n]+/).forEach(w=>{ const id=vbIdOf(w); if(id && !ids.includes(id)) ids.push(id); });
+  if(!ids.length){ showToast('유튜브 링크를 못 찾았어요','warning'); return; }
+  showToast(`영상 ${ids.length}개 제목 읽는 중…`);
+  const have=new Set(getVideos().map(v=>vbIdOf(v.url)).filter(Boolean));
+  VB_ROWS=await Promise.all(ids.map(async id=>{
+    const full=await vbFetchTitle(id);
+    const p=vbParseTitle(full);
+    return { id, url:'https://youtu.be/'+id, full, date:p.date||bmToday(), classId:p.classId, title:p.title||(bmToday()+' 수업 영상'), dup:have.has(id), on:!have.has(id) };
+  }));
+  rVideos();
+}
+function vbRowsHtml(){
+  if(!VB_ROWS.length) return '';
+  const q=v=>anEsc(v).replace(/"/g,'&quot;');
+  const n=VB_ROWS.filter(r=>r.on && r.classId && !r.dup).length;
+  return `<div class="table-wrap" style="margin-top:10px"><table style="font-size:13.5px;width:100%">
+    <thead><tr><th style="width:34px"></th><th style="text-align:left">제목</th><th style="width:150px">날짜</th><th style="width:170px">반</th></tr></thead>
+    <tbody>${VB_ROWS.map((r,i)=>`<tr style="${r.dup?'opacity:.5':''}">
+      <td style="text-align:center"><input type="checkbox" ${r.on?'checked':''} ${r.dup?'disabled':''} onchange="VB_ROWS[${i}].on=this.checked;rVideos()"></td>
+      <td><input class="form-input" value="${q(r.title)}" style="padding:5px 8px;font-size:13.5px" onchange="VB_ROWS[${i}].title=this.value">
+        <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">${r.dup?'<b style="color:var(--orange)">이미 등록된 영상</b> · ':''}${q(r.full||'제목을 못 읽었어요')}</div></td>
+      <td><input class="form-input" type="date" value="${r.date}" style="padding:5px 6px;font-size:13px" onchange="VB_ROWS[${i}].date=this.value"></td>
+      <td><select class="form-select" style="padding:5px 6px;font-size:13px;${r.classId?'':'border-color:var(--red)'}" onchange="VB_ROWS[${i}].classId=this.value;rVideos()">
+        <option value="">반 고르기</option>${CLASSES.map(c=>`<option value="${c.id}" ${c.id===r.classId?'selected':''}>${anEsc(c.name)}</option>`).join('')}</select></td>
+    </tr>`).join('')}</tbody></table></div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
+      <button class="btn btn-primary btn-sm" onclick="doVidBulkSave()" ${n?'':'disabled'}>${n}개 등록</button>
+      <button class="btn btn-outline btn-sm" onclick="VB_ROWS=[];rVideos()">비우기</button>
+      ${VB_ROWS.some(r=>r.on&&!r.classId&&!r.dup)?'<span style="font-size:12.5px;color:var(--red)">빨간 칸은 반을 골라야 등록돼요</span>':''}
+    </div>`;
+}
+async function doVidBulkSave(){
+  const rows=VB_ROWS.filter(r=>r.on && r.classId && !r.dup);
+  if(!rows.length) return;
+  const colors=['#6366F1','#F97316','#10B981','#8B5CF6','#EF4444','#F59E0B'];
+  let ok=0;
+  for(const r of rows){
+    const cls=CLASSES.find(c=>c.id===r.classId);
+    try{ await saveVideo({ classId:r.classId, className:cls?cls.name:'', title:(r.title||'').trim()||(r.date+' 수업 영상'), url:r.url, date:r.date||bmToday(), viewedBy:[], color:colors[ok%colors.length] }); ok++; }
+    catch(e){ showToast('등록 실패: '+(r.title||r.id)+' — '+e.message,'error'); }
+  }
+  VB_ROWS=VB_ROWS.filter(r=>!rows.includes(r));
+  const ta=document.getElementById('vi-bulk'); if(ta) ta.value='';
+  showToast(`영상 ${ok}개 등록 — 반 학생들이 바로 볼 수 있어요`,'success');
+  rVideos();
 }
 async function doAddVid(){
   const classId=document.getElementById('vi-cls').value, url=document.getElementById('vi-url').value.trim();
