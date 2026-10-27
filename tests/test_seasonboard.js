@@ -158,7 +158,7 @@ ok('다 끝낸 단원은 초록 ✓, 일부는 몇 명인지, 아무도 안 한 
     c1: { id: 'c1', units: [{ id: 'u1', name: '다항식' }, { id: 'u2', name: '방정식' }, { id: 'u3', name: '부등식' }],
           marks: { u1: { s1: true, s2: true, s3: true }, u2: { s1: true } } }
   });
-  set('ckGroup', ''); set('ckBoardClassId', 'c1');
+  set('ckGroup', ''); set('ckBoardClassId', 'c1'); set('ckShowOld', true);   // 이 묶음은 만든 날 없는 옛 id(u1…)라 지난 것까지 보기
   const h = T.ckOverviewHtml(get('CLASSES'));
   assert.ok(h.includes('✓ 다항식'), '다 끝낸 단원 표시가 없음');
   assert.ok(/방정식 <span[^>]*>1\/3<\/span>/.test(h), '일부만 한 단원에 인원이 없음');
@@ -174,3 +174,34 @@ ok('체크리스트 카드 안에 들어 있다', () => {
 });
 
 console.log('\n' + pass + ' passed');
+
+console.log('\n새 시즌이면 화면도 새로');
+ok('체크리스트: 이번 시즌에 만든 항목만, 지난 것은 숨기고 개수를 알려준다', () => {
+  const se = T.selectedSeason();
+  const ms = ds => new Date(ds + 'T12:00:00').getTime().toString(36);
+  const idNew = 'u' + ms(plus(-5)), idPrep = 'n' + ms(plus(-24)), idOld = 'u' + ms(plus(-60));
+  set('CLASSCHECK_CACHE', { c1: { id: 'c1', units: [{ id: idNew, name: '원의 방정식' }, { id: idOld, name: '여름 단원' }, { id: 'u9', name: '아주 옛날' }],
+    naesinItems: [{ id: idPrep, name: '1주차', book: '기출편' }], marks: {} } });
+  set('ckShowOld', false);
+  assert.strictEqual(T.ckItemDate(idNew), plus(-5));
+  assert.strictEqual(T.ckColumns('c1').map(c => c.name).join(','), '원의 방정식,1주차', '시즌 시작 1주 전에 미리 만든 것은 이번 시즌');
+  assert.strictEqual(T.ckOldCount(), 2);
+  assert.ok(T.ckOverviewHtml(get('CLASSES')).includes('지난 시즌 항목 2개는 숨겼어요'));
+  set('ckShowOld', true);
+  assert.strictEqual(T.ckColumns('c1').length, 4);
+  set('ckShowOld', false);
+  assert.ok(se && se.id === 'now');
+});
+ok('시험·영상·복습·오답·미제출도 고른 시즌 것만', () => {
+  set('EXAMS_CACHE', [{ id: 'e1', date: plus(-3), title: '이번', analysis: [{ no: '1' }] }, { id: 'e2', date: plus(-50), title: '지난', analysis: [{ no: '1' }] }, { id: 'e3', title: '날짜 없음', analysis: [{ no: '1' }] }]);
+  assert.strictEqual(T.anExamsWithAnalysis().map(e => e.id).join(','), 'e1,e3');
+  assert.strictEqual(T.inSeasonDate(plus(-50), T.selectedSeason()), false);
+  T.setSeason('__all');
+  assert.strictEqual(T.anExamsWithAnalysis().length, 3, '전체 기간이면 다 보인다');
+  T.setSeason('now');
+  const th = fs.readFileSync(path.join(ROOT, 'teacher.html'), 'utf8');
+  assert.ok(th.includes('if(!asnInSeason(a, selectedSeason())) return false; // 지난 시즌 숙제는'));
+  assert.ok(th.includes('const vids=getVideos().filter(v=>inSeasonDate(v.date, selectedSeason()));'));
+  assert.ok(th.includes(".filter(a=>asnInSeason(a, selectedSeason()));\n") || th.includes(".filter(a=>asnInSeason(a, selectedSeason()));\r\n"));
+});
+console.log('\n' + pass + ' passed (새 시즌 포함)');

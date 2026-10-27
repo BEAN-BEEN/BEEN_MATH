@@ -1177,6 +1177,12 @@ function classHwStart(classId){ const c=ALL_CLASSES.find(x=>x.id===classId); ret
 function asnInHwWindow(a){ const st=classHwStart(a.classId); if(!st) return true; const d=a.startDate||a.createdAt||a.dueDate||''; return !d || d>=st; }
 // 제출률 시즌(학원 공통) — 내가 보고 있는 시즌(없으면 오늘 속한 시즌, 없으면 최근)
 function studentSelSeason(){ if(!S_SEASONS.length) return null; const s=S_SEASONS.find(x=>x.id===selSeasonId); if(s) return s; const t=bmToday(); return S_SEASONS.find(x=>x.startDate&&x.startDate<=t&&(!x.endDate||x.endDate>=t)) || S_SEASONS[0]; }
+// 🌱 날짜 하나가 고른 기간 안인가 — 영상·시험에도 숙제와 같은 잣대(날짜 없는 옛 기록은 숨기지 않는다)
+function inSeasonDateS(d, season){
+  if(!season) return true;
+  d=String(d||'').slice(0,10); if(!d) return true;
+  return (!season.startDate||d>=season.startDate)&&(!season.endDate||d<=season.endDate);
+}
 function asnInSeasonS(a, season){ if(!season) return true; const d=a.startDate||a.createdAt||a.dueDate||''; if(!d) return true; return (!season.startDate||d>=season.startDate)&&(!season.endDate||d<=season.endDate); }
 // 📅 기간(시즌) 선택 바 — 숙제/오답/복습 공통. renderFn=다시 그릴 함수명, noun=안내 문구
 function seasonBarHtml(renderFn, noun){
@@ -2777,7 +2783,7 @@ function printReportCard(){
   setTimeout(()=>{ try{ w.focus(); w.print(); }catch(e){} }, 500);
 }
 function renderGrades() {
-  const exams = getExams();
+  const exams = getExams().filter(e=>inSeasonDateS(e.date, studentSelSeason()) || e.status==='pending_submission');
   const pendSub = exams.filter(e=>e.status==='pending_submission');
   const grading = exams.filter(e=>e.status==='grading');
   const scored = exams.filter(e=>e.status==='scored');
@@ -3322,9 +3328,12 @@ function compressImage(file, maxDim=1280, quality=0.7){
 // ================================================================
 let vFilter='all';
 function renderVideos() {
+  const _se=studentSelSeason();
+  const vlist=(VIDEOS||[]).filter(v=>inSeasonDateS(v.date, _se));
   document.getElementById('videosContent').innerHTML = `
+    ${typeof seasonBarHtml==='function'?seasonBarHtml('renderVideos','영상'):''}
     <div class="video-grid">
-      ${VIDEOS.map(v=>{ const seen=(v.viewedBy||[]).includes(STUDENT.id);
+      ${vlist.map(v=>{ const seen=(v.viewedBy||[]).includes(STUDENT.id);
         const vv=(S_VIDEOVIEWS||[]).find(x=>x.videoId===v.id);
         const pct=vv?(vv.pct||0):0;
         const mm=s=>Math.floor((s||0)/60)+'분';
@@ -3340,7 +3349,7 @@ function renderVideos() {
           </div>
         </div>`; }).join('')}
     </div>
-    ${!VIDEOS.length?'<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">아직 등록된 영상이 없어요</div>':''}`;
+    ${!vlist.length?`<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">${VIDEOS.length?'이 기간에 올라온 영상이 없어요':'아직 등록된 영상이 없어요'}</div>`:''}`;
 }
 // ================================================================
 // ▶️ 포털 내장 재생 + 시청 추적 (영상은 유튜브에서 스트리밍 — 저장 용량 안 씀)

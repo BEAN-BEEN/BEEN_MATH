@@ -196,3 +196,21 @@ ok('할 게 없으면 카드가 없다', () => {
   assert.strictEqual(S.homeTodoCardHtml(), '');
 });
 console.log('\n' + pass + ' passed (지금 할 것 포함)');
+
+console.log('\n새 시즌 — 학생 영상·성적 탭도 고른 기간만');
+ok('영상: 기간 밖은 숨기고, 날짜 없는 옛 영상은 둔다', () => {
+  const S = load('student.html'), set = (n, v) => S.__set(n, v);   // 위 테스트들이 시즌 함수를 바꿔 둬서 새로 불러온다
+  set('S_SEASONS', [{ id: 'now', name: '2학기 기말', startDate: plus(-10), endDate: plus(40) }]);
+  set('selSeasonId', null);
+  set('VIDEOS', [{ id: 'v1', title: '이번 영상', date: plus(-2), viewedBy: [] }, { id: 'v2', title: '여름방학 3강', date: plus(-30), viewedBy: [] }, { id: 'v3', title: '날짜 없음', viewedBy: [] }]);
+  set('S_VIDEOVIEWS', []);
+  S.renderVideos();
+  const h = S.__els.videosContent.innerHTML;
+  assert.ok(h.includes('이번 영상') && h.includes('날짜 없음') && !h.includes('여름방학 3강'));
+  assert.strictEqual(S.inSeasonDateS(plus(-30), S.studentSelSeason()), false);
+});
+ok('성적: 지난 시즌 시험은 숨기되, 아직 답을 안 낸 시험은 남긴다', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'student.html'), 'utf8');
+  assert.ok(html.includes("const exams = getExams().filter(e=>inSeasonDateS(e.date, studentSelSeason()) || e.status==='pending_submission');"));
+});
+console.log('\n' + pass + ' passed (새 시즌 포함)');

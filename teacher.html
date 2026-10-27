@@ -826,6 +826,14 @@ async function deleteSeasonFS(id){ await db.collection('seasons').doc(id).delete
 function currentSeason(){ const t=bmToday(); const list=getSeasons();
   return list.find(s=>s.startDate&&s.startDate<=t&&(!s.endDate||s.endDate>=t)) || list[0] || null; }
 function asnInSeason(a, season){ if(!season) return true; const d=a.startDate||a.createdAt||a.dueDate||''; if(!d) return true; return (!season.startDate||d>=season.startDate)&&(!season.endDate||d<=season.endDate); }
+// 🌱 새 시즌이면 화면도 새로 — 숙제뿐 아니라 시험지·영상·복습·오답·체크리스트도 고른 시즌 것만 보인다.
+//   날짜가 없는 옛 기록은 숨기지 않는다(어느 시즌인지 알 수 없어서). 지난 것은 위쪽 시즌에서 '전체 기간'을 고르면 다 보인다.
+function inSeasonDate(d, season){
+  if(!season) return true;
+  d=String(d||'').slice(0,10); if(!d) return true;
+  return (!season.startDate||d>=season.startDate)&&(!season.endDate||d<=season.endDate);
+}
+function examInSeason(e){ return inSeasonDate(e&&(e.date||e.createdAt), selectedSeason()); }
 let gradeSeasonId=null;   // 반별 관리에서 보고 있는 시즌(null=현재)
 let gradeSeasonMgmt=false;
 function selectedSeason(){ const list=getSeasons(); if(!list.length) return null; if(gradeSeasonId==='__all') return null; return list.find(x=>x.id===gradeSeasonId) || currentSeason(); }
@@ -2890,7 +2898,7 @@ function doResetPoints(){
 }
 function anBig(p){ if(p.bigUnit) return String(p.bigUnit).trim(); const u=String(p.unit||'').split('>')[0]; return u.trim()||'기타'; }
 function anSmall(p){ if(p.smallUnit) return String(p.smallUnit).trim(); const parts=String(p.unit||'').split('>'); return parts.length>1?parts[1].trim():''; }
-function anExamsWithAnalysis(){ return getExams().filter(e=>anProbs(e).length); }
+function anExamsWithAnalysis(){ return getExams().filter(e=>anProbs(e).length).filter(examInSeason); }
 // 저장된 틀린 번호 → 정오표. 기록이 없으면 '전부 맞음'에서 시작해 틀린 것만 누르게 (선생님 입력이 제일 빠른 방식)
 function anLoadOX(){
   const exam=getExams().find(e=>e.id===anRepExamId);
@@ -4064,7 +4072,7 @@ function rDashboard(){
   const todayDue=getAssignments().filter(a=>a.dueDate===today.toISOString().slice(0,10)).length;
   // 복습 집계 — 학생이 다 풀어 올렸지만(done) 선생님 확인 전(!checked)
   let reviewWaiting=0, reviewOngoing=0;
-  getReviews().forEach(r=>{ const rsubs=getReviewSubs(r.id); getStudentsByClass(r.classId).forEach(st=>{ const stt=revStat(r, rsubs.find(x=>x.studentId===st.id)); if(stt.done&&!stt.checked) reviewWaiting++; else if(stt.started&&!stt.done) reviewOngoing++; }); });
+  getReviews().filter(r=>inSeasonDate(r.startDate||r.createdAt||r.dueDate, _dashSeason)).forEach(r=>{ const rsubs=getReviewSubs(r.id); getStudentsByClass(r.classId).forEach(st=>{ const stt=revStat(r, rsubs.find(x=>x.studentId===st.id)); if(stt.done&&!stt.checked) reviewWaiting++; else if(stt.started&&!stt.done) reviewOngoing++; }); });
 
 
   document.getElementById('dashboardContent').innerHTML=`
@@ -4966,6 +4974,7 @@ function hwMissingList(){
   return getAssignments()
     .filter(a=>{
       if(hwClassOnly(a)) return false;                  // 공책 검사 숙제는 '올릴 것'이 없으니 미제출 독촉 대상이 아니다
+      if(!asnInSeason(a, selectedSeason())) return false; // 지난 시즌 숙제는 새 시즌에 끌고 오지 않는다
       const st=a.startDate||a.createdAt||'', due=a.dueDate||'';
       if(st && st>today) return false;                  // 아직 내주지도 않은 숙제는 미제출이 아니다
       const d=hwDateOf(a);
@@ -5423,7 +5432,7 @@ function parseNums(str){
   return [...set].sort((a,b)=>a-b);
 }
 function rReview(){
-  const revs=getReviews();
+  const revs=getReviews().filter(r=>inSeasonDate(r.startDate||r.createdAt||r.dueDate, selectedSeason()) || r.id===revEditId);
   const editR=revEditId?revs.find(x=>x.id===revEditId):null;
   const esc=s=>(s||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   document.getElementById('reviewContent').innerHTML=`
@@ -5516,7 +5525,7 @@ async function doCheckReview(subId){
 let wrongOnlyPending=false;
 let wrongOpen={};   // 오답 탭 학생별 펼침 상태 (기본 접힘)
 function rWrong(){
-  const asgn=getAssignments().filter(a=>!!((a.probStart&&a.probEnd)||a.probLabel));
+  const asgn=getAssignments().filter(a=>!!((a.probStart&&a.probEnd)||a.probLabel)).filter(a=>asnInSeason(a, selectedSeason()));
   const groups=[]; let waitTotal=0, okTotal=0, redoTotal=0;
   asgn.forEach(a=>{
     const subs=getSubsByAssignment(a.id).filter(s=>Array.isArray(s.wrongNos)&&s.wrongNos.length>0);
@@ -6437,7 +6446,10 @@ function ckOverviewHtml(list){
       <div style="display:flex;gap:4px;flex-wrap:wrap;flex:1">${pills||'<span style="font-size:13px;color:var(--text-muted);padding-top:4px">항목 없음</span>'}</div>
     </div>`;
   }).join('');
+  const oldN=ckOldCount();
   return `<div style="background:var(--bg);border-radius:12px;padding:10px 12px;margin:8px 0 12px">
+    ${oldN?`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12.5px;color:var(--text-muted)">${ckShowOld?'지난 시즌 항목까지 보는 중':`지난 시즌 항목 ${oldN}개는 숨겼어요`}
+      <button class="btn btn-outline btn-sm" style="padding:2px 9px;font-size:12px" onclick="ckShowOld=!ckShowOld;rDashboard()">${ckShowOld?'이번 시즌만':'지난 것도 보기'}</button></div>`:''}
     <div style="font-size:13.5px;font-weight:800;margin-bottom:4px">한눈에 보기 <span style="font-weight:500;color:var(--text-muted)">— <span style="color:var(--green);font-weight:800">초록</span>은 반 전체가 끝낸 것 · <span style="color:#A16207;font-weight:800">노랑</span>은 일부만 · 반 이름을 누르면 아래 표가 그 반으로 바뀌어요</span></div>
     ${rows}
   </div>`;
@@ -6537,12 +6549,35 @@ let ckGroup='';                        // '' = 전체 보기, 그 외는 그 묶
 function naesinAllItems(classId){ const c=getClassCheck(classId); return Array.isArray(c.naesinItems)?c.naesinItems:[]; }
 function naesinMarked(classId, itemId, sid){ const c=getClassCheck(classId); const m=(c.naesinMarks&&c.naesinMarks[itemId])||{}; return !!m[sid]; }
 // 방학 단원 + 교재별 주차를 한 줄로 세운다. 표시·체크·삭제 모두 이 목록으로 한다.
-function ckColumns(classId){
+let ckShowOld=false;   // 지난 시즌 항목도 보기
+// 항목을 만든 날 — id 앞 8자리가 만든 시각(ms, 36진수). 읽을 수 없으면 ''.
+function ckItemDate(id){
+  const t=parseInt(String(id||'').slice(1,9),36);
+  if(!(t>1.6e12 && t<4e12)) return '';
+  const d=new Date(t), p=v=>String(v).padStart(2,'0');
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+}
+// 이 시즌 항목인가 — 시즌 시작 1주 전부터 만든 것까지(미리 만들어 두는 경우). 만든 날을 모르면 지난 것으로 본다.
+function ckInSeason(col, season){
+  if(!season || !season.startDate) return true;
+  const d=ckItemDate(col.id); if(!d) return false;
+  const st=new Date(season.startDate+'T00:00:00'); st.setDate(st.getDate()-7);
+  const p=v=>String(v).padStart(2,'0'), from=st.getFullYear()+'-'+p(st.getMonth()+1)+'-'+p(st.getDate());
+  return d>=from && (!season.endDate || d<=season.endDate);
+}
+function ckColumnsAll(classId){
   const cols=[];
   classUnits(classId).forEach(u=>cols.push({kind:'unit', group:CK_VACATION, id:u.id, name:u.name}));
   naesinAllItems(classId).forEach(u=>cols.push({kind:'naesin', group:(u.book||NAESIN_BOOKS[0]), id:u.id, name:u.name}));
   return cols;
 }
+function ckColumns(classId){
+  const all=ckColumnsAll(classId);
+  if(ckShowOld) return all;
+  const se=selectedSeason();
+  return all.filter(c=>ckInSeason(c, se));
+}
+function ckOldCount(){ const se=selectedSeason(); if(!se) return 0; let n=0; CLASSES.forEach(c=>{ n+=ckColumnsAll(c.id).filter(x=>!ckInSeason(x, se)).length; }); return n; }
 function ckGroups(){ return [CK_VACATION].concat(NAESIN_BOOKS); }
 function ckMarked(classId, col, sid){ return col.kind==='unit' ? unitMarked(classId,col.id,sid) : naesinMarked(classId,col.id,sid); }
 function ckToggle(classId, kind, id, sid){ return kind==='unit' ? doToggleUnit(classId,id,sid) : doToggleNaesin(classId,id,sid); }
@@ -7358,7 +7393,7 @@ async function doSaveAllNaesin(){
 
 function rGrades(){
   renderSubNav();
-  const exams=getExams(),esubs=getExamSubs(),pendSubs=esubs.filter(s=>s.score===null||s.score===undefined);
+  const exams=getExams().filter(e=>examInSeason(e)||e.id===exEditId),esubs=getExamSubs(),pendSubs=esubs.filter(s=>s.score===null||s.score===undefined);
   const editE=exEditId?exams.find(e=>e.id===exEditId):null;
   document.getElementById('gradesContent').innerHTML=`
     ${gradeTab==='analysis'?examAnalysisTabHtml():''}
@@ -7701,7 +7736,7 @@ function copyVidMarksPrompt(){
   try{ if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(ok,()=>prompt('아래를 복사하세요',txt)); else prompt('아래를 복사하세요',txt); }catch(e){ prompt('아래를 복사하세요',txt); }
 }
 function rVideos(){
-  const vids=getVideos();
+  const vids=getVideos().filter(v=>inSeasonDate(v.date, selectedSeason()));
   document.getElementById('videosContent').innerHTML=`
     <div class="card">
       <div class="card-title">🎬 영상 링크 등록 <span style="font-size:13px;color:var(--text-muted);font-weight:400">(반 + 링크만!)</span></div>
