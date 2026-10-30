@@ -2044,11 +2044,90 @@ function mockClassChipsHtml(st){
     return `<span title="${hr?'담임':'부담임'} 반" style="font-size:11.5px;padding:1px 5px;border-radius:5px;margin:1px 2px 1px 0;display:inline-block;${hr?'background:var(--primary-light);color:var(--primary-dark);font-weight:700':'background:var(--bg);color:var(--text-muted)'}">${nm}</span>`;
   }).filter(Boolean).join('') || '<span style="font-size:12.5px;color:var(--text-muted)">-</span>';
 }
+// 📋 반 순서 — 반 이름의 등급 글자(고1A A5의 A, 고1S A4의 S, 고1T A1의 T)로 A → S → T, 그다음 반 번호.
+//   성적 입력표는 이름순이 아니라 이 순서로 반끼리 모아 보여준다(쌤 요청 2026-10-27).
+const CLS_TIER_ORDER={A:0, S:1, T:2};
+function classOrderKey(c){
+  const nm=String((c&&c.name)||'');
+  const t=nm.match(/고[0-9]([A-Z])/), num=nm.match(/[A-Z]([0-9]+)[^0-9]*$/);
+  const tier=t&&CLS_TIER_ORDER[t[1]]!=null?CLS_TIER_ORDER[t[1]]:9;
+  return [tier, num?parseInt(num[1],10):99, nm];
+}
+function cmpClassKey(a,b){ for(let i=0;i<3;i++){ if(a[i]<b[i]) return -1; if(a[i]>b[i]) return 1; } return 0; }
+// 학생이 속한 반 중 담임 반을 먼저, 그중 순서가 제일 앞선 반
+function studentMainClass(st){
+  const ids=(st&&st.classIds)||((st&&st.classId)?[st.classId]:[]);
+  const cls=ids.map(id=>CLASSES.find(c=>c.id===id)).filter(Boolean);
+  const hr=cls.filter(classIsHomeroom), pool=hr.length?hr:cls;
+  return pool.slice().sort((a,b)=>cmpClassKey(classOrderKey(a),classOrderKey(b)))[0]||null;
+}
+function sortByClassOrder(list){
+  return list.slice().sort((a,b)=>{ const ca=studentMainClass(a), cb=studentMainClass(b);
+    const d=cmpClassKey(ca?classOrderKey(ca):[9,99,''], cb?classOrderKey(cb):[9,99,'']);
+    return d || String(a.name||'').localeCompare(String(b.name||'')); });
+}
+// 표에서 반이 바뀌는 자리에 넣을 머리줄
+function classHeadRow(st, prev, cols){
+  const c=studentMainClass(st), pc=prev?studentMainClass(prev):undefined;
+  if(prev && c===pc) return '';
+  return `<tr><td colspan="${cols}" style="background:var(--bg);font-weight:800;font-size:13.5px;padding:6px 10px">${c?anEsc(anClsLabel(c.name)):'반 없음'}</td></tr>`;
+}
+// 📥 엑셀·구글시트에서 복사한 표 읽기 — 머리줄의 '이름/성명' 칸과 점수 칸 위치를 찾아 줄마다 {name, score, grade}.
+//   scoreLabels: 점수 칸 이름 후보(예: ['원점수'] 또는 ['공수2','공통수학2']). 없으면 이름 바로 다음 칸.
+function parseScorePaste(text, scoreLabels){
+  const rows=String(text||'').split(/[\r\n]+/).map(l=>l.split('\t').map(c=>c.replace(/"/g,'').trim()));
+  let nameCol=-1, scoreCol=-1;
+  for(const r of rows){
+    const ni=r.findIndex(c=>c==='이름'||c==='성명');
+    if(ni<0) continue;
+    nameCol=ni;
+    const si=r.findIndex((c,i)=>i>ni && (scoreLabels||[]).some(l=>c===l));
+    scoreCol=si>=0?si:ni+1;
+    break;
+  }
+  if(nameCol<0){ nameCol=1; scoreCol=2; }
+  const out=[];
+  rows.forEach(r=>{
+    const name=r[nameCol]||''; if(!name || name==='이름' || name==='성명') return;
+    out.push({ name, score:String(r[scoreCol]||'').trim(), grade:String(r[scoreCol+1]||'').trim() });
+  });
+  return out;
+}
+// 이름 맞추기 — 똑같으면 그대로, 아니면 끝의 영문 구분자(김시원C의 C)를 떼고 한 명만 맞으면.
+function matchStudentByName(name, list){
+  const n=String(name||'').split(' ').join('');
+  const exact=list.filter(s=>String(s.name||'').split(' ').join('')===n);
+  if(exact.length===1) return exact[0];
+  const strip=v=>String(v||'').split(' ').join('').replace(/[A-Za-z]+$/,'');
+  const loose=list.filter(s=>strip(s.name)===strip(n));
+  return loose.length===1?loose[0]:null;
+}
+// 점수 칸에 넣을 만한 값인가 — 숫자가 있고 짧아야(퇴원·선생님 변경 같은 메모는 뺀다)
+function pasteScoreOk(v){ v=String(v||'').trim(); return !!v && /[0-9]/.test(v) && v.length<=12 && !/퇴원|변경|미응시/.test(v); }
+function pasteGradeOf(v){ const m=String(v||'').match(/^([1-9])(?:\s*등급)?([?]?)$/); return m?(m[1]+m[2]):''; }
+function mockPasteFill(mockId){
+  const ta=document.getElementById('mpaste-'+mockId); if(!ta) return;
+  const rows=parseScorePaste(ta.value, ['원점수','점수']);
+  const inputs=[...document.querySelectorAll('.mscore-'+mockId)];
+  const roster=inputs.map(el=>({ id:el.dataset.sid, name:el.dataset.name }));
+  let filled=0, skip=0;
+  rows.forEach(r=>{
+    if(!pasteScoreOk(r.score)){ return; }
+    const st=matchStudentByName(r.name, roster); if(!st){ skip++; return; }
+    const sc=document.querySelector('.mscore-'+mockId+'[data-sid="'+st.id+'"]');
+    const gr=document.querySelector('.msgrade-'+mockId+'[data-sid="'+st.id+'"]');
+    const num=String(r.score).match(/[0-9]+([.][0-9]+)?/);
+    if(sc && num){ sc.value=num[0]; filled++; }
+    const g=pasteGradeOf(r.grade);
+    if(gr){ if(g){ gr.value=g+'등급'; gr.dataset.auto=''; } else { try{ mockAutoGrade(mockId, st.id); }catch(e){} } }
+  });
+  showToast(`${filled}명 점수를 채웠어요${skip?` · 우리 학생이 아닌 이름 ${skip}개는 건너뛰었어요`:''} — 확인하고 '전체 저장'을 눌러 주세요`, filled?'success':'warning');
+}
 function mockScoreRosterHtml(mockId){
   const m=getMockExams().find(x=>x.id===mockId); if(!m) return '';
   const byStu={}; getMockSubs().filter(s=>s.mockId===mockId).forEach(s=>{ byStu[s.studentId]=s; });
   const all=getStudents().filter(isActiveStudent);
-  const sts=all.filter(isHomeroomStudent).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const sts=sortByClassOrder(all.filter(isHomeroomStudent));   // 담임 반 학생만, 반 순서(A → S → T)
   const hidden=assistantOnlyCount(all);
   const cuts=mockCuts(m);
   const esc=s=>(s||'').replace(/"/g,'&quot;');
@@ -2065,9 +2144,17 @@ function mockScoreRosterHtml(mockId){
       </div>
       <div style="font-size:12.5px;color:var(--text-muted);margin-top:5px">비워두면 등급을 자동으로 붙이지 않아요. 직접 적은 등급은 덮어쓰지 않습니다(‘전체 다시 계산’은 덮어써요).</div>
     </div>
+    <details style="margin-bottom:10px">
+      <summary style="cursor:pointer;font-size:14px;font-weight:700;padding:4px 0">엑셀에서 붙여넣기 — 표를 통째로 복사해 넣으면 점수·등급이 채워져요</summary>
+      <textarea class="form-textarea" id="mpaste-${mockId}" style="min-height:90px;font-size:13px;margin-top:6px" placeholder="반 · 이름 · 원점수 · 등급 … 머리줄까지 같이 복사해 붙여넣으세요"></textarea>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">
+        <button class="btn btn-outline btn-sm" onclick="mockPasteFill('${mockId}')">표에 채우기</button>
+        <span style="font-size:12.5px;color:var(--text-muted)">'이름' 칸과 '원점수' 칸을 찾아 읽어요. 우리 학생이 아닌 이름은 건너뛰어요. 채운 뒤 아래 '전체 저장'을 눌러야 저장돼요.</span>
+      </div>
+    </details>
     <div class="table-wrap"><table>
       <thead><tr><th>학생</th><th>반 <span style="font-size:10.5px;font-weight:400;color:var(--text-muted)">(진한 =담임)</span></th><th>학교</th><th>점수</th><th>등급</th></tr></thead>
-      <tbody>${sts.map(s=>{ const ex=byStu[s.id]||{}; return `<tr>
+      <tbody>${sts.map((s,i)=>{ const ex=byStu[s.id]||{}; return classHeadRow(s, sts[i-1], 5)+`<tr>
         <td><strong>${s.name}</strong></td>
         <td style="max-width:200px">${mockClassChipsHtml(s)}</td>
         <td style="color:var(--text-muted);font-size:13px">${s.school||''}</td>
@@ -7273,17 +7360,44 @@ function studentGradeDash(stId){
 // ===== 🏫 내신 성적 입력 (2분할: 왼쪽 고정 컨트롤 · 오른쪽 스크롤 명단) =====
 let naesinSubject='공통수학1', naesinTerm='중간', naesinClassId='';
 const NAESIN_SUBJECTS=['공통수학1','공통수학2','대수','미적분Ⅰ','확률과통계','기하'];
+let naesinGroup='class';   // 'class' = 반별(A → S → T) / 'school' = 학교별
 function naesinStudents(){
-  if(naesinClassId) return getStudentsByClass(naesinClassId);
-  return getActiveStudents().slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  if(naesinClassId) return sortByClassOrder(getStudentsByClass(naesinClassId));
+  const sts=sortByClassOrder(getActiveStudents().filter(isHomeroomStudent));   // 담임 반 학생만
+  if(naesinGroup!=='school') return sts;
+  return sts.slice().sort((a,b)=>String(normSchool(a.school||'')||'힣').localeCompare(String(normSchool(b.school||'')||'힣')) || (sts.indexOf(a)-sts.indexOf(b)));
+}
+function naesinHeadRow(st, prev){
+  if(naesinGroup==='school'){
+    const sc=normSchool(st.school||''), pc=prev?normSchool(prev.school||''):null;
+    if(prev && sc===pc) return '';
+    const sch=getSchoolExams().filter(e=>normSchool(e.school||'')===sc).map(e=>e.title).filter(Boolean)[0]||'';
+    return `<tr><td colspan="4" style="background:var(--bg);font-weight:800;font-size:13.5px;padding:6px 10px">${anEsc(sc||'학교 없음')}${sch?` <span style="font-weight:500;color:var(--text-muted);font-size:12.5px">${anEsc(sch)}</span>`:''}</td></tr>`;
+  }
+  return classHeadRow(st, prev, 4);
+}
+const NAESIN_PASTE_LABELS={ '공통수학1':['공수1','공통수학1'], '공통수학2':['공수2','공통수학2'], '대수':['대수'], '미적분Ⅰ':['미적분Ⅰ','미적분1','미적1','미적'], '확률과통계':['확률과통계','확통'], '기하':['기하'] };
+function naesinPasteFill(){
+  const ta=document.getElementById('ns-paste'); if(!ta) return;
+  const rows=parseScorePaste(ta.value, NAESIN_PASTE_LABELS[naesinSubject]||[naesinSubject]);
+  const roster=naesinStudents();
+  let filled=0, skip=0;
+  rows.forEach(r=>{
+    if(!pasteScoreOk(r.score)) return;
+    const st=matchStudentByName(r.name, roster); if(!st){ skip++; return; }
+    const sc=document.getElementById('ns-sc-'+st.id), gr=document.getElementById('ns-gr-'+st.id);
+    if(sc){ sc.value=r.score; filled++; }
+    const g=pasteGradeOf(r.grade); if(gr && g) gr.value=g;
+  });
+  showToast(`${naesinSubject} ${naesinTerm} ${filled}명 채웠어요${skip?` · 우리 학생이 아닌 이름 ${skip}개는 건너뛰었어요`:''} — 확인하고 '전체 저장'을 눌러 주세요`, filled?'success':'warning');
 }
 function naesinRosterHtml(){
   const sts=naesinStudents();
   if(!sts.length) return '<div style="color:var(--text-muted);padding:16px">학생이 없어요. 왼쪽에서 반을 바꿔보세요.</div>';
   return `<table style="width:100%"><thead><tr style="position:sticky;top:0;background:var(--surface);z-index:1">
       <th style="text-align:left">학생</th><th style="width:96px">점수</th><th style="width:66px">등급</th><th>비고</th></tr></thead>
-    <tbody>${sts.map(st=>{ const n=getNaesin(st.id,naesinSubject,naesinTerm)||{};
-      return `<tr>
+    <tbody>${sts.map((st,i)=>{ const n=getNaesin(st.id,naesinSubject,naesinTerm)||{};
+      return naesinHeadRow(st, sts[i-1])+`<tr>
         <td><strong>${st.name}</strong>${st.school?`<span style="font-size:12.5px;color:var(--text-muted)"> · ${st.school}</span>`:''}</td>
         <td><input class="form-input" style="width:88px;padding:5px 7px" id="ns-sc-${st.id}" value="${(n.score||'').replace(/"/g,'&quot;')}" placeholder="예: 85.5"></td>
         <td><input class="form-input" style="width:58px;padding:5px 7px" id="ns-gr-${st.id}" value="${(n.grade||'').replace(/"/g,'&quot;')}" placeholder="등급"></td>
@@ -7358,16 +7472,29 @@ function naesinPanelHtml(){
         </div></div>
       <div class="form-group" style="margin:0;min-width:150px"><label class="form-label">반</label>
         <select class="form-select" id="ns-class" onchange="naesinClassId=this.value;renderNaesinRoster()">
-          <option value="" ${naesinClassId===''?'selected':''}>전체 학생</option>
-          ${CLASSES.map(c=>`<option value="${c.id}" ${naesinClassId===c.id?'selected':''}>${c.name}</option>`).join('')}
+          <option value="" ${naesinClassId===''?'selected':''}>담임 반 전체</option>
+          ${CLASSES.slice().sort((a,b)=>cmpClassKey(classOrderKey(a),classOrderKey(b))).map(c=>`<option value="${c.id}" ${naesinClassId===c.id?'selected':''}>${c.name}</option>`).join('')}
         </select></div>
+      <div class="form-group" style="margin:0"><label class="form-label">묶어 보기</label>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-sm" style="${naesinGroup!=='school'?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="naesinGroup='class';rGrades()">반별</button>
+          <button class="btn btn-sm" style="${naesinGroup==='school'?'background:var(--primary);color:#fff':'background:var(--bg);color:var(--text-sub)'}" onclick="naesinGroup='school';rGrades()">학교별</button>
+        </div></div>
       <div style="background:var(--bg);border-radius:10px;padding:8px 14px">
         <div style="font-size:12.5px;color:var(--text-muted)">입력 현황 · ${naesinSubject} ${naesinTerm}</div>
         <div id="ns-summary" style="font-size:19px;font-weight:800;color:var(--primary)">${f.done} / ${f.total}명</div>
       </div>
       <button class="btn btn-primary" onclick="doSaveAllNaesin()" style="margin-left:auto">💾 전체 저장</button>
     </div>
-    <div style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px">· 점수는 <strong>94+, 40점대</strong>처럼 적힌 그대로 저장돼요 · 빈 점수는 저장하지 않아요.</div>
+    <div style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px">· 점수는 <strong>94+, 40점대</strong>처럼 적힌 그대로 저장돼요 · 빈 점수는 저장하지 않아요 · 등급은 1, 2처럼 숫자로(확실치 않으면 1?)</div>
+    <details style="margin-bottom:10px">
+      <summary style="cursor:pointer;font-size:14px;font-weight:700;padding:4px 0">엑셀에서 붙여넣기 — 반명·학교명·성명·공수2·등급 표를 통째로</summary>
+      <textarea class="form-textarea" id="ns-paste" style="min-height:90px;font-size:13px;margin-top:6px" placeholder="머리줄(성명, 공수2, 등급 …)까지 같이 복사해 붙여넣으세요"></textarea>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">
+        <button class="btn btn-outline btn-sm" onclick="naesinPasteFill()">표에 채우기</button>
+        <span style="font-size:12.5px;color:var(--text-muted)">위에서 고른 과목(지금 ${naesinSubject}) 칸과 바로 옆 등급 칸을 읽어요. 우리 학생이 아닌 이름은 건너뛰어요.</span>
+      </div>
+    </details>
     <div id="naesinRoster">${naesinRosterHtml()}</div>
   </div>`;
 }
