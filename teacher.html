@@ -8223,7 +8223,8 @@ function makeupRosterPanel(m){
 //   플래너는 규칙으로 계산한 것이고, 여기는 실제로 잡혀 있는 직보(보강 목록)를 본다.
 let jbWeekStart=null, jbWeeks=2, jbPickDate='';
 const JB_DOW=['월','화','수','목','금','토','일'];
-// 🪑 강의실 자리 — 보통 17명까지 앉는다. 직보가 있는 날 총 인원이 17명이면 '꽉 참', 넘으면 '자리 부족'
+// 🪑 강의실 자리 — 보통 17명까지 앉는다. 직보가 있는 날, 직보 인원 + 어느 한 부 인원이 17명이면 '꽉 참', 넘으면 '자리 부족'
+//   (하루 전체를 더하면 시간이 안 겹치는 1부·3부까지 합쳐져서 너무 자주 뜬다 — 쌤이 부마다 보기로 정함, 2026-11-26)
 const JB_ROOM_SEATS=17;
 function jbMonday(d){ const x=new Date(d); const dow=(x.getDay()+6)%7; x.setDate(x.getDate()-dow); x.setHours(0,0,0,0); return x; }
 function jbStr(d){ const p=v=>String(v).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; }
@@ -8275,6 +8276,8 @@ function jbDayCell(d,i,tStr){
   const N=jbIdsOn(ds).size;
   const uniq=new Set(); slots.forEach(x=>x.coming.forEach(nm=>uniq.add(nm)));
   const total=N+uniq.size;
+  // 🪑 한 번에 앉는 인원 = 직보 학생(하루 종일 강의실에 있음) + 그 부 수업 학생. 가장 많은 부를 본다.
+  const peak=slots.reduce((p,x)=>{ const n=N+x.coming.length; return n>p.n?{n, slot:x.slot||x.name}:p; }, {n:N, slot:'직보'});
   const isToday=ds===tStr, hol=holidayName(ds), isSel=ds===jbPickDate;
   const math=[]; visibleSchoolExams().forEach(e=>examMathDates(e).forEach(m=>{ const nm=shortSchool(e.school); if(m.date===ds && nm && math.indexOf(nm)<0) math.push(nm); }));
   let c=`<div onclick="jbPick('${ds}')" title="누르면 아래에서 누가 오고 누가 빠지는지 봐요" style="cursor:pointer;min-width:0;border:1px solid var(--border);border-radius:9px;overflow:hidden;background:${isToday?'var(--primary-light)':'var(--surface)'};${isSel?'box-shadow:inset 0 0 0 2px var(--primary)':''}">`;
@@ -8298,7 +8301,7 @@ function jbDayCell(d,i,tStr){
     ${N?`<div style="color:var(--orange)">직보 <span style="font-size:16px">${N}</span>명</div>`:''}
     ${slots.filter(x=>x.coming.length).map(x=>`<div style="color:var(--primary)">${anEsc(x.slot||x.name)} <span style="font-size:16px">${x.coming.length}</span>명</div>`).join('')}
     <div style="font-size:17px;color:var(--text);margin-top:2px">총 ${total}명</div>
-    ${(N && total>=JB_ROOM_SEATS)?`<div title="강의실은 보통 ${JB_ROOM_SEATS}명까지 앉아요" style="margin-top:3px;font-size:13.5px;font-weight:800;color:#fff;background:${total>JB_ROOM_SEATS?'#DC2626':'#F59E0B'};border-radius:5px;padding:2px 5px">${total>JB_ROOM_SEATS?`🚨 자리 부족 (+${total-JB_ROOM_SEATS})`:'⚠️ 꽉 참'}</div>`:''}</div>`; }
+    ${(N && peak.n>=JB_ROOM_SEATS)?`<div title="강의실은 보통 ${JB_ROOM_SEATS}명까지 앉아요 — ${anEsc(peak.slot)} ${peak.n}명(직보 ${N}명 포함)" style="margin-top:3px;font-size:13.5px;font-weight:800;color:#fff;background:${peak.n>JB_ROOM_SEATS?'#DC2626':'#F59E0B'};border-radius:5px;padding:2px 5px">${peak.n>JB_ROOM_SEATS?`🚨 ${anEsc(peak.slot)} 자리 부족 (+${peak.n-JB_ROOM_SEATS})`:`⚠️ ${anEsc(peak.slot)} 꽉 참`}</div>`:''}</div>`; }
   c+='</div></div>';
   return {html:c, N};
 }
