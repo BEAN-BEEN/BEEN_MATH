@@ -8343,6 +8343,9 @@ async function jbCapture(){
   // 버튼 줄은 그림에서 빼고, 옆으로 넘겨 보던 부분까지 다 펼쳐서 찍는다
   const wraps=[...card.querySelectorAll('[data-jbscroll]')], hides=[...card.querySelectorAll('[data-jbhide]')];
   const keepW=card.style.width;
+  // 🔍 화면을 70%처럼 줄여 두면 html2canvas가 줄어든 높이로 잘라서 칸 아래쪽(학생 이름)이 빠졌다 — 찍는 동안만 100%로
+  const root=document.documentElement, keepZoom=root.style.zoom;
+  root.style.zoom='';
   wraps.forEach(w=>{ w.dataset.ov=w.style.overflowX||''; w.style.overflowX='visible'; });
   hides.forEach(h=>{ h.dataset.dp=h.style.display||''; h.style.display='none'; });
   try{
@@ -8364,6 +8367,7 @@ async function jbCapture(){
     const m=document.getElementById('jbShotModal'); if(m) m.style.display='flex';
   }catch(e){ showToast('캡처 실패: '+(e&&e.message||e),'error'); }
   finally{
+    root.style.zoom=keepZoom;
     card.style.width=keepW;
     wraps.forEach(w=>{ w.style.overflowX=w.dataset.ov; delete w.dataset.ov; });
     hides.forEach(h=>{ h.style.display=h.dataset.dp; delete h.dataset.dp; });
