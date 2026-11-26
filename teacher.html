@@ -8223,6 +8223,8 @@ function makeupRosterPanel(m){
 //   플래너는 규칙으로 계산한 것이고, 여기는 실제로 잡혀 있는 직보(보강 목록)를 본다.
 let jbWeekStart=null, jbWeeks=2, jbPickDate='';
 const JB_DOW=['월','화','수','목','금','토','일'];
+// 🪑 강의실 자리 — 보통 17명까지 앉는다. 직보가 있는 날 총 인원이 17명이면 '꽉 참', 넘으면 '자리 부족'
+const JB_ROOM_SEATS=17;
 function jbMonday(d){ const x=new Date(d); const dow=(x.getDay()+6)%7; x.setDate(x.getDate()-dow); x.setHours(0,0,0,0); return x; }
 function jbStr(d){ const p=v=>String(v).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; }
 function jbSetWeeks(k){ jbWeeks=k; rNaesin(); }
@@ -8295,7 +8297,8 @@ function jbDayCell(d,i,tStr){
   if(total){ c+=`<div style="font-size:14px;font-weight:800;border-top:1px dashed var(--border);padding-top:5px;margin-top:3px;line-height:1.6;word-break:keep-all">
     ${N?`<div style="color:var(--orange)">직보 <span style="font-size:16px">${N}</span>명</div>`:''}
     ${slots.filter(x=>x.coming.length).map(x=>`<div style="color:var(--primary)">${anEsc(x.slot||x.name)} <span style="font-size:16px">${x.coming.length}</span>명</div>`).join('')}
-    <div style="font-size:17px;color:var(--text);margin-top:2px">총 ${total}명</div></div>`; }
+    <div style="font-size:17px;color:var(--text);margin-top:2px">총 ${total}명</div>
+    ${(N && total>=JB_ROOM_SEATS)?`<div title="강의실은 보통 ${JB_ROOM_SEATS}명까지 앉아요" style="margin-top:3px;font-size:13.5px;font-weight:800;color:#fff;background:${total>JB_ROOM_SEATS?'#DC2626':'#F59E0B'};border-radius:5px;padding:2px 5px">${total>JB_ROOM_SEATS?`🚨 자리 부족 (+${total-JB_ROOM_SEATS})`:'⚠️ 꽉 참'}</div>`:''}</div>`; }
   c+='</div></div>';
   return {html:c, N};
 }
