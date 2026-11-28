@@ -137,6 +137,21 @@
     .oapnum{height:46px;border:1.5px solid var(--border);border-radius:9px;font-weight:700;font-size:15px;cursor:pointer;font-family:inherit;background:#fff;color:var(--text);transition:background .1s,border-color .1s;-webkit-tap-highlight-color:transparent;padding:0}
     .oapnum:active{transform:scale(.94)}
     .oapnum.on{background:var(--red);color:#fff;border-color:var(--red)}
+    /* 📱 단계별 제출 — 숙제 하나를 화면 전체로 열어 사진 → 틀린 번호 → 확인 순서로 */
+    #hwFlow{position:fixed;inset:0;z-index:3000;background:var(--bg);display:none;flex-direction:column}
+    #hwFlow.open{display:flex}
+    .hwf-top{display:flex;align-items:center;gap:8px;padding:calc(10px + env(safe-area-inset-top)) 12px 10px;background:var(--surface);border-bottom:1px solid var(--border)}
+    .hwf-top button{border:none;background:none;font-size:22px;width:40px;height:40px;border-radius:10px;cursor:pointer;color:var(--text);font-family:inherit}
+    .hwf-steps{display:flex;gap:5px;justify-content:center;padding:8px 0 0}
+    .hwf-steps span{height:6px;flex:0 0 34px;border-radius:3px;background:var(--border)}
+    .hwf-steps span.on{background:var(--primary)}
+    .hwf-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 14px 20px}
+    .hwf-foot{padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:var(--surface);border-top:1px solid var(--border);display:flex;gap:8px;align-items:center}
+    .hwf-foot .btn{flex:1;justify-content:center;min-height:50px;font-size:16px}
+    .hwf-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;margin-bottom:12px}
+    .hwf-grid .oapnum{height:54px;font-size:17px;border-radius:11px}
+    .hwf-sec{font-size:13px;font-weight:800;color:var(--primary);margin:14px 0 6px}
+    .hwf-big{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:110px;border-radius:14px;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit}
 
     /* === BUTTONS === */
     .btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s;font-family:inherit}
@@ -1774,7 +1789,8 @@ function classHomeCardsHtml(pending){
         <div style="font-size:11px;color:var(--text-muted)">${a.textbook?'📘 '+esc(a.textbook)+' · ':''}${a.dueDate?`~${+a.dueDate.slice(5,7)}/${+a.dueDate.slice(8,10)}까지`:'마감일 없음'}${a.status==='late'?' · <span style="color:var(--red);font-weight:700">늦었어요</span>':''}${a.status==='rejected'?' · <span style="color:var(--red);font-weight:700">🔁 반려됨</span>':''}</div>
       </div>
       ${a.isOap
-        ? `<button class="btn btn-primary btn-sm" onclick="navigate('homework');setTimeout(()=>{var el=document.getElementById('hwcard-${a.id}');if(el)el.scrollIntoView({behavior:'smooth',block:'center'});},120)">번호${a.needPhoto?'·사진':''} 넣기</button>`
+        ? (hwfSteps(a).length ? hwfStartBtn(a, true)
+          : `<button class="btn btn-primary btn-sm" onclick="navigate('homework');setTimeout(()=>{var el=document.getElementById('hwcard-${a.id}');if(el)el.scrollIntoView({behavior:'smooth',block:'center'});},120)">번호${a.needPhoto?'·사진':''} 넣기</button>`)
         : `<span style="display:inline-flex;gap:6px">
             <label class="btn btn-primary btn-sm" style="cursor:pointer">📷 찍어서 내기<input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="homeQuickShot('${a.id}',this)"></label>
             <label class="btn btn-outline btn-sm" style="cursor:pointer">앨범<input type="file" accept="image/*" multiple style="display:none" onchange="homeQuickShot('${a.id}',this)"></label>
@@ -2135,7 +2151,7 @@ function renderOapCard(a){
   const rangeHint = ((a.probStart&&a.probEnd) ? `${a.probStart}~${a.probEnd}번` : (a.probLabel||''))
     + (parLbl?` <span style="color:var(--primary)">(${parLbl})</span>`:'');
   const badge = a.oapConfirmed ? '<span class="badge b-green">오답 완료 ✅</span>'
-    : (!(hasPhoto && a.oapEntered) ? '<span class="badge b-primary">제출 전 (사진+번호)</span>'
+    : (!((hasPhoto || !a.needPhoto) && a.oapEntered) ? `<span class="badge b-primary">제출 전 (${a.needPhoto?'사진+번호':'번호'})</span>`
     : (wrongNos.length===0 ? '<span class="badge b-green">다 맞았어요 ✅</span>'
     : (a.oapNeedsStudent ? '<span class="badge b-orange">오답 진행중</span>' : '<span class="badge b-yellow">선생님 확인 대기</span>')));
   // ① 완료 사진 제출 (오답 숙제도 사진 + 번호 둘 다)
@@ -2166,7 +2182,9 @@ function renderOapCard(a){
       </div>`;
   }
   let bodyHtml='';
+  const flowN=hwfSteps(a).length;   // 📱 아직 낼 게 남았으면 단계별 제출 버튼을 크게
   if(!a.oapEntered){
+    hwDraftRestore(a.id);           // 💾 고르다 나간 번호가 있으면 되살린다
     const sections=oapSections(a);
     const totalN=sections.reduce((s,sec)=>s+sec.nums.length,0);
     const showGrid = totalN>0;
@@ -2187,7 +2205,7 @@ function renderOapCard(a){
       <div style="font-size:13px;color:var(--text-sub);margin:8px 0">${rangeHint?`<strong>${rangeHint}</strong> 중 `:''}<strong style="color:var(--red)">틀린 문제</strong>를 ${showGrid?'눌러서 선택하세요 👇':'입력해주세요'}${multi?' <span style="font-size:11px;color:var(--text-muted)">(구간별로 골라요)</span>':''}</div>
       ${gridHtml}
       ${showGrid?`<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">숫자에 없는 문제(예: H30)만 아래에 직접 적어요</div>`:''}
-      <input class="form-input" id="oapfree-${a.id}" oninput="PENDING_FREE['${a.id}']=this.value" placeholder="${showGrid?'직접 입력 (선택) 예: H30':'틀린 문제 입력 (예: 3, 57, 108)'}" style="margin-bottom:12px">
+      <input class="form-input" id="oapfree-${a.id}" oninput="PENDING_FREE['${a.id}']=this.value;hwDraftSave('${a.id}')" placeholder="${showGrid?'직접 입력 (선택) 예: H30':'틀린 문제 입력 (예: 3, 57, 108)'}" style="margin-bottom:12px">
       <div class="btn-row">
         <button class="btn btn-primary" onclick="doSaveWrong('${a.id}')">틀린 문제 등록 ✓</button>
         <button class="btn btn-outline" onclick="doAllCorrect('${a.id}')">😎 다 맞았어요</button>
@@ -2217,9 +2235,14 @@ function renderOapCard(a){
       <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:4px">🔁 오답이 반려됐어요 — 틀린 문제를 다시 골라주세요</div>
       ${a.rejectReason?`<div style="font-size:13px;color:#7F1D1D">사유: ${a.rejectReason}</div>`:''}
     </div>`:''}
-    ${photoHtml}
+    ${flowN?`${hwfStartBtn(a)}
+    <details style="margin-top:10px"><summary style="cursor:pointer;font-size:12.5px;color:var(--text-muted);font-weight:700">한 화면에서 하기 (예전 방식)</summary>
+      ${photoHtml}
+      <div style="font-size:13px;font-weight:800;margin:14px 0 2px;color:var(--red)">② 틀린 문제 체크</div>
+      ${bodyHtml}
+    </details>`:`${photoHtml}
     <div style="font-size:13px;font-weight:800;margin:14px 0 2px;color:var(--red)">② 틀린 문제 체크</div>
-    ${bodyHtml}
+    ${bodyHtml}`}
   </div>`;
 }
 async function saveWrongNos(aid, nos){
@@ -2232,15 +2255,203 @@ async function saveWrongNos(aid, nos){
 }
 // 라벨 정렬 — 둘 다 숫자면 숫자 순, 아니면 문자 순
 function cmpLabel(a,b){ const na=parseFloat(a),nb=parseFloat(b); const aNum=/^\d+$/.test(a),bNum=/^\d+$/.test(b);
-  if(aNum&&bNum) return na-nb; if(aNum) return -1; if(bNum) return 1; return String(a).localeCompare(String(b)); }
+  if(aNum&&bNum) return na-nb; if(aNum) return -1; if(bNum) return 1; return String(a).localeCompare(String(b),'ko',{numeric:true}); }   // ①-5가 ①-12보다 앞
 // 틀린 문제 번호 선택 → 임시로 기억해둠 (사진 제출 등으로 화면을 다시 그려도 유지)
 function toggleWrong(id, btn){
   btn.classList.toggle('on');
   PENDING_WRONG[id] = PENDING_WRONG[id] || new Set();
   const label=String(btn.dataset.no);
   if(btn.classList.contains('on')) PENDING_WRONG[id].add(label); else PENDING_WRONG[id].delete(label);
+  hwDraftSave(id);
+  if(HWF.id===id) hwfCount();
 }
-function clearPendingWrong(aid){ delete PENDING_WRONG[aid]; delete PENDING_FREE[aid]; }
+function clearPendingWrong(aid){ delete PENDING_WRONG[aid]; delete PENDING_FREE[aid]; hwDraftClear(aid); }
+
+// 💾 고르던 틀린 번호 임시 저장 — 누를 때마다 이 폰에 바로 남긴다.
+//   카톡 보다가 나가거나, 앱이 꺼지거나, 새로고침해도 다시 들어오면 이어서 고른다.
+//   (사진은 '다음'을 누를 때 바로 올려서 서버에 남는다 — 폰에 사진 파일을 쌓아 두지 않는다)
+function hwDraftKey(aid){ return 'bm_hwdraft_'+((typeof STUDENT!=='undefined'&&STUDENT&&STUDENT.id)||'')+'_'+aid; }
+function hwDraftSave(aid){
+  try{
+    const w=[...(PENDING_WRONG[aid]||[])], f=String(PENDING_FREE[aid]||'');
+    if(!w.length && !f.trim()){ localStorage.removeItem(hwDraftKey(aid)); return; }
+    localStorage.setItem(hwDraftKey(aid), JSON.stringify({ w, f, ts:Date.now() }));
+  }catch(e){}
+}
+function hwDraftLoad(aid){
+  try{ const d=JSON.parse(localStorage.getItem(hwDraftKey(aid))||'null'); if(d && Array.isArray(d.w)) return d; }catch(e){}
+  return null;
+}
+function hwDraftClear(aid){ try{ localStorage.removeItem(hwDraftKey(aid)); }catch(e){} }
+// 저장해 둔 것을 지금 고르는 칸(PENDING_*)으로 되살린다. 이미 고르고 있던 게 있으면 그대로 둔다.
+function hwDraftRestore(aid){
+  if(PENDING_WRONG[aid] && PENDING_WRONG[aid].size) return 0;
+  const d=hwDraftLoad(aid); if(!d) return 0;
+  PENDING_WRONG[aid]=new Set(d.w.map(String));
+  if(d.f) PENDING_FREE[aid]=d.f;
+  return d.w.length + (String(d.f||'').trim()?1:0);
+}
+// 몇 개 골라 뒀나 (첫 화면 '이어서 하기' 표시용)
+function hwDraftCount(aid){
+  const live=PENDING_WRONG[aid]; if(live && live.size) return live.size;
+  const d=hwDraftLoad(aid); return d ? d.w.length : 0;
+}
+
+// 📱 단계별 제출 — 숙제 하나를 화면 전체로 연다. 사진(받는 숙제만) → 틀린 번호 → 확인.
+//   한 카드에 다 붙어 있으면 폰에서 스크롤이 길고, 어디까지 했는지 헷갈린다.
+let HWF={ id:null, step:0, steps:[] };
+function hwfSteps(a){
+  const s=[];
+  if(a.needPhoto && !a.hasPhoto) s.push('photo');
+  if(a.isOap && !a.oapEntered) s.push('wrong');
+  if(a.isOap && !a.oapEntered) s.push('check');
+  return s;
+}
+// 숙제 카드·첫 화면에 붙는 큰 버튼 — 고르다 만 게 있으면 '이어서 하기'
+function hwfStartBtn(a, small){
+  const st=hwfSteps(a), n=hwDraftCount(a.id);
+  const what=st.includes('photo')&&st.includes('wrong')?'사진 → 틀린 번호':(st.includes('wrong')?'틀린 번호':'사진');
+  const label=n?`✏️ 이어서 하기 · ${n}개 골랐어요`:`✏️ 제출하기 · ${what}`;
+  return small
+    ? `<button class="btn ${n?'btn-orange':'btn-primary'} btn-sm" onclick="hwfOpen('${a.id}')">${n?`이어서 · ${n}개`:'제출하기'}</button>`
+    : `<button class="btn ${n?'btn-orange':'btn-primary'}" style="width:100%;justify-content:center;min-height:50px;font-size:16px;margin-top:10px" onclick="hwfOpen('${a.id}')">${label}</button>`;
+}
+function hwfEl(){
+  let el=document.getElementById('hwFlow');
+  if(!el){ el=document.createElement('div'); el.id='hwFlow'; document.body.appendChild(el); }
+  return el;
+}
+function hwfOpen(aid){
+  const a=getAssignments().find(x=>x.id===aid); if(!a) return;
+  const steps=hwfSteps(a);
+  if(!steps.length){ navigate('homework'); return; }
+  const got=hwDraftRestore(aid);
+  HWF={ id:aid, step:0, steps };
+  try{ history.pushState({hwf:1}, ''); }catch(e){}
+  hwfEl().classList.add('open');
+  document.body.style.overflow='hidden';
+  hwfRender();
+  if(got) showToast(`고르던 거 ${got}개를 불러왔어요 — 이어서 하면 돼요 ✏️`,'success');
+}
+function hwfClose(fromPop){
+  const el=document.getElementById('hwFlow'); if(el){ el.classList.remove('open'); el.innerHTML=''; }
+  document.body.style.overflow='';
+  const id=HWF.id; HWF={ id:null, step:0, steps:[] };
+  if(!fromPop){ try{ if(history.state && history.state.hwf) history.back(); }catch(e){} }
+  if(id && hwDraftCount(id)) showToast('고른 번호는 저장해 뒀어요. 다시 누르면 이어서 해요 💾','success');
+  if(currentSection==='home') renderHome(); else if(currentSection==='homework') renderHomework();
+}
+// 안드로이드 뒤로 가기 = 한 단계 앞으로 (첫 단계면 닫기)
+window.addEventListener('popstate', ()=>{
+  if(!HWF.id) return;
+  if(HWF.step>0){ HWF.step--; try{ history.pushState({hwf:1}, ''); }catch(e){} hwfRender(); }
+  else hwfClose(true);
+});
+function hwfBack(){ if(HWF.step>0){ HWF.step--; hwfRender(); } else hwfClose(); }
+function hwfCount(){
+  const n=(PENDING_WRONG[HWF.id]||new Set()).size + String(PENDING_FREE[HWF.id]||'').split(/[,\s]+/).filter(Boolean).length;
+  const c=document.getElementById('hwf-cnt'); if(c) c.textContent=n?`틀린 문제 ${n}개`:'틀린 문제를 눌러요';
+}
+function hwfFree(v){ PENDING_FREE[HWF.id]=v; hwDraftSave(HWF.id); hwfCount(); }
+// 지금 고른 번호(버튼 + 직접 입력) — 등록할 때와 같은 순서로
+function hwfPicked(aid){
+  const free=String(PENDING_FREE[aid]||'').split(/[,\s]+/).map(s=>s.trim()).filter(Boolean);
+  return [...new Set([...(PENDING_WRONG[aid]||[]), ...free].map(String))].sort(cmpLabel);
+}
+function hwfRender(){
+  const a=getAssignments().find(x=>x.id===HWF.id); if(!a){ hwfClose(); return; }
+  const esc=s=>String(s==null?'':s).replace(/</g,'&lt;');
+  const kind=HWF.steps[HWF.step], last=HWF.step===HWF.steps.length-1;
+  const names={photo:'사진', wrong:'틀린 문제', check:'확인'};
+  let body='', foot='';
+  if(kind==='photo'){
+    const arr=PENDING_PHOTOS[a.id]||[];
+    body=`<div style="font-size:19px;font-weight:800;margin-bottom:4px">📷 다 한 숙제를 찍어요</div>
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:14px">여러 장이면 계속 찍어서 더하면 돼요 (최대 ${a.maxPhotos||30}장)</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+        <label class="hwf-big" style="background:var(--primary);color:#fff"><span style="font-size:34px">📷</span><span>찍기</span><input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="addPendingFiles(this.files,'${a.id}');this.value='';hwfRender()"></label>
+        <label class="hwf-big" style="background:var(--surface);color:var(--text);border:1.5px solid var(--border)"><span style="font-size:34px">🖼</span><span>앨범</span><input type="file" accept="image/*" multiple style="display:none" onchange="addPendingFiles(this.files,'${a.id}');this.value='';hwfRender()"></label>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${arr.map((f,i)=>{ let u=''; try{ u=URL.createObjectURL(f); }catch(e){}
+        return `<div style="position:relative;width:84px;height:84px;border-radius:10px;overflow:hidden;border:2px solid var(--border)"><img src="${u}" style="width:100%;height:100%;object-fit:cover">
+          <button type="button" onclick="removePendingPhoto('${a.id}',${i});hwfRender()" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:50%;width:24px;height:24px;font-size:15px;line-height:22px;cursor:pointer;padding:0">×</button></div>`; }).join('')}</div>
+      ${arr.length?`<div style="font-size:13px;color:var(--text-muted);margin-top:8px">📷 ${arr.length}장 골랐어요</div>`:''}`;
+    foot=`<button class="btn btn-primary" ${arr.length?'':'disabled style="opacity:.5"'} onclick="hwfPhotoNext()">${last?'제출하기 ✓':'사진 올리고 다음 →'}</button>`;
+  } else if(kind==='wrong'){
+    const sections=oapSections(a), set=PENDING_WRONG[a.id]||new Set();
+    const total=sections.reduce((s,x)=>s+x.nums.length,0);
+    let grid='';
+    sections.forEach(sec=>{
+      const pl=parityLabel(sec.parity);
+      if(sections.length>1 && (sec.name||pl)) grid+=`<div class="hwf-sec">📑 ${esc(sec.name||'')}${pl?` · ${pl}`:''}</div>`;
+      grid+=`<div class="hwf-grid">${sec.nums.map(n=>{ const label=sec.prefix?`${sec.prefix}${sec.sep!=null?sec.sep:'-'}${n}`:String(n);
+        const disp=(sec.prefix&&sec.sep==='')?label:n;
+        return `<button type="button" class="oapnum${set.has(label)?' on':''}" data-no="${esc(label)}" onclick="toggleWrong('${a.id}',this)">${esc(disp)}</button>`; }).join('')}</div>`;
+    });
+    body=`<div style="font-size:19px;font-weight:800;margin-bottom:4px">❌ 틀린 문제만 눌러요</div>
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:6px">${esc(a.textbook||a.title)}${total?` · ${total}문제`:''} — 안 누른 번호는 맞은 걸로 들어가요. 누르는 대로 저장돼요 💾</div>
+      ${grid}
+      <div style="font-size:12px;color:var(--text-muted);margin:4px 0">${total?'번호판에 없는 문제만 적어요 (예: H30)':'틀린 문제 번호를 적어요 (예: 3, 57, 108)'}</div>
+      <input class="form-input" inputmode="${total?'text':'numeric'}" value="${esc(PENDING_FREE[a.id]||'')}" oninput="hwfFree(this.value)" placeholder="${total?'직접 입력 (선택)':'예: 3, 57, 108'}" style="font-size:16px">`;
+    foot=`<span id="hwf-cnt" style="font-size:14px;font-weight:800;color:var(--red);flex:0 0 auto;min-width:96px"></span>
+      <button class="btn btn-primary" onclick="hwfWrongNext()">다음 →</button>`;
+  } else if(kind==='check'){
+    const nos=hwfPicked(a.id), ph=(PENDING_PHOTOS[a.id]||[]).length + (a.photos||[]).length;
+    body=`<div style="font-size:19px;font-weight:800;margin-bottom:12px">👀 이대로 낼까요?</div>
+      <div class="card" style="margin-bottom:10px"><div style="font-size:13px;color:var(--text-muted);font-weight:700">숙제</div><div style="font-size:15px;font-weight:800;margin-top:2px">${esc(a.title)}</div>
+        ${a.needPhoto?`<div style="font-size:13px;margin-top:6px">📷 사진 ${ph}장</div>`:''}</div>
+      <div class="card"><div style="font-size:13px;color:var(--text-muted);font-weight:700;margin-bottom:6px">❌ 틀린 문제 ${nos.length}개</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${nos.map(n=>`<span style="padding:6px 11px;border-radius:9px;background:#FEE2E2;color:var(--red);font-weight:800;font-size:15px">${esc(n)}</span>`).join('')}</div></div>
+      <div style="font-size:12.5px;color:var(--text-muted);margin-top:10px">내고 나면 📒 오답 탭에서 틀린 문제를 고쳐 올려요.</div>`;
+    foot=`<button class="btn btn-outline" style="flex:0 0 96px" onclick="hwfBack()">고치기</button><button class="btn btn-primary" onclick="hwfSubmit()">제출하기 ✓</button>`;
+  }
+  const el=hwfEl();
+  el.innerHTML=`<div class="hwf-top">
+      <button onclick="hwfBack()" aria-label="뒤로">‹</button>
+      <div style="flex:1;min-width:0;text-align:center">
+        <div style="font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(clsLabel(a.className))} · ${esc(a.title)}</div>
+        <div style="font-size:11px;color:var(--text-muted)">${HWF.steps.map((k,i)=>`${i===HWF.step?'<b style="color:var(--primary)">':''}${i+1}. ${names[k]}${i===HWF.step?'</b>':''}`).join(' → ')}</div>
+        <div class="hwf-steps">${HWF.steps.map((k,i)=>`<span class="${i<=HWF.step?'on':''}"></span>`).join('')}</div>
+      </div>
+      <button onclick="hwfClose()" aria-label="닫기">✕</button>
+    </div>
+    <div class="hwf-body">${body}</div>
+    <div class="hwf-foot">${foot}</div>`;
+  if(kind==='wrong') hwfCount();
+  const b=el.querySelector('.hwf-body'); if(b) b.scrollTop=0;
+}
+// 사진 단계 → 바로 올린다(중간에 나가도 사진은 서버에 남는다). 사진만 받는 숙제면 여기서 끝.
+async function hwfPhotoNext(){
+  const id=HWF.id, a=getAssignments().find(x=>x.id===id); if(!a) return;
+  const arr=PENDING_PHOTOS[id]||[]; if(!arr.length){ showToast('사진을 먼저 찍어 주세요','warning'); return; }
+  setUploadProgress(0, arr.length);
+  try{
+    const failN=await submitHomework(id);
+    clearUploadProgress(); delete PENDING_PHOTOS[id];
+    if(failN>0) showToast(`사진 ${failN}장은 안 올라갔어요 😢 나머지는 저장됐어요`,'error');
+    if(HWF.step>=HWF.steps.length-1){ hwfDone(); return; }
+    HWF.step++; hwfRender();
+  }catch(e){ clearUploadProgress(); showToast('사진 올리기 실패: '+e.message+' — 인터넷 확인 후 다시 눌러 주세요','error'); }
+}
+function hwfWrongNext(){
+  if(!hwfPicked(HWF.id).length){
+    showToast('틀린 문제를 하나 이상 눌러요. 정말 다 맞았으면 수업 때 선생님께 보여 주세요 😎','warning'); return;
+  }
+  HWF.step++; hwfRender();
+}
+async function hwfSubmit(){
+  const id=HWF.id, nos=hwfPicked(id); if(!nos.length){ HWF.step=HWF.steps.indexOf('wrong'); hwfRender(); return; }
+  try{
+    await saveWrongNos(id, nos);
+    clearPendingWrong(id);
+    hwfDone(nos.length);
+  }catch(e){ showToast('제출 실패: '+e.message+' — 고른 번호는 저장돼 있으니 다시 눌러 주세요','error'); }
+}
+function hwfDone(n){
+  hwfClose();
+  launchConfetti();
+  if(n!=null) showToast(`제출 완료! 틀린 문제 ${n}개는 📒 오답 탭에서 고쳐요 ✏️`,'success'); else showSubmitDone();
+}
 async function doSaveWrong(aid){
   const grid=[...document.querySelectorAll('#oapnums-'+aid+' .oapnum.on')].map(b=>String(b.dataset.no));
   const freeEl=document.getElementById('oapfree-'+aid);
